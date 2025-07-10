@@ -115,7 +115,7 @@ pub async fn create_task(
     let now = Utc::now();
     let new_task = Task {
         id: Some(Uuid::new_v4().to_string()),
-        user_id: Some("default_user".to_string()), // 暫時使用預設使用者
+        user_id: req.user_id.clone(), // 使用請求中的 user_id
         title: Some(req.title.clone()),
         description: req.description.clone(),
         status: Some(0), // 待完成

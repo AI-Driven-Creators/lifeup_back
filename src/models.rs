@@ -74,6 +74,7 @@ pub struct CreateTaskRequest {
     pub description: Option<String>,
     pub priority: Option<i32>,
     pub due_date: Option<DateTime<Utc>>,
+    pub user_id: Option<String>, // 添加 user_id 欄位
 }
 
 // 建立技能的請求
