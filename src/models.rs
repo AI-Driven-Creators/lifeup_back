@@ -45,6 +45,16 @@ pub struct Task {
     pub due_date: Option<DateTime<Utc>>,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
+    // 重複性任務相關欄位
+    pub is_recurring: Option<i32>, // 是否為重複性任務（0/1）
+    pub recurrence_pattern: Option<String>, // 重複模式：daily, weekdays, weekends, weekly
+    #[serde(default, deserialize_with = "deserialize_optional_datetime")]
+    pub start_date: Option<DateTime<Utc>>, // 開始日期
+    #[serde(default, deserialize_with = "deserialize_optional_datetime")]
+    pub end_date: Option<DateTime<Utc>>, // 結束日期
+    pub completion_target: Option<f64>, // 完成率目標（0.0-1.0）
+    pub completion_rate: Option<f64>, // 當前完成率（0.0-1.0）
+    pub task_date: Option<String>, // 任務日期（用於日常子任務）
 }
 crud!(Task{});
 
@@ -123,6 +133,21 @@ pub struct SubTaskTemplate {
     pub order: i32,
 }
 
+// 重複性任務模板（存儲在資料庫中）
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RecurringTaskTemplate {
+    pub id: Option<String>,
+    pub parent_task_id: Option<String>,
+    pub title: String,
+    pub description: Option<String>,
+    pub difficulty: i32,
+    pub experience: i32,
+    pub task_order: i32,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+}
+crud!(RecurringTaskTemplate{});
+
 // 開始任務的請求
 #[derive(Deserialize)]
 pub struct StartTaskRequest {
@@ -141,4 +166,32 @@ pub struct CreateSkillRequest {
 #[derive(Deserialize)]
 pub struct ChatRequest {
     pub message: String,
+}
+
+// 建立重複性任務的請求
+#[derive(Deserialize)]
+pub struct CreateRecurringTaskRequest {
+    pub title: String,
+    pub description: Option<String>,
+    pub task_type: Option<String>,
+    pub difficulty: Option<i32>,
+    pub experience: Option<i32>,
+    pub recurrence_pattern: String, // daily, weekdays, weekends, weekly
+    pub start_date: DateTime<Utc>,
+    pub end_date: Option<DateTime<Utc>>,
+    pub completion_target: Option<f64>, // 完成率目標
+    pub subtask_templates: Vec<SubTaskTemplate>, // 子任務模板列表
+    pub user_id: Option<String>,
+}
+
+// 任務進度回應
+#[derive(Serialize)]
+pub struct TaskProgressResponse {
+    pub task_id: String,
+    pub total_days: i32,
+    pub completed_days: i32,
+    pub completion_rate: f64,
+    pub target_rate: f64,
+    pub is_daily_completed: bool,
+    pub remaining_days: i32,
 } 
