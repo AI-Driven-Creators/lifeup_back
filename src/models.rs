@@ -33,8 +33,14 @@ pub struct Task {
     pub user_id: Option<String>,
     pub title: Option<String>,
     pub description: Option<String>,
-    pub status: Option<i32>, // 0: 待完成, 1: 進行中, 2: 已完成, 3: 已取消
+    pub status: Option<i32>, // 0: 待完成, 1: 進行中, 2: 已完成, 3: 已取消, 4: 已暫停
     pub priority: Option<i32>, // 0: 低, 1: 中, 2: 高
+    pub task_type: Option<String>, // main, side, challenge, daily
+    pub difficulty: Option<i32>, // 1-5 難度等級
+    pub experience: Option<i32>, // 經驗值獎勵
+    pub parent_task_id: Option<String>, // 父任務ID
+    pub is_parent_task: Option<i32>, // 是否為大任務（0/1）
+    pub task_order: Option<i32>, // 任務排序
     #[serde(default, deserialize_with = "deserialize_optional_datetime")]
     pub due_date: Option<DateTime<Utc>>,
     pub created_at: Option<DateTime<Utc>>,
@@ -87,6 +93,9 @@ pub struct CreateTaskRequest {
     pub title: String,
     pub description: Option<String>,
     pub priority: Option<i32>,
+    pub task_type: Option<String>, // main, side, challenge, daily
+    pub difficulty: Option<i32>, // 1-5 難度等級
+    pub experience: Option<i32>, // 經驗值獎勵
     pub due_date: Option<DateTime<Utc>>,
     pub user_id: Option<String>, // 添加 user_id 欄位
 }
@@ -98,7 +107,26 @@ pub struct UpdateTaskRequest {
     pub description: Option<String>,
     pub status: Option<i32>,
     pub priority: Option<i32>,
+    pub task_type: Option<String>, // main, side, challenge, daily
+    pub difficulty: Option<i32>, // 1-5 難度等級
+    pub experience: Option<i32>, // 經驗值獎勵
     pub due_date: Option<DateTime<Utc>>,
+}
+
+// 子任務模板
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SubTaskTemplate {
+    pub title: String,
+    pub description: Option<String>,
+    pub difficulty: i32,
+    pub experience: i32,
+    pub order: i32,
+}
+
+// 開始任務的請求
+#[derive(Deserialize)]
+pub struct StartTaskRequest {
+    pub generate_subtasks: Option<bool>,
 }
 
 // 建立技能的請求
