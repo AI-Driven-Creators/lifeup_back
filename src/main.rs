@@ -25,8 +25,7 @@ async fn main() -> std::io::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let reset_db = args.contains(&"--reset-db".to_string());
     let seed_only = args.contains(&"--seed".to_string());
-    
-    // 載入配置
+        // 載入配置
     let config = Config::from_env();
     
     // 初始化日誌 - 根據配置設置日誌級別
@@ -82,9 +81,7 @@ async fn main() -> std::io::Result<()> {
 
     // 正常啟動模式：建立資料庫表
     create_tables(&rb).await;
-    
-    // 執行資料庫遷移
-    migrate_database(&rb).await;
+
 
     // 用 web::Data 包裝 rbatis 實例
     let rb_data = web::Data::new(rb);
@@ -348,56 +345,3 @@ async fn create_tables(rb: &RBatis) {
     log::info!("所有資料庫表建立完成");
 }
 
-async fn migrate_database(rb: &RBatis) {
-    log::info!("開始執行資料庫遷移...");
-    
-    // 添加取消計數相關欄位的遷移
-    let migrations = vec![
-        // 檢查並添加 cancel_count 欄位
-        "ALTER TABLE task ADD COLUMN cancel_count INTEGER DEFAULT 0",
-        // 檢查並添加 last_cancelled_at 欄位
-        "ALTER TABLE task ADD COLUMN last_cancelled_at TEXT",
-        // 檢查並添加 skill_tags 欄位
-        "ALTER TABLE task ADD COLUMN skill_tags TEXT",
-    ];
-    
-    for (i, migration) in migrations.iter().enumerate() {
-        match rb.exec(migration, vec![]).await {
-            Ok(_) => log::info!("資料庫遷移 {} 執行成功", i + 1),
-            Err(e) => {
-                // SQLite 在欄位已存在時會報錯，這是正常的
-                if e.to_string().contains("duplicate column name") {
-                    log::info!("資料庫遷移 {} 跳過（欄位已存在）", i + 1);
-                } else {
-                    log::warn!("資料庫遷移 {} 執行失敗: {}", i + 1, e);
-                }
-            }
-        }
-    }
-    
-    // 修復現有子任務的技能標籤問題 (SQLite語法)
-    let fix_subtask_skill_tags_sql = r#"
-        UPDATE task 
-        SET skill_tags = (
-            SELECT parent.skill_tags 
-            FROM task AS parent 
-            WHERE parent.id = task.parent_task_id
-        )
-        WHERE parent_task_id IS NOT NULL 
-        AND task_type = 'subtask'
-        AND (skill_tags IS NULL OR skill_tags = '')
-        AND EXISTS (
-            SELECT 1 FROM task AS parent 
-            WHERE parent.id = task.parent_task_id 
-            AND parent.skill_tags IS NOT NULL 
-            AND parent.skill_tags != ''
-        )
-    "#;
-    
-    match rb.exec(fix_subtask_skill_tags_sql, vec![]).await {
-        Ok(result) => log::info!("修復子任務技能標籤：影響 {} 行", result.rows_affected),
-        Err(e) => log::warn!("修復子任務技能標籤失敗: {}", e),
-    }
-    
-    log::info!("資料庫遷移完成");
-}
