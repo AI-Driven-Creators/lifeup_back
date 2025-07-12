@@ -1,6 +1,19 @@
 use rbatis::crud;
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Deserializer};
+
+// 自定義反序列化函數處理空字串的 DateTime
+fn deserialize_optional_datetime<'de, D>(deserializer: D) -> Result<Option<DateTime<Utc>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let opt: Option<String> = Option::deserialize(deserializer)?;
+    match opt {
+        Some(s) if s.is_empty() => Ok(None),
+        Some(s) => s.parse::<DateTime<Utc>>().map(Some).map_err(serde::de::Error::custom),
+        None => Ok(None),
+    }
+}
 
 // 使用者模型
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -22,6 +35,7 @@ pub struct Task {
     pub description: Option<String>,
     pub status: Option<i32>, // 0: 待完成, 1: 進行中, 2: 已完成, 3: 已取消
     pub priority: Option<i32>, // 0: 低, 1: 中, 2: 高
+    #[serde(default, deserialize_with = "deserialize_optional_datetime")]
     pub due_date: Option<DateTime<Utc>>,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
@@ -75,6 +89,16 @@ pub struct CreateTaskRequest {
     pub priority: Option<i32>,
     pub due_date: Option<DateTime<Utc>>,
     pub user_id: Option<String>, // 添加 user_id 欄位
+}
+
+// 更新任務的請求
+#[derive(Deserialize)]
+pub struct UpdateTaskRequest {
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub status: Option<i32>,
+    pub priority: Option<i32>,
+    pub due_date: Option<DateTime<Utc>>,
 }
 
 // 建立技能的請求
