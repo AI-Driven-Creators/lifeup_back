@@ -75,6 +75,12 @@ async fn main() -> std::io::Result<()> {
             .route("/api/tasks", web::get().to(get_tasks))
             .route("/api/tasks", web::post().to(create_task))
             .route("/api/tasks/{id}", web::put().to(update_task))
+            .route("/api/tasks/type/{task_type}", web::get().to(get_tasks_by_type))
+            .route("/api/tasks/homepage", web::get().to(get_homepage_tasks))
+            .route("/api/tasks/{id}/start", web::post().to(start_task))
+            .route("/api/tasks/{id}/subtasks", web::get().to(get_subtasks))
+            .route("/api/tasks/{id}/pause", web::put().to(pause_task))
+            .route("/api/tasks/{id}/cancel", web::put().to(cancel_task))
             // 技能相關路由
             .route("/api/skills", web::get().to(get_skills))
             .route("/api/skills", web::post().to(create_skill))
@@ -109,10 +115,17 @@ async fn create_tables(rb: &RBatis) {
             description TEXT,
             status INTEGER DEFAULT 0,
             priority INTEGER DEFAULT 1,
+            task_type TEXT DEFAULT 'daily',
+            difficulty INTEGER DEFAULT 1,
+            experience INTEGER DEFAULT 10,
+            parent_task_id TEXT,
+            is_parent_task BOOLEAN DEFAULT FALSE,
+            task_order INTEGER DEFAULT 0,
             due_date TEXT,
             created_at TEXT,
             updated_at TEXT,
-            FOREIGN KEY (user_id) REFERENCES user (id)
+            FOREIGN KEY (user_id) REFERENCES user (id),
+            FOREIGN KEY (parent_task_id) REFERENCES task (id)
         )
         "#,
         // 技能表
