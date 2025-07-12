@@ -1,0 +1,24 @@
+warning: field `environment` is never read
+  --> src/config.rs:24:9
+   |
+23 | pub struct AppConfig {
+   |            --------- field in this struct
+24 |     pub environment: String,
+   |         ^^^^^^^^^^^
+   |
+   = note: `AppConfig` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+   = note: `#[warn(dead_code)]` on by default
+
+warning: fields `name` and `email` are never read
+  --> src/models.rs:86:9
+   |
+85 | pub struct UpdateUserRequest {
+   |            ----------------- fields in this struct
+86 |     pub name: Option<String>,
+   |         ^^^^
+87 |     pub email: Option<String>,
+   |         ^^^^^
+
+warning: `lifeup_back` (bin "lifeup_back") generated 2 warnings
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.49s
+     Running `target/debug/lifeup_back`

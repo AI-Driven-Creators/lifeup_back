@@ -81,6 +81,10 @@ async fn main() -> std::io::Result<()> {
             .route("/api/tasks/{id}/subtasks", web::get().to(get_subtasks))
             .route("/api/tasks/{id}/pause", web::put().to(pause_task))
             .route("/api/tasks/{id}/cancel", web::put().to(cancel_task))
+            // 重複性任務路由
+            .route("/api/recurring-tasks", web::post().to(create_recurring_task))
+            .route("/api/tasks/{id}/generate-daily", web::post().to(generate_daily_tasks))
+            .route("/api/tasks/{id}/progress", web::get().to(get_task_progress))
             // 技能相關路由
             .route("/api/skills", web::get().to(get_skills))
             .route("/api/skills", web::post().to(create_skill))
@@ -124,6 +128,13 @@ async fn create_tables(rb: &RBatis) {
             due_date TEXT,
             created_at TEXT,
             updated_at TEXT,
+            is_recurring BOOLEAN DEFAULT FALSE,
+            recurrence_pattern TEXT,
+            start_date TEXT,
+            end_date TEXT,
+            completion_target REAL DEFAULT 0.8,
+            completion_rate REAL DEFAULT 0.0,
+            task_date TEXT,
             FOREIGN KEY (user_id) REFERENCES user (id),
             FOREIGN KEY (parent_task_id) REFERENCES task (id)
         )
@@ -151,6 +162,21 @@ async fn create_tables(rb: &RBatis) {
             content TEXT,
             created_at TEXT,
             FOREIGN KEY (user_id) REFERENCES user (id)
+        )
+        "#,
+        // 重複性任務模板表
+        r#"
+        CREATE TABLE IF NOT EXISTS recurring_task_template (
+            id TEXT PRIMARY KEY,
+            parent_task_id TEXT,
+            title TEXT NOT NULL,
+            description TEXT,
+            difficulty INTEGER DEFAULT 1,
+            experience INTEGER DEFAULT 10,
+            task_order INTEGER DEFAULT 0,
+            created_at TEXT,
+            updated_at TEXT,
+            FOREIGN KEY (parent_task_id) REFERENCES task (id)
         )
         "#,
     ];
