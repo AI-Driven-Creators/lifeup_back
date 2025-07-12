@@ -74,6 +74,7 @@ async fn main() -> std::io::Result<()> {
             // 任務相關路由
             .route("/api/tasks", web::get().to(get_tasks))
             .route("/api/tasks", web::post().to(create_task))
+            .route("/api/tasks/{id}", web::put().to(update_task))
             // 技能相關路由
             .route("/api/skills", web::get().to(get_skills))
             .route("/api/skills", web::post().to(create_skill))

@@ -2,9 +2,8 @@ use actix_web::{web, HttpResponse, Result};
 use rbatis::RBatis;
 use uuid::Uuid;
 use chrono::Utc;
-use rbs::to_value;
-
 use crate::models::*;
+use rbs::{Value, value};
 
 // API 回應結構
 #[derive(serde::Serialize)]
@@ -41,7 +40,7 @@ pub async fn get_users(rb: web::Data<RBatis>) -> Result<HttpResponse> {
 
 pub async fn get_user(rb: web::Data<RBatis>, path: web::Path<String>) -> Result<HttpResponse> {
     let user_id = path.into_inner();
-    match User::select_by_map(rb.get_ref(), to_value!({"id": user_id})).await {
+    match User::select_by_map(rb.get_ref(), value!{"id": user_id}).await {
         Ok(users) => {
             if let Some(user) = users.first() {
                 Ok(HttpResponse::Ok().json(ApiResponse {
@@ -245,6 +244,83 @@ pub async fn send_message(
             success: false,
             data: None,
             message: format!("儲存 AI 回覆失敗: {}", e),
+        })),
+    }
+}
+
+// 更新任務狀態
+pub async fn update_task(
+    rb: web::Data<RBatis>,
+    path: web::Path<String>,
+    req: web::Json<UpdateTaskRequest>,
+) -> Result<HttpResponse> {
+    let task_id = path.into_inner();
+    
+    // 先查詢任務是否存在
+    match Task::select_by_map(rb.get_ref(), value!{"id": task_id.clone()}).await {
+        Ok(tasks) => {
+            if let Some(mut task) = tasks.into_iter().next() {
+                // 更新任務欄位
+                if let Some(title) = &req.title {
+                    task.title = Some(title.clone());
+                }
+                if let Some(description) = &req.description {
+                    task.description = Some(description.clone());
+                }
+                if let Some(status) = req.status {
+                    task.status = Some(status);
+                }
+                if let Some(priority) = req.priority {
+                    task.priority = Some(priority);
+                }
+                if let Some(due_date) = req.due_date {
+                    task.due_date = Some(due_date);
+                }
+                task.updated_at = Some(Utc::now());
+                
+                // 執行更新
+                let update_sql = "UPDATE task SET title = ?, description = ?, status = ?, priority = ?, due_date = ?, updated_at = ? WHERE id = ?";
+                let due_date_value = match task.due_date {
+                    Some(date) => Value::String(date.to_string()),
+                    None => Value::Null,
+                };
+                let result = rb.exec(
+                    update_sql,
+                    vec![
+                        Value::String(task.title.clone().unwrap_or_default()),
+                        Value::String(task.description.clone().unwrap_or_default()),
+                        Value::I32(task.status.unwrap_or(0)),
+                        Value::I32(task.priority.unwrap_or(1)),
+                        due_date_value,
+                        Value::String(task.updated_at.unwrap().to_string()),
+                        Value::String(task_id.clone()),
+                    ],
+                ).await;
+                
+                match result {
+                    Ok(_) => Ok(HttpResponse::Ok().json(ApiResponse {
+                        success: true,
+                        data: Some(task),
+                        message: "任務更新成功".to_string(),
+                    })),
+                    Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                        success: false,
+                        data: None,
+                        message: format!("任務更新失敗: {}", e),
+                    })),
+                }
+            } else {
+                Ok(HttpResponse::NotFound().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: "任務不存在".to_string(),
+                }))
+            }
+        }
+        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: format!("查詢任務失敗: {}", e),
         })),
     }
 } 
