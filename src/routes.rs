@@ -162,7 +162,7 @@ pub async fn create_skill(
     let now = Utc::now();
     let new_skill = Skill {
         id: Some(Uuid::new_v4().to_string()),
-        user_id: Some("default_user".to_string()), // 暫時使用預設使用者
+        user_id: Some("d487f83e-dadd-4616-aeb2-959d6af9963b".to_string()), // 暫時使用已創建的使用者
         name: Some(req.name.clone()),
         description: req.description.clone(),
         level: req.level,
@@ -210,7 +210,7 @@ pub async fn send_message(
     // 儲存使用者訊息
     let user_message = ChatMessage {
         id: Some(Uuid::new_v4().to_string()),
-        user_id: Some("default_user".to_string()),
+        user_id: Some("d487f83e-dadd-4616-aeb2-959d6af9963b".to_string()),
         role: Some("user".to_string()),
         content: Some(req.message.clone()),
         created_at: Some(now),
@@ -229,7 +229,7 @@ pub async fn send_message(
     
     let assistant_message = ChatMessage {
         id: Some(Uuid::new_v4().to_string()),
-        user_id: Some("default_user".to_string()),
+        user_id: Some("d487f83e-dadd-4616-aeb2-959d6af9963b".to_string()),
         role: Some("assistant".to_string()),
         content: Some(ai_response.clone()),
         created_at: Some(now),

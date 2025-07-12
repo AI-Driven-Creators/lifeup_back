@@ -12,11 +12,27 @@ use routes::*;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    // 載入 .env 文件
+    dotenv::dotenv().ok();
+    
     // 載入配置
     let config = Config::from_env();
     
-    // 初始化日誌
-    fast_log::init(fast_log::Config::new().console()).expect("日誌初始化失敗");
+    // 初始化日誌 - 根據配置設置日誌級別
+    let log_level = match config.app.log_level.to_lowercase().as_str() {
+        "error" => log::LevelFilter::Error,
+        "warn" => log::LevelFilter::Warn,
+        "info" => log::LevelFilter::Info,
+        "debug" => log::LevelFilter::Debug,
+        "trace" => log::LevelFilter::Trace,
+        _ => log::LevelFilter::Info,  // 默認為 Info 級別
+    };
+    
+    fast_log::init(
+        fast_log::Config::new()
+            .console()
+            .level(log_level)
+    ).expect("日誌初始化失敗");
     log::info!("LifeUp Backend 啟動中...");
     log::info!("配置: {:?}", config);
 
