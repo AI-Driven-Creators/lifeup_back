@@ -373,107 +373,52 @@ pub async fn get_tasks_by_type(
 }
 
 // 獲取子任務模板
-fn get_subtask_templates(task_title: &str) -> Vec<SubTaskTemplate> {
-    match task_title {
-        "學習 Vue.js" | "學會一門新程式語言" => vec![
-            SubTaskTemplate {
-                title: "安裝開發環境".to_string(),
-                description: Some("設定開發工具和環境".to_string()),
-                difficulty: 1,
-                experience: 20,
-                order: 1,
-            },
-            SubTaskTemplate {
-                title: "學習基礎語法".to_string(),
-                description: Some("掌握基本語法概念".to_string()),
-                difficulty: 2,
-                experience: 30,
-                order: 2,
-            },
-            SubTaskTemplate {
-                title: "實作練習項目".to_string(),
-                description: Some("通過實作加深理解".to_string()),
-                difficulty: 3,
-                experience: 50,
-                order: 3,
-            },
-            SubTaskTemplate {
-                title: "完成綜合項目".to_string(),
-                description: Some("完成一個完整的項目".to_string()),
-                difficulty: 4,
-                experience: 80,
-                order: 4,
-            },
-        ],
-        "完成一個馬拉松" => vec![
-            SubTaskTemplate {
-                title: "制定訓練計劃".to_string(),
-                description: Some("設計個人化的訓練方案".to_string()),
-                difficulty: 2,
-                experience: 30,
-                order: 1,
-            },
-            SubTaskTemplate {
-                title: "基礎體能訓練".to_string(),
-                description: Some("建立基本的跑步體能".to_string()),
-                difficulty: 3,
-                experience: 40,
-                order: 2,
-            },
-            SubTaskTemplate {
-                title: "增加跑步距離".to_string(),
-                description: Some("逐步增加跑步距離".to_string()),
-                difficulty: 3,
-                experience: 50,
-                order: 3,
-            },
-            SubTaskTemplate {
-                title: "參加半程馬拉松".to_string(),
-                description: Some("完成21公里的挑戰".to_string()),
-                difficulty: 4,
-                experience: 100,
-                order: 4,
-            },
-            SubTaskTemplate {
-                title: "完成全程馬拉松".to_string(),
-                description: Some("完成42公里的終極挑戰".to_string()),
-                difficulty: 5,
-                experience: 200,
-                order: 5,
-            },
-        ],
-        "展開新的職場生涯" => vec![
-            SubTaskTemplate {
-                title: "評估現有技能".to_string(),
-                description: Some("分析當前技能和經驗".to_string()),
-                difficulty: 2,
-                experience: 25,
-                order: 1,
-            },
-            SubTaskTemplate {
-                title: "制定學習計劃".to_string(),
-                description: Some("設計技能提升路徑".to_string()),
-                difficulty: 2,
-                experience: 30,
-                order: 2,
-            },
-            SubTaskTemplate {
-                title: "更新履歷和作品集".to_string(),
-                description: Some("完善個人資料和作品".to_string()),
-                difficulty: 3,
-                experience: 40,
-                order: 3,
-            },
-            SubTaskTemplate {
-                title: "網絡建立和求職".to_string(),
-                description: Some("建立職場網絡並尋找機會".to_string()),
-                difficulty: 4,
-                experience: 60,
-                order: 4,
-            },
-        ],
-        _ => vec![], // 沒有預定義模板的任務
-    }
+fn get_subtask_templates(_task_title: &str) -> Vec<SubTaskTemplate> {
+    // 返回通用的子任務模板，適用於所有類型的任務
+    vec![
+        SubTaskTemplate {
+            title: "準備階段".to_string(),
+            description: Some("收集資源和制定計劃".to_string()),
+            difficulty: 1,
+            experience: 20,
+            order: 1,
+        },
+        SubTaskTemplate {
+            title: "學習基礎".to_string(),
+            description: Some("掌握基本概念和技能".to_string()),
+            difficulty: 2,
+            experience: 30,
+            order: 2,
+        },
+        SubTaskTemplate {
+            title: "實踐練習".to_string(),
+            description: Some("通過實作加深理解".to_string()),
+            difficulty: 3,
+            experience: 50,
+            order: 3,
+        },
+        SubTaskTemplate {
+            title: "深入學習".to_string(),
+            description: Some("掌握進階技能和概念".to_string()),
+            difficulty: 4,
+            experience: 60,
+            order: 4,
+        },
+        SubTaskTemplate {
+            title: "完成項目".to_string(),
+            description: Some("完成實際應用項目".to_string()),
+            difficulty: 4,
+            experience: 80,
+            order: 5,
+        },
+        SubTaskTemplate {
+            title: "總結回顧".to_string(),
+            description: Some("總結經驗並規劃下一步".to_string()),
+            difficulty: 2,
+            experience: 30,
+            order: 6,
+        },
+    ]
 }
 
 // 開始任務（生成子任務）
