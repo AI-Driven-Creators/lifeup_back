@@ -55,6 +55,9 @@ pub struct Task {
     pub completion_target: Option<f64>, // 完成率目標（0.0-1.0）
     pub completion_rate: Option<f64>, // 當前完成率（0.0-1.0）
     pub task_date: Option<String>, // 任務日期（用於日常子任務）
+    pub cancel_count: Option<i32>, // 取消次數
+    #[serde(default, deserialize_with = "deserialize_optional_datetime")]
+    pub last_cancelled_at: Option<DateTime<Utc>>, // 最後取消時間
 }
 crud!(Task{});
 

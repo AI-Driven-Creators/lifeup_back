@@ -45,6 +45,9 @@ async fn main() -> std::io::Result<()> {
 
     // 建立資料庫表
     create_tables(&rb).await;
+    
+    // 執行資料庫遷移
+    migrate_database(&rb).await;
 
     // 用 web::Data 包裝 rbatis 實例
     let rb_data = web::Data::new(rb);
@@ -81,6 +84,7 @@ async fn main() -> std::io::Result<()> {
             .route("/api/tasks/{id}/subtasks", web::get().to(get_subtasks))
             .route("/api/tasks/{id}/pause", web::put().to(pause_task))
             .route("/api/tasks/{id}/cancel", web::put().to(cancel_task))
+            .route("/api/tasks/{id}/restart", web::put().to(restart_task))
             // 重複性任務路由
             .route("/api/recurring-tasks", web::post().to(create_recurring_task))
             .route("/api/tasks/{id}/generate-daily", web::post().to(generate_daily_tasks))
@@ -135,6 +139,8 @@ async fn create_tables(rb: &RBatis) {
             completion_target REAL DEFAULT 0.8,
             completion_rate REAL DEFAULT 0.0,
             task_date TEXT,
+            cancel_count INTEGER DEFAULT 0,
+            last_cancelled_at TEXT,
             FOREIGN KEY (user_id) REFERENCES user (id),
             FOREIGN KEY (parent_task_id) REFERENCES task (id)
         )
@@ -189,4 +195,32 @@ async fn create_tables(rb: &RBatis) {
     }
     
     log::info!("所有資料庫表建立完成");
+}
+
+async fn migrate_database(rb: &RBatis) {
+    log::info!("開始執行資料庫遷移...");
+    
+    // 添加取消計數相關欄位的遷移
+    let migrations = vec![
+        // 檢查並添加 cancel_count 欄位
+        "ALTER TABLE task ADD COLUMN cancel_count INTEGER DEFAULT 0",
+        // 檢查並添加 last_cancelled_at 欄位
+        "ALTER TABLE task ADD COLUMN last_cancelled_at TEXT",
+    ];
+    
+    for (i, migration) in migrations.iter().enumerate() {
+        match rb.exec(migration, vec![]).await {
+            Ok(_) => log::info!("資料庫遷移 {} 執行成功", i + 1),
+            Err(e) => {
+                // SQLite 在欄位已存在時會報錯，這是正常的
+                if e.to_string().contains("duplicate column name") {
+                    log::info!("資料庫遷移 {} 跳過（欄位已存在）", i + 1);
+                } else {
+                    log::warn!("資料庫遷移 {} 執行失敗: {}", i + 1, e);
+                }
+            }
+        }
+    }
+    
+    log::info!("資料庫遷移完成");
 }
