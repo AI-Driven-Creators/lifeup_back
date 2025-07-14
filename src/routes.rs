@@ -136,6 +136,8 @@ pub async fn create_task(
         completion_target: None,
         completion_rate: None,
         task_date: None,
+        cancel_count: Some(0),
+        last_cancelled_at: None,
     };
 
     match Task::insert(rb.get_ref(), &new_task).await {
@@ -462,54 +464,123 @@ pub async fn start_task(
                     }));
                 }
                 
-                // 生成子任務
+                // 檢查是否需要生成子任務
                 if req.generate_subtasks.unwrap_or(true) {
-                    let templates = get_subtask_templates(&parent_task.title.clone().unwrap_or_default());
-                    let mut subtasks = Vec::new();
-                    
-                    for template in templates {
-                        let subtask = Task {
-                            id: Some(Uuid::new_v4().to_string()),
-                            user_id: parent_task.user_id.clone(),
-                            title: Some(template.title),
-                            description: template.description,
-                            status: Some(0), // 待完成
-                            priority: Some(1),
-                            task_type: Some("subtask".to_string()),
-                            difficulty: Some(template.difficulty),
-                            experience: Some(template.experience),
-                            parent_task_id: Some(task_id.clone()),
-                            is_parent_task: Some(0),
-                            task_order: Some(template.order),
-                            due_date: None,
-                            created_at: Some(Utc::now()),
-                            updated_at: Some(Utc::now()),
-                            // 新欄位
-                            is_recurring: Some(0),
-                            recurrence_pattern: None,
-                            start_date: None,
-                            end_date: None,
-                            completion_target: None,
-                            completion_rate: None,
-                            task_date: None,
-                        };
-                        
-                        if let Err(e) = Task::insert(rb.get_ref(), &subtask).await {
-                            log::error!("Failed to create subtask: {}", e);
-                        } else {
-                            subtasks.push(subtask);
+                    // 先查詢現有的子任務
+                    match Task::select_by_map(rb.get_ref(), value!{"parent_task_id": task_id.clone()}).await {
+                        Ok(existing_subtasks) => {
+                            if existing_subtasks.is_empty() {
+                                // 沒有現有子任務，生成新的子任務
+                                let templates = get_subtask_templates(&parent_task.title.clone().unwrap_or_default());
+                                let mut subtasks = Vec::new();
+                                
+                                for template in templates {
+                                    let subtask = Task {
+                                        id: Some(Uuid::new_v4().to_string()),
+                                        user_id: parent_task.user_id.clone(),
+                                        title: Some(template.title),
+                                        description: template.description,
+                                        status: Some(0), // 待完成
+                                        priority: Some(1),
+                                        task_type: Some("subtask".to_string()),
+                                        difficulty: Some(template.difficulty),
+                                        experience: Some(template.experience),
+                                        parent_task_id: Some(task_id.clone()),
+                                        is_parent_task: Some(0),
+                                        task_order: Some(template.order),
+                                        due_date: None,
+                                        created_at: Some(Utc::now()),
+                                        updated_at: Some(Utc::now()),
+                                        // 新欄位
+                                        is_recurring: Some(0),
+                                        recurrence_pattern: None,
+                                        start_date: None,
+                                        end_date: None,
+                                        completion_target: None,
+                                        completion_rate: None,
+                                        task_date: None,
+                                        cancel_count: Some(0),
+                                        last_cancelled_at: None,
+                                    };
+                                    
+                                    if let Err(e) = Task::insert(rb.get_ref(), &subtask).await {
+                                        log::error!("Failed to create subtask: {}", e);
+                                    } else {
+                                        subtasks.push(subtask);
+                                    }
+                                }
+                                
+                                Ok(HttpResponse::Ok().json(ApiResponse {
+                                    success: true,
+                                    data: Some(serde_json::json!({
+                                        "parent_task": parent_task,
+                                        "subtasks": subtasks,
+                                        "subtasks_count": subtasks.len()
+                                    })),
+                                    message: format!("任務開始成功，生成了 {} 個子任務", subtasks.len()),
+                                }))
+                            } else {
+                                // 有現有子任務，檢查是否需要恢復暫停的子任務
+                                let paused_subtasks: Vec<_> = existing_subtasks.iter()
+                                    .filter(|subtask| subtask.status.unwrap_or(0) == 4) // 暫停狀態
+                                    .collect();
+                                
+                                if !paused_subtasks.is_empty() {
+                                    // 恢復暫停的子任務
+                                    let resume_sql = "UPDATE task SET status = 0, updated_at = ? WHERE parent_task_id = ? AND status = 4";
+                                    if let Err(e) = rb.exec(
+                                        resume_sql,
+                                        vec![
+                                            Value::String(Utc::now().to_string()),
+                                            Value::String(task_id.clone()),
+                                        ],
+                                    ).await {
+                                        return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                                            success: false,
+                                            data: None,
+                                            message: format!("恢復子任務失敗: {}", e),
+                                        }));
+                                    }
+                                    
+                                    // 重新查詢更新後的子任務
+                                    match Task::select_by_map(rb.get_ref(), value!{"parent_task_id": task_id.clone()}).await {
+                                        Ok(updated_subtasks) => {
+                                            Ok(HttpResponse::Ok().json(ApiResponse {
+                                                success: true,
+                                                data: Some(serde_json::json!({
+                                                    "parent_task": parent_task,
+                                                    "subtasks": updated_subtasks,
+                                                    "subtasks_count": updated_subtasks.len()
+                                                })),
+                                                message: format!("任務恢復成功，恢復了 {} 個暫停的子任務", paused_subtasks.len()),
+                                            }))
+                                        }
+                                        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                                            success: false,
+                                            data: None,
+                                            message: format!("查詢更新後的子任務失敗: {}", e),
+                                        }))
+                                    }
+                                } else {
+                                    // 子任務已存在且不需要恢復，直接返回現有子任務
+                                    Ok(HttpResponse::Ok().json(ApiResponse {
+                                        success: true,
+                                        data: Some(serde_json::json!({
+                                            "parent_task": parent_task,
+                                            "subtasks": existing_subtasks,
+                                            "subtasks_count": existing_subtasks.len()
+                                        })),
+                                        message: "任務繼續進行，子任務已存在".to_string(),
+                                    }))
+                                }
+                            }
                         }
+                        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                            success: false,
+                            data: None,
+                            message: format!("查詢現有子任務失敗: {}", e),
+                        }))
                     }
-                    
-                    Ok(HttpResponse::Ok().json(ApiResponse {
-                        success: true,
-                        data: Some(serde_json::json!({
-                            "parent_task": parent_task,
-                            "subtasks": subtasks,
-                            "subtasks_count": subtasks.len()
-                        })),
-                        message: format!("任務開始成功，生成了 {} 個子任務", subtasks.len()),
-                    }))
                 } else {
                     Ok(HttpResponse::Ok().json(ApiResponse {
                         success: true,
@@ -606,43 +677,70 @@ pub async fn cancel_task(
     path: web::Path<String>,
 ) -> Result<HttpResponse> {
     let task_id = path.into_inner();
+    let now = Utc::now();
     
-    // 更新父任務為取消狀態
-    let update_parent_sql = "UPDATE task SET status = 3, updated_at = ? WHERE id = ?";
-    if let Err(e) = rb.exec(
-        update_parent_sql,
-        vec![
-            Value::String(Utc::now().to_string()),
-            Value::String(task_id.clone()),
-        ],
-    ).await {
-        return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+    // 先查詢當前任務資訊以獲取cancel_count
+    match Task::select_by_map(rb.get_ref(), value!{"id": task_id.clone()}).await {
+        Ok(tasks) => {
+            if let Some(current_task) = tasks.first() {
+                let new_cancel_count = current_task.cancel_count.unwrap_or(0) + 1;
+                
+                // 更新父任務為取消狀態，增加取消計數和記錄取消時間
+                let update_parent_sql = "UPDATE task SET status = 3, cancel_count = ?, last_cancelled_at = ?, updated_at = ? WHERE id = ?";
+                if let Err(e) = rb.exec(
+                    update_parent_sql,
+                    vec![
+                        Value::I32(new_cancel_count),
+                        Value::String(now.to_string()),
+                        Value::String(now.to_string()),
+                        Value::String(task_id.clone()),
+                    ],
+                ).await {
+                    return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                        success: false,
+                        data: None,
+                        message: format!("取消父任務失敗: {}", e),
+                    }));
+                }
+                
+                // 刪除所有未完成的子任務
+                let delete_subtasks_sql = "DELETE FROM task WHERE parent_task_id = ? AND status != 2";
+                if let Err(e) = rb.exec(
+                    delete_subtasks_sql,
+                    vec![
+                        Value::String(task_id.clone()),
+                    ],
+                ).await {
+                    return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                        success: false,
+                        data: None,
+                        message: format!("刪除子任務失敗: {}", e),
+                    }));
+                }
+                
+                Ok(HttpResponse::Ok().json(ApiResponse {
+                    success: true,
+                    data: Some(serde_json::json!({
+                        "task_id": task_id,
+                        "cancel_count": new_cancel_count,
+                        "last_cancelled_at": now.to_string()
+                    })),
+                    message: format!("任務取消成功（第{}次取消），相關子任務已刪除", new_cancel_count),
+                }))
+            } else {
+                Ok(HttpResponse::NotFound().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: "任務不存在".to_string(),
+                }))
+            }
+        }
+        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
             success: false,
             data: None,
-            message: format!("取消父任務失敗: {}", e),
-        }));
+            message: format!("查詢任務失敗: {}", e),
+        })),
     }
-    
-    // 刪除所有未完成的子任務
-    let delete_subtasks_sql = "DELETE FROM task WHERE parent_task_id = ? AND status != 2";
-    if let Err(e) = rb.exec(
-        delete_subtasks_sql,
-        vec![
-            Value::String(task_id.clone()),
-        ],
-    ).await {
-        return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
-            success: false,
-            data: None,
-            message: format!("刪除子任務失敗: {}", e),
-        }));
-    }
-    
-    Ok(HttpResponse::Ok().json(ApiResponse {
-        success: true,
-        data: Some(serde_json::json!({"task_id": task_id})),
-        message: "任務取消成功，相關子任務已刪除".to_string(),
-    }))
 }
 
 // 獲取首頁任務（只返回子任務和每日任務）
@@ -695,6 +793,8 @@ pub async fn create_recurring_task(
         completion_target: req.completion_target.or(Some(0.8)),
         completion_rate: Some(0.0),
         task_date: None,
+        cancel_count: Some(0),
+        last_cancelled_at: None,
     };
 
     // 插入父任務
@@ -789,6 +889,8 @@ pub async fn generate_daily_tasks(
                     completion_target: None,
                     completion_rate: None,
                     task_date: Some(today.clone()),
+                    cancel_count: Some(0),
+                    last_cancelled_at: None,
                 };
                 
                 if let Ok(_) = Task::insert(rb.get_ref(), &daily_task).await {
@@ -898,6 +1000,82 @@ pub async fn get_task_progress(
             success: false,
             data: None,
             message: format!("獲取任務失敗: {}", e),
+        })),
+    }
+}
+
+// 重新開始已取消的任務
+pub async fn restart_task(
+    rb: web::Data<RBatis>,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let task_id = path.into_inner();
+    let now = Utc::now();
+    
+    // 先查詢任務是否存在且為已取消狀態
+    match Task::select_by_map(rb.get_ref(), value!{"id": task_id.clone()}).await {
+        Ok(tasks) => {
+            if let Some(mut task) = tasks.into_iter().next() {
+                // 檢查任務是否為已取消狀態
+                if task.status.unwrap_or(0) != 3 {
+                    return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                        success: false,
+                        data: None,
+                        message: "只有已取消的任務才能重新開始".to_string(),
+                    }));
+                }
+                
+                // 檢查是否為大任務
+                if task.is_parent_task.unwrap_or(0) == 0 {
+                    return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                        success: false,
+                        data: None,
+                        message: "只有大任務可以重新開始".to_string(),
+                    }));
+                }
+                
+                // 更新任務狀態為待開始
+                task.status = Some(0); // pending
+                task.updated_at = Some(now);
+                
+                let update_sql = "UPDATE task SET status = ?, updated_at = ? WHERE id = ?";
+                if let Err(e) = rb.exec(
+                    update_sql,
+                    vec![
+                        Value::I32(0), // pending status
+                        Value::String(now.to_string()),
+                        Value::String(task_id.clone()),
+                    ],
+                ).await {
+                    return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                        success: false,
+                        data: None,
+                        message: format!("重新開始任務失敗: {}", e),
+                    }));
+                }
+                
+                Ok(HttpResponse::Ok().json(ApiResponse {
+                    success: true,
+                    data: Some(serde_json::json!({
+                        "task_id": task_id,
+                        "status": "pending",
+                        "cancel_count": task.cancel_count.unwrap_or(0),
+                        "restarted_at": now.to_string()
+                    })),
+                    message: "任務重新開始成功，可以重新開始執行".to_string(),
+                }))
+            } else {
+                Ok(HttpResponse::NotFound().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: "任務不存在".to_string(),
+                }))
+            }
+        }
+        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: format!("查詢任務失敗: {}", e),
         })),
     }
 } 
