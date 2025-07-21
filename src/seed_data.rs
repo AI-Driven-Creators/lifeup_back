@@ -1,10 +1,9 @@
+
+
 use rbatis::RBatis;
 use uuid::Uuid;
 use chrono::{Utc, Duration, Datelike, NaiveDate};
 use log::{info, error};
-use rand::Rng;
-use crate::models::TaskStatus;
-use crate::achievement_service::AchievementService; // 引入成就服務
 
 /// 插入種子數據到數據庫
 pub async fn seed_database(rb: &RBatis) -> Result<(), Box<dyn std::error::Error>> {
@@ -243,6 +242,42 @@ async fn insert_test_tasks(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn std
             skill_tags_json.into(),
             cancel_count.into(),
             last_cancelled_at.map(|s| s.into()).unwrap_or_else(|| rbs::Value::Null),
+            created_at.into(),
+            updated_at.into(),
+        ]).await?;
+    }
+
+    // 每日任務
+    let daily_tasks = vec![
+        ("冥想 15 分鐘", "每日冥想練習，培養專注力", "daily", 1, 20, 2), // completed
+        ("閱讀 30 分鐘", "每日閱讀習慣", "daily", 2, 25, 1), // in_progress
+        ("運動 45 分鐘", "保持身體健康", "daily", 3, 40, 0), // pending
+        ("寫日記", "記錄每日生活和想法", "daily", 1, 15, 4), // paused
+        ("學習新單字", "擴展詞彙量", "daily", 2, 20, 1), // in_progress
+    ];
+
+    for (title, desc, task_type, difficulty, exp, status) in daily_tasks {
+        let task_id = Uuid::new_v4().to_string();
+        let created_at = (now - Duration::days(10)).to_rfc3339();
+        let updated_at = now.to_rfc3339();
+        
+        let sql = r#"
+            INSERT INTO task (id, user_id, title, description, status, priority, task_type, 
+                            difficulty, experience, is_parent_task, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "#;
+        
+        rb.exec(sql, vec![
+            task_id.into(),
+            user_id.into(),
+            title.into(),
+            desc.into(),
+            status.into(),
+            1i32.into(),
+            task_type.into(),
+            difficulty.into(),
+            exp.into(),
+            false.into(),
             created_at.into(),
             updated_at.into(),
         ]).await?;
