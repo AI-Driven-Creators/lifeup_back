@@ -123,7 +123,7 @@ pub async fn create_task(
         difficulty: req.difficulty.or(Some(1)),
         experience: req.experience.or(Some(10)),
         parent_task_id: None,
-        is_parent_task: Some(if req.task_type.as_ref().map_or(false, |t| t != "daily") { 1 } else { 0 }), // 非每日任務默認為大任務
+        is_parent_task: Some(if req.task_type.as_ref().map_or(false, |t| t == "main" || t == "side" || t == "challenge") { 1 } else { 0 }), // 主任務、支線任務、挑戰任務默認為大任務
         task_order: Some(0),
         due_date: req.due_date,
         created_at: Some(now),

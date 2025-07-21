@@ -1,6 +1,8 @@
 mod config;
 mod models;
 mod routes;
+mod database_reset;
+mod seed_data;
 
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
@@ -9,11 +11,18 @@ use rbdc_sqlite::driver::SqliteDriver;
 
 use config::Config;
 use routes::*;
+use database_reset::reset_database;
+use seed_data::seed_database;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     // 載入 .env 文件
     dotenv::dotenv().ok();
+    
+    // 處理命令行參數
+    let args: Vec<String> = std::env::args().collect();
+    let reset_db = args.contains(&"--reset-db".to_string());
+    let seed_only = args.contains(&"--seed".to_string());
     
     // 載入配置
     let config = Config::from_env();
@@ -43,7 +52,33 @@ async fn main() -> std::io::Result<()> {
     rb.init(SqliteDriver {}, &config.database.url).unwrap();
     log::info!("資料庫連接成功: {}", config.database.url);
 
-    // 建立資料庫表
+    // 處理數據庫重置命令
+    if reset_db {
+        log::info!("執行數據庫重置...");
+        if let Err(e) = reset_database(&rb).await {
+            log::error!("數據庫重置失敗: {}", e);
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()));
+        }
+        if let Err(e) = seed_database(&rb).await {
+            log::error!("種子數據插入失敗: {}", e);
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()));
+        }
+        log::info!("數據庫重置和種子數據插入完成！");
+        return Ok(());
+    }
+    
+    // 處理僅插入種子數據命令
+    if seed_only {
+        log::info!("僅插入種子數據...");
+        if let Err(e) = seed_database(&rb).await {
+            log::error!("種子數據插入失敗: {}", e);
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()));
+        }
+        log::info!("種子數據插入完成！");
+        return Ok(());
+    }
+
+    // 正常啟動模式：建立資料庫表
     create_tables(&rb).await;
     
     // 執行資料庫遷移
