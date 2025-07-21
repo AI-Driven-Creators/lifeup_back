@@ -24,12 +24,17 @@ LifeUp 生活管理應用的後端服務，基於 Rust + Actix-web + Rbatis 建�
 ```
 lifeup_back/
 ├── src/
-│   ├── main.rs          # 主程式入口
-│   ├── config.rs        # 配置管理
-│   ├── models.rs        # 資料模型
-│   └── routes.rs        # API 路由
-├── Cargo.toml           # 專案依賴
-└── README.md           # 專案說明
+│   ├── main.rs           # 主程式入口
+│   ├── config.rs         # 配置管理
+│   ├── models.rs         # 資料模型
+│   ├── routes.rs         # API 路由
+│   ├── database_reset.rs # 數據庫重置模組
+│   └── seed_data.rs      # 種子數據模組
+├── scripts/
+│   └── reset_db.sh       # 數據庫重置腳本
+├── backups/              # 數據庫備份目錄
+├── Cargo.toml            # 專案依賴
+└── README.md            # 專案說明
 ```
 
 ## 安裝和執行
@@ -57,6 +62,42 @@ cargo run --release
 ```
 
 服務將在 `http://127.0.0.1:8080` 啟動
+
+## 🗄️ 數據庫管理
+
+### 快速開始（推薦）
+
+使用便捷腳本快速設置開發環境：
+
+```bash
+# 執行互動式數據庫管理工具
+./scripts/reset_db.sh
+```
+
+### 命令行選項
+
+```bash
+# 完整重置數據庫並插入測試數據
+cargo run -- --reset-db
+
+# 僅插入種子數據（保留現有數據）
+cargo run -- --seed
+```
+
+### 測試數據包含
+
+- **測試用戶**: test@lifeup.com
+- **主任務**: 學習 Vue.js、掌握 Rust、建立健康作息等
+- **子任務**: 完整的學習階段劃分
+- **不同狀態**: 進行中、已完成、暫停、已取消的任務範例
+- **技能數據**: Vue.js、Rust、JavaScript 等技能進度
+- **聊天記錄**: AI教練對話範例
+
+### 安全特性
+
+- ⚠️ 數據庫重置僅在開發環境執行
+- 🔒 生產環境自動阻止重置操作
+- 💾 自動備份功能防止數據丟失
 
 ## API 介面
 
