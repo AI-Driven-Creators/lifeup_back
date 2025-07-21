@@ -5,7 +5,6 @@ mod database_reset;
 mod seed_data;
 mod ai_service;
 mod achievement_service;
-
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
 use rbatis::RBatis;
@@ -25,8 +24,7 @@ async fn main() -> std::io::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let reset_db = args.contains(&"--reset-db".to_string());
     let seed_only = args.contains(&"--seed".to_string());
-        // 載入配置
-    let config = Config::from_env();
+    // 載入配置    let config = Config::from_env();
     
     // 初始化日誌 - 根據配置設置日誌級別
     let log_level = match config.app.log_level.to_lowercase().as_str() {
@@ -68,6 +66,19 @@ async fn main() -> std::io::Result<()> {
         return Ok(());
     }
     
+    // 處理僅插入種子數據命令
+    if seed_only {
+        log::info!("僅插入種子數據...");
+        if let Err(e) = seed_database(&rb).await {
+            log::error!("種子數據插入失敗: {}", e);
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()));
+        }
+        log::info!("種子數據插入完成！");
+        return Ok(());
+    }
+
+    // 正常啟動模式：建立資料庫表
+    create_tables(&rb).await;    
     // 處理僅插入種子數據命令
     if seed_only {
         log::info!("僅插入種子數據...");

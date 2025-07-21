@@ -1,3 +1,20 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 use rbatis::RBatis;
 use log::{info, error, warn};
 use std::env;
@@ -15,6 +32,8 @@ pub async fn reset_database(rb: &RBatis) -> Result<(), Box<dyn std::error::Error
 
     // 刪除所有表（按依賴順序）
     let drop_tables = vec![
+        "DROP TABLE IF EXISTS chat_message",
+        "DROP TABLE IF EXISTS recurring_task_template", 
         "DROP TABLE IF EXISTS weekly_attribute_snapshot",
         "DROP TABLE IF EXISTS user_achievement",
         "DROP TABLE IF EXISTS daily_progress",
