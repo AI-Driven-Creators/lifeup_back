@@ -10,6 +10,12 @@ pub async fn seed_database(rb: &RBatis) -> Result<(), Box<dyn std::error::Error>
     // 插入測試用戶
     let user_id = insert_test_user(rb).await?;
     
+    // 插入遊戲化用戶資料
+    insert_user_profile(rb, &user_id).await?;
+    
+    // 插入用戶屬性
+    insert_user_attributes(rb, &user_id).await?;
+    
     // 插入任務數據
     insert_test_tasks(rb, &user_id).await?;
     
@@ -18,6 +24,15 @@ pub async fn seed_database(rb: &RBatis) -> Result<(), Box<dyn std::error::Error>
     
     // 插入聊天記錄
     insert_test_chat_messages(rb, &user_id).await?;
+    
+    // 插入成就數據
+    insert_achievements(rb).await?;
+    
+    // 插入用戶成就關聯
+    insert_user_achievements(rb, &user_id).await?;
+    
+    // 插入每日進度數據
+    insert_daily_progress(rb, &user_id).await?;
 
     info!("種子數據插入完成！");
     Ok(())
@@ -35,8 +50,8 @@ async fn insert_test_user(rb: &RBatis) -> Result<String, Box<dyn std::error::Err
     
     match rb.exec(sql, vec![
         user_id.clone().into(),
-        "測試用戶".into(),
-        "test@lifeup.com".into(),
+        "小雅".into(),
+        "xiaoya@lifeup.com".into(),
         now.clone().into(),
         now.into(),
     ]).await {
@@ -726,5 +741,201 @@ async fn insert_test_chat_messages(rb: &RBatis, user_id: &str) -> Result<(), Box
     }
 
     info!("測試聊天記錄插入完成");
+    Ok(())
+}
+
+/// 插入用戶遊戲化資料
+async fn insert_user_profile(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let profile_id = Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+    
+    let sql = r#"
+        INSERT INTO user_profile (id, user_id, level, experience, max_experience, title, 
+                                  adventure_days, consecutive_login_days, persona_type, 
+                                  created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    "#;
+    
+    match rb.exec(sql, vec![
+        profile_id.into(),
+        user_id.into(),
+        12i32.into(),  // level
+        2340i32.into(), // experience
+        2500i32.into(), // max_experience
+        "自律達人".into(), // title
+        87i32.into(),   // adventure_days
+        12i32.into(),   // consecutive_login_days
+        "internal".into(), // persona_type
+        now.clone().into(),
+        now.into(),
+    ]).await {
+        Ok(_) => {
+            info!("用戶遊戲化資料插入成功");
+            Ok(())
+        }
+        Err(e) => {
+            error!("用戶遊戲化資料插入失敗: {}", e);
+            Err(e.into())
+        }
+    }
+}
+
+/// 插入用戶屬性
+async fn insert_user_attributes(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let attributes_id = Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+    
+    let sql = r#"
+        INSERT INTO user_attributes (id, user_id, intelligence, endurance, creativity, 
+                                     social, focus, adaptability, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    "#;
+    
+    match rb.exec(sql, vec![
+        attributes_id.into(),
+        user_id.into(),
+        82i32.into(),  // intelligence
+        45i32.into(),  // endurance
+        75i32.into(),  // creativity
+        52i32.into(),  // social
+        68i32.into(),  // focus
+        58i32.into(),  // adaptability
+        now.clone().into(),
+        now.into(),
+    ]).await {
+        Ok(_) => {
+            info!("用戶屬性插入成功");
+            Ok(())
+        }
+        Err(e) => {
+            error!("用戶屬性插入失敗: {}", e);
+            Err(e.into())
+        }
+    }
+}
+
+/// 插入成就數據
+async fn insert_achievements(rb: &RBatis) -> Result<(), Box<dyn std::error::Error>> {
+    let achievements = vec![
+        ("第一步", "完成第一個任務", "🎯", "task", "task_complete", 1, 50),
+        ("堅持不懈", "連續 7 天完成任務", "🔥", "habit", "consecutive_days", 7, 100),
+        ("學習達人", "完成 10 個學習類任務", "📚", "learning", "learning_task_complete", 10, 150),
+        ("技能大師", "任一技能達到 5 級", "⭐", "skill", "skill_level", 5, 200),
+        ("社交達人", "社交力屬性達到 80", "👥", "attribute", "social_attribute", 80, 100),
+        ("專注力王", "專注力屬性達到 90", "🎯", "attribute", "focus_attribute", 90, 120),
+        ("創意無限", "創造力屬性達到 85", "🎨", "attribute", "creativity_attribute", 85, 110),
+        ("智慧之光", "智力屬性達到 90", "💡", "attribute", "intelligence_attribute", 90, 130),
+        ("堅毅如山", "毅力屬性達到 80", "⛰️", "attribute", "endurance_attribute", 80, 100),
+        ("靈活應變", "適應力屬性達到 85", "🌊", "attribute", "adaptability_attribute", 85, 115),
+    ];
+
+    let now = Utc::now().to_rfc3339();
+    
+    for (name, desc, icon, category, req_type, req_value, exp_reward) in achievements {
+        let achievement_id = Uuid::new_v4().to_string();
+        
+        let sql = r#"
+            INSERT INTO achievement (id, name, description, icon, category, requirement_type, 
+                                     requirement_value, experience_reward, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "#;
+        
+        rb.exec(sql, vec![
+            achievement_id.into(),
+            name.into(),
+            desc.into(),
+            icon.into(),
+            category.into(),
+            req_type.into(),
+            req_value.into(),
+            exp_reward.into(),
+            now.clone().into(),
+        ]).await?;
+    }
+
+    info!("成就數據插入完成");
+    Ok(())
+}
+
+/// 插入用戶成就關聯 (已達成的成就)
+async fn insert_user_achievements(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+    // 獲取前幾個成就作為已達成
+    let achieved_names = vec!["第一步", "學習達人", "智慧之光"];
+    
+    // 先查詢這些成就的 ID
+    for achievement_name in achieved_names {
+        let achievement_query = r#"SELECT id FROM achievement WHERE name = ?"#;
+        let achievement_result: Vec<serde_json::Value> = rb.query_decode(achievement_query, vec![achievement_name.into()]).await?;
+        
+        if let Some(achievement) = achievement_result.first() {
+            if let Some(achievement_id) = achievement.get("id").and_then(|v| v.as_str()) {
+                let user_achievement_id = Uuid::new_v4().to_string();
+                let achieved_at = (Utc::now() - Duration::days(5)).to_rfc3339();
+                
+                let sql = r#"
+                    INSERT INTO user_achievement (id, user_id, achievement_id, achieved_at, progress)
+                    VALUES (?, ?, ?, ?, ?)
+                "#;
+                
+                rb.exec(sql, vec![
+                    user_achievement_id.into(),
+                    user_id.into(),
+                    achievement_id.into(),
+                    achieved_at.into(),
+                    100i32.into(), // 完成進度
+                ]).await?;
+            }
+        }
+    }
+
+    info!("用戶成就關聯插入完成");
+    Ok(())
+}
+
+/// 插入每日進度數據
+async fn insert_daily_progress(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let now = Utc::now();
+    
+    // 插入過去幾天的進度記錄
+    for i in 0..7 {
+        let date = (now - Duration::days(i)).format("%Y-%m-%d").to_string();
+        let progress_id = Uuid::new_v4().to_string();
+        let created_at = (now - Duration::days(i)).to_rfc3339();
+        
+        // 模擬不同的每日進度
+        let (completed, total, exp_gained) = match i {
+            0 => (3, 5, 150),  // 今天
+            1 => (4, 5, 200),  // 昨天
+            2 => (5, 5, 250),  // 前天
+            3 => (2, 5, 100),
+            4 => (3, 4, 175),
+            5 => (4, 6, 220),
+            6 => (1, 3, 75),
+            _ => (3, 5, 150),
+        };
+        
+        // 屬性增長 JSON
+        let attributes_gained = r#"{"intelligence": 2, "endurance": 1}"#;
+        
+        let sql = r#"
+            INSERT INTO daily_progress (id, user_id, date, completed_tasks, total_tasks, 
+                                        experience_gained, attributes_gained, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "#;
+        
+        rb.exec(sql, vec![
+            progress_id.into(),
+            user_id.into(),
+            date.into(),
+            completed.into(),
+            total.into(),
+            exp_gained.into(),
+            attributes_gained.into(),
+            created_at.clone().into(),
+            created_at.into(),
+        ]).await?;
+    }
+
+    info!("每日進度數據插入完成");
     Ok(())
 }
