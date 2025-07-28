@@ -1,3 +1,10 @@
+/*!
+ * @file main.rs
+ * @brief LifeUp 後端主程式入口點
+ * @details 這是 LifeUp 應用程式的主要入口點，負責初始化伺服器、設定路由、
+ *          建立資料庫連接以及處理命令列參數
+ */
+
 mod config;
 mod models;
 mod routes;
@@ -14,6 +21,17 @@ use routes::*;
 use database_reset::reset_database;
 use seed_data::seed_database;
 
+/**
+ * @brief 主函數 - LifeUp 後端應用程式的入口點
+ * @details 負責初始化整個應用程式，包括：
+ *          - 載入環境配置
+ *          - 處理命令列參數（資料庫重置、種子數據）
+ *          - 初始化日誌系統
+ *          - 建立資料庫連接
+ *          - 設定HTTP路由
+ *          - 啟動伺服器
+ * @return std::io::Result<()> 返回結果，成功時為 Ok(())
+ */
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     // 載入 .env 文件
@@ -127,6 +145,7 @@ async fn main() -> std::io::Result<()> {
             // 技能相關路由
             .route("/api/skills", web::get().to(get_skills))
             .route("/api/skills", web::post().to(create_skill))
+            .route("/api/skills/{skill_id}/tasks", web::get().to(get_tasks_by_skill))
             // 聊天相關路由
             .route("/api/chat/messages", web::get().to(get_chat_messages))
             .route("/api/chat/send", web::post().to(send_message))
@@ -145,6 +164,17 @@ async fn main() -> std::io::Result<()> {
     .await
 }
 
+/**
+ * @brief 建立資料庫表結構
+ * @details 建立應用程式所需的所有資料庫表，包括：
+ *          - user: 使用者資料表
+ *          - task: 任務資料表
+ *          - skill: 技能資料表
+ *          - chat_message: 聊天記錄表
+ *          - recurring_task_template: 重複性任務模板表
+ *          - task_skill_relation: 任務-技能關聯表
+ * @param rb RBatis 資料庫連接實例的引用
+ */
 async fn create_tables(rb: &RBatis) {
     let tables = vec![
         // 使用者表
@@ -184,6 +214,9 @@ async fn create_tables(rb: &RBatis) {
             task_date TEXT,
             cancel_count INTEGER DEFAULT 0,
             last_cancelled_at TEXT,
+            weekly_days TEXT,
+            monthly_days TEXT,
+            related_skills TEXT,
             FOREIGN KEY (user_id) REFERENCES user (id),
             FOREIGN KEY (parent_task_id) REFERENCES task (id)
         )
@@ -202,18 +235,7 @@ async fn create_tables(rb: &RBatis) {
             FOREIGN KEY (user_id) REFERENCES user (id)
         )
         "#,
-        // 聊天記錄表
-        r#"
-        CREATE TABLE IF NOT EXISTS chat_message (
-            id TEXT PRIMARY KEY,
-            user_id TEXT,
-            role TEXT,
-            content TEXT,
-            created_at TEXT,
-            FOREIGN KEY (user_id) REFERENCES user (id)
-        )
-        "#,
-        // 重複性任務模板表
+        // 重複性任務表
         r#"
         CREATE TABLE IF NOT EXISTS recurring_task_template (
             id TEXT PRIMARY KEY,
@@ -226,6 +248,29 @@ async fn create_tables(rb: &RBatis) {
             created_at TEXT,
             updated_at TEXT,
             FOREIGN KEY (parent_task_id) REFERENCES task (id)
+        )
+        "#,
+        // 任務-技能關聯表
+        r#"
+        CREATE TABLE IF NOT EXISTS task_skill_relation (
+            id TEXT PRIMARY KEY,
+            task_id TEXT,
+            skill_id TEXT,
+            experience_multiplier REAL DEFAULT 1.0,
+            created_at TEXT,
+            FOREIGN KEY (task_id) REFERENCES task (id),
+            FOREIGN KEY (skill_id) REFERENCES skill (id)
+        )
+        "#,
+        // 聊天記錄表
+        r#"
+        CREATE TABLE IF NOT EXISTS chat_message (
+            id TEXT PRIMARY KEY,
+            user_id TEXT,
+            role TEXT,
+            content TEXT,
+            created_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES user (id)
         )
         "#,
         // 用戶遊戲化資料表
@@ -335,6 +380,17 @@ async fn create_tables(rb: &RBatis) {
     log::info!("所有資料庫表建立完成");
 }
 
+/**
+ * @brief 執行資料庫遷移
+ * @details 執行資料庫結構更新，添加新的欄位或修改現有結構。
+ *          目前主要處理：
+ *          - 添加 cancel_count 欄位（任務取消次數）
+ *          - 添加 last_cancelled_at 欄位（最後取消時間）
+ *          - 添加 weekly_days 欄位（週重複任務的星期選擇）
+ *          - 添加 monthly_days 欄位（月重複任務的日期選擇）
+ *          - 添加 related_skills 欄位（任務關聯的技能列表）
+ * @param rb RBatis 資料庫連接實例的引用
+ */
 async fn migrate_database(rb: &RBatis) {
     log::info!("開始執行資料庫遷移...");
     
@@ -344,6 +400,12 @@ async fn migrate_database(rb: &RBatis) {
         "ALTER TABLE task ADD COLUMN cancel_count INTEGER DEFAULT 0",
         // 檢查並添加 last_cancelled_at 欄位
         "ALTER TABLE task ADD COLUMN last_cancelled_at TEXT",
+        // 檢查並添加 weekly_days 欄位（週重複的日期選擇）
+        "ALTER TABLE task ADD COLUMN weekly_days TEXT",
+        // 檢查並添加 monthly_days 欄位（月重複的日期選擇）
+        "ALTER TABLE task ADD COLUMN monthly_days TEXT",
+        // 檢查並添加 related_skills 欄位（關聯的技能ID列表）
+        "ALTER TABLE task ADD COLUMN related_skills TEXT",
     ];
     
     for (i, migration) in migrations.iter().enumerate() {

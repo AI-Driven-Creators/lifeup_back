@@ -1,3 +1,9 @@
+/*!
+ * @file models.rs
+ * @brief 資料模型定義
+ * @details 定義了 LifeUp 應用程式中使用的所有資料結構，包括使用者、任務、技能等模型
+ */
+
 use rbatis::crud;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize, Deserializer};
@@ -26,38 +32,64 @@ pub struct User {
 }
 crud!(User{});
 
-// 任務模型
+/**
+ * @brief 任務資料模型
+ * @details 表示系統中的任務，支援多種類型：主任務、支線任務、挑戰任務、每日任務等
+ *          包含層次結構（父子任務）、重複性任務、狀態管理等功能
+ */
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Task {
     pub id: Option<String>,
     pub user_id: Option<String>,
     pub title: Option<String>,
     pub description: Option<String>,
-    pub status: Option<i32>, // 0: 待完成, 1: 進行中, 2: 已完成, 3: 已取消, 4: 已暫停
-    pub priority: Option<i32>, // 0: 低, 1: 中, 2: 高
-    pub task_type: Option<String>, // main, side, challenge, daily
-    pub difficulty: Option<i32>, // 1-5 難度等級
-    pub experience: Option<i32>, // 經驗值獎勵
-    pub parent_task_id: Option<String>, // 父任務ID
-    pub is_parent_task: Option<i32>, // 是否為大任務（0/1）
-    pub task_order: Option<i32>, // 任務排序
+    /// 任務狀態：0=待完成, 1=進行中, 2=已完成, 3=已取消, 4=已暫停
+    pub status: Option<i32>,
+    /// 任務優先級：0=低, 1=中, 2=高
+    pub priority: Option<i32>,
+    /// 任務類型：main=主任務, side=支線任務, challenge=挑戰任務, daily=每日任務
+    pub task_type: Option<String>,
+    /// 難度等級：1-5
+    pub difficulty: Option<i32>,
+    /// 經驗值獎勵
+    pub experience: Option<i32>,
+    /// 父任務ID（用於建立任務層次結構）
+    pub parent_task_id: Option<String>,
+    /// 是否為大任務：0=否, 1=是
+    pub is_parent_task: Option<i32>,
+    /// 任務排序順序
+    pub task_order: Option<i32>,
     #[serde(default, deserialize_with = "deserialize_optional_datetime")]
     pub due_date: Option<DateTime<Utc>>,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
-    // 重複性任務相關欄位
-    pub is_recurring: Option<i32>, // 是否為重複性任務（0/1）
-    pub recurrence_pattern: Option<String>, // 重複模式：daily, weekdays, weekends, weekly
+    /// 是否為重複性任務：0=否, 1=是
+    pub is_recurring: Option<i32>,
+    /// 重複模式：daily=每日, weekly=每週, monthly=每月
+    pub recurrence_pattern: Option<String>,
+    /// 開始日期
     #[serde(default, deserialize_with = "deserialize_optional_datetime")]
-    pub start_date: Option<DateTime<Utc>>, // 開始日期
+    pub start_date: Option<DateTime<Utc>>,
+    /// 結束日期
     #[serde(default, deserialize_with = "deserialize_optional_datetime")]
-    pub end_date: Option<DateTime<Utc>>, // 結束日期
-    pub completion_target: Option<f64>, // 完成率目標（0.0-1.0）
-    pub completion_rate: Option<f64>, // 當前完成率（0.0-1.0）
-    pub task_date: Option<String>, // 任務日期（用於日常子任務）
-    pub cancel_count: Option<i32>, // 取消次數
+    pub end_date: Option<DateTime<Utc>>,
+    /// 完成率目標（0.0-1.0）
+    pub completion_target: Option<f64>,
+    /// 當前完成率（0.0-1.0）
+    pub completion_rate: Option<f64>,
+    /// 任務日期（用於日常子任務，格式：YYYY-MM-DD）
+    pub task_date: Option<String>,
+    /// 任務被取消的次數
+    pub cancel_count: Option<i32>,
+    /// 最後取消時間
     #[serde(default, deserialize_with = "deserialize_optional_datetime")]
-    pub last_cancelled_at: Option<DateTime<Utc>>, // 最後取消時間
+    pub last_cancelled_at: Option<DateTime<Utc>>,
+    /// 週重複時的星期選擇（JSON字串格式：[1,2,3,4,5] 代表週一到週五）
+    pub weekly_days: Option<String>,
+    /// 月重複時的日期選擇（JSON字串格式：[1,15,28] 代表每月1日、15日、28日）
+    pub monthly_days: Option<String>,
+    /// 關聯的技能ID列表（JSON字串格式：["skill1","skill2"] 代表相關技能）
+    pub related_skills: Option<String>,
 }
 crud!(Task{});
 
@@ -74,6 +106,21 @@ pub struct Skill {
     pub updated_at: Option<DateTime<Utc>>,
 }
 crud!(Skill{});
+
+/**
+ * @brief 任務-技能關聯模型
+ * @details 定義任務與技能的多對多關聯關係，包含經驗值加成等配置
+ */
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TaskSkillRelation {
+    pub id: Option<String>,
+    pub task_id: Option<String>,
+    pub skill_id: Option<String>,
+    /// 經驗值加成倍數（預設1.0，可設定0.5-2.0）
+    pub experience_multiplier: Option<f64>,
+    pub created_at: Option<DateTime<Utc>>,
+}
+crud!(TaskSkillRelation{});
 
 // 聊天記錄模型
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -100,7 +147,9 @@ pub struct UpdateUserRequest {
     pub email: Option<String>,
 }
 
-// 建立任務的請求
+/**
+ * @brief 建立任務的請求結構
+ */
 #[derive(Deserialize)]
 pub struct CreateTaskRequest {
     pub title: String,
@@ -110,7 +159,10 @@ pub struct CreateTaskRequest {
     pub difficulty: Option<i32>, // 1-5 難度等級
     pub experience: Option<i32>, // 經驗值獎勵
     pub due_date: Option<DateTime<Utc>>,
-    pub user_id: Option<String>, // 添加 user_id 欄位
+    /// 使用者ID
+    pub user_id: Option<String>,
+    /// 關聯的技能ID列表
+    pub related_skills: Option<Vec<String>>,
 }
 
 // 更新任務的請求
@@ -124,6 +176,8 @@ pub struct UpdateTaskRequest {
     pub difficulty: Option<i32>, // 1-5 難度等級
     pub experience: Option<i32>, // 經驗值獎勵
     pub due_date: Option<DateTime<Utc>>,
+    /// 關聯的技能ID列表
+    pub related_skills: Option<Vec<String>>,
 }
 
 // 子任務模板
@@ -179,12 +233,16 @@ pub struct CreateRecurringTaskRequest {
     pub task_type: Option<String>,
     pub difficulty: Option<i32>,
     pub experience: Option<i32>,
-    pub recurrence_pattern: String, // daily, weekdays, weekends, weekly
+    pub recurrence_pattern: String, // daily, weekly, monthly
     pub start_date: DateTime<Utc>,
     pub end_date: Option<DateTime<Utc>>,
     pub completion_target: Option<f64>, // 完成率目標
     pub subtask_templates: Vec<SubTaskTemplate>, // 子任務模板列表
     pub user_id: Option<String>,
+    // 週重複時的星期選擇 (1=週一, 2=週二, ..., 7=週日)
+    pub weekly_days: Option<Vec<i32>>,
+    // 月重複時的日期選擇 (1-31)
+    pub monthly_days: Option<Vec<i32>>,
 }
 
 // 任務進度回應
