@@ -132,6 +132,12 @@ async fn main() -> std::io::Result<()> {
             .route("/api/chat/send", web::post().to(send_message))
             // 遊戲化數據相關路由
             .route("/api/users/{id}/gamified", web::get().to(get_gamified_user_data))
+            // 成就相關路由
+            .route("/api/achievements", web::get().to(get_achievements))
+            .route("/api/users/{user_id}/achievements", web::get().to(get_user_achievements))
+            .route("/api/users/{user_id}/achievements/{achievement_id}/unlock", web::post().to(unlock_user_achievement))
+            // 週屬性相關路由
+            .route("/api/users/{user_id}/attributes/weekly/{weeks_ago}", web::get().to(get_weekly_attributes))
     })
     .workers(2)
     .bind(&server_addr)?
@@ -296,6 +302,25 @@ async fn create_tables(rb: &RBatis) {
             UNIQUE(user_id, achievement_id),
             FOREIGN KEY (user_id) REFERENCES user (id),
             FOREIGN KEY (achievement_id) REFERENCES achievement (id)
+        )
+        "#,
+        // 週屬性快照表
+        r#"
+        CREATE TABLE IF NOT EXISTS weekly_attribute_snapshot (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            week_start_date TEXT NOT NULL,
+            year INTEGER NOT NULL,
+            week_number INTEGER NOT NULL,
+            intelligence INTEGER DEFAULT 50,
+            endurance INTEGER DEFAULT 50,
+            creativity INTEGER DEFAULT 50,
+            social INTEGER DEFAULT 50,
+            focus INTEGER DEFAULT 50,
+            adaptability INTEGER DEFAULT 50,
+            created_at TEXT,
+            UNIQUE(user_id, year, week_number),
+            FOREIGN KEY (user_id) REFERENCES user (id)
         )
         "#,
     ];

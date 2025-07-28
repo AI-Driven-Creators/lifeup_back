@@ -15,6 +15,7 @@ pub async fn reset_database(rb: &RBatis) -> Result<(), Box<dyn std::error::Error
 
     // 刪除所有表（按依賴順序）
     let drop_tables = vec![
+        "DROP TABLE IF EXISTS weekly_attribute_snapshot",
         "DROP TABLE IF EXISTS user_achievement",
         "DROP TABLE IF EXISTS daily_progress",
         "DROP TABLE IF EXISTS achievement",
@@ -199,6 +200,25 @@ async fn create_all_tables(rb: &RBatis) -> Result<(), Box<dyn std::error::Error>
             UNIQUE(user_id, achievement_id),
             FOREIGN KEY (user_id) REFERENCES user (id),
             FOREIGN KEY (achievement_id) REFERENCES achievement (id)
+        )
+        "#,
+        // 週屬性快照表
+        r#"
+        CREATE TABLE IF NOT EXISTS weekly_attribute_snapshot (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            week_start_date TEXT NOT NULL,
+            year INTEGER NOT NULL,
+            week_number INTEGER NOT NULL,
+            intelligence INTEGER DEFAULT 50,
+            endurance INTEGER DEFAULT 50,
+            creativity INTEGER DEFAULT 50,
+            social INTEGER DEFAULT 50,
+            focus INTEGER DEFAULT 50,
+            adaptability INTEGER DEFAULT 50,
+            created_at TEXT,
+            UNIQUE(user_id, year, week_number),
+            FOREIGN KEY (user_id) REFERENCES user (id)
         )
         "#,
     ];
