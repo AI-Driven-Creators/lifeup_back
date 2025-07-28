@@ -1078,4 +1078,153 @@ pub async fn restart_task(
             message: format!("查詢任務失敗: {}", e),
         })),
     }
+}
+
+// 遊戲化數據相關 API
+
+// 獲取完整的遊戲化用戶數據 (整合 API)
+pub async fn get_gamified_user_data(rb: web::Data<RBatis>, path: web::Path<String>) -> Result<HttpResponse> {
+    let user_id = path.into_inner();
+    log::info!("正在獲取用戶 {} 的遊戲化數據", user_id);
+    
+    // 獲取基本用戶信息
+    log::info!("步驟 1: 獲取基本用戶信息");
+    let user = User::select_by_map(rb.get_ref(), value!{"id": user_id.clone()}).await
+        .map_err(|e| {
+            log::error!("獲取用戶失敗: {}", e);
+            format!("獲取用戶失敗: {}", e)
+        });
+    
+    // 獲取遊戲化資料
+    log::info!("步驟 2: 獲取遊戲化資料");
+    let profile = UserProfile::select_by_map(rb.get_ref(), value!{"user_id": user_id.clone()}).await
+        .map_err(|e| {
+            log::error!("獲取遊戲化資料失敗: {}", e);
+            format!("獲取遊戲化資料失敗: {}", e)
+        });
+    
+    // 獲取屬性
+    log::info!("步驟 3: 獲取屬性");
+    let attributes = UserAttributes::select_by_map(rb.get_ref(), value!{"user_id": user_id.clone()}).await
+        .map_err(|e| {
+            log::error!("獲取屬性失敗: {}", e);
+            format!("獲取屬性失敗: {}", e)
+        });
+    
+    // 獲取今日進度
+    let today = Utc::now().format("%Y-%m-%d").to_string();
+    log::info!("步驟 4: 獲取今日進度, 日期: {}", today);
+    let today_progress = DailyProgress::select_by_map(rb.get_ref(), value!{"user_id": user_id.clone(), "date": today}).await
+        .map_err(|e| {
+            log::error!("獲取今日進度失敗: {}", e);
+            format!("獲取今日進度失敗: {}", e)
+        });
+    
+    match (user, profile, attributes, today_progress) {
+        (Ok(users), Ok(profiles), Ok(attrs), Ok(progress_list)) => {
+            log::info!("獲取到的數據: users={}, profiles={}, attrs={}", users.len(), profiles.len(), attrs.len());
+            
+            let user = users.first();
+            let profile = profiles.first();
+            let attr = attrs.first();
+            
+            if user.is_none() {
+                log::error!("未找到用戶資料");
+                return Ok(HttpResponse::NotFound().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: "用戶不存在".to_string(),
+                }));
+            }
+            
+            if profile.is_none() {
+                log::error!("未找到用戶遊戲化資料");
+                return Ok(HttpResponse::NotFound().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: "用戶遊戲化資料不存在".to_string(),
+                }));
+            }
+            
+            if attr.is_none() {
+                log::error!("未找到用戶屬性資料");
+                return Ok(HttpResponse::NotFound().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: "用戶屬性資料不存在".to_string(),
+                }));
+            }
+            
+            let user = user.unwrap();
+            let profile = profile.unwrap();
+            let attr = attr.unwrap();
+            
+            log::info!("成功獲取用戶數據: user={:?}, profile={:?}, attr={:?}", user.name, profile.level, attr.intelligence);
+            
+            // 處理今日進度 - 如果沒有數據就返回空值
+            let today_progress_data = if let Some(progress) = progress_list.first() {
+                log::info!("找到今日進度數據: {:?}", progress);
+                
+                // 直接使用 attributes_gained JSON Value
+                let attributes_gained = match &progress.attributes_gained {
+                    Some(json_val) => {
+                        log::info!("原始 attributes_gained 數據: {:?}", json_val);
+                        json_val.clone()
+                    }
+                    None => serde_json::json!({})
+                };
+                
+                serde_json::json!({
+                    "completedTasks": progress.completed_tasks.unwrap_or(0),
+                    "totalTasks": progress.total_tasks.unwrap_or(0),
+                    "experienceGained": progress.experience_gained.unwrap_or(0),
+                    "attributeGains": attributes_gained
+                })
+            } else {
+                log::info!("今日暫無進度數據");
+                serde_json::json!({
+                    "completedTasks": 0,
+                    "totalTasks": 0,
+                    "experienceGained": 0,
+                    "attributeGains": {}
+                })
+            };
+            
+            // 組合完整的遊戲化用戶數據
+            let gamified_data = serde_json::json!({
+                "id": user.id,
+                "name": user.name,
+                "level": profile.level,
+                "experience": profile.experience,
+                "maxExperience": profile.max_experience,
+                "title": profile.title,
+                "adventureDays": profile.adventure_days,
+                "consecutiveLoginDays": profile.consecutive_login_days,
+                "personaType": profile.persona_type,
+                "attributes": {
+                    "intelligence": attr.intelligence,
+                    "endurance": attr.endurance,
+                    "creativity": attr.creativity,
+                    "social": attr.social,
+                    "focus": attr.focus,
+                    "adaptability": attr.adaptability
+                },
+                "todayProgress": today_progress_data
+            });
+            
+            Ok(HttpResponse::Ok().json(ApiResponse {
+                success: true,
+                data: Some(gamified_data),
+                message: "獲取完整遊戲化用戶數據成功".to_string(),
+            }))
+        }
+        (Err(e), _, _, _) | (_, Err(e), _, _) | (_, _, Err(e), _) | (_, _, _, Err(e)) => {
+            log::error!("獲取遊戲化數據時發生錯誤: {}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: e,
+            }))
+        }
+    }
 } 

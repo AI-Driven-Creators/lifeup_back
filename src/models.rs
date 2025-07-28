@@ -197,4 +197,110 @@ pub struct TaskProgressResponse {
     pub target_rate: f64,
     pub is_daily_completed: bool,
     pub remaining_days: i32,
+}
+
+// 遊戲化用戶資料模型
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UserProfile {
+    pub id: Option<String>,
+    pub user_id: Option<String>,
+    pub level: Option<i32>,
+    pub experience: Option<i32>,
+    pub max_experience: Option<i32>,
+    pub title: Option<String>,
+    pub adventure_days: Option<i32>,
+    pub consecutive_login_days: Option<i32>,
+    pub persona_type: Option<String>, // 'internal' 或 'external'
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+}
+crud!(UserProfile{});
+
+// 用戶屬性模型
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UserAttributes {
+    pub id: Option<String>,
+    pub user_id: Option<String>,
+    pub intelligence: Option<i32>, // 智力
+    pub endurance: Option<i32>,    // 毅力
+    pub creativity: Option<i32>,   // 創造力
+    pub social: Option<i32>,       // 社交力
+    pub focus: Option<i32>,        // 專注力
+    pub adaptability: Option<i32>, // 適應力
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+}
+crud!(UserAttributes{});
+
+// 每日進度模型
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DailyProgress {
+    pub id: Option<String>,
+    pub user_id: Option<String>,
+    pub date: Option<String>, // YYYY-MM-DD 格式
+    pub completed_tasks: Option<i32>,
+    pub total_tasks: Option<i32>,
+    pub experience_gained: Option<i32>,
+    pub attributes_gained: Option<serde_json::Value>, // 直接使用 JSON Value
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+}
+crud!(DailyProgress{});
+
+// 成就模型
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Achievement {
+    pub id: Option<String>,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub icon: Option<String>,
+    pub category: Option<String>, // 成就分類
+    pub requirement_type: Option<String>, // 達成條件類型
+    pub requirement_value: Option<i32>, // 達成條件數值
+    pub experience_reward: Option<i32>, // 經驗值獎勵
+    pub created_at: Option<DateTime<Utc>>,
+}
+crud!(Achievement{});
+
+// 用戶成就關聯模型
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UserAchievement {
+    pub id: Option<String>,
+    pub user_id: Option<String>,
+    pub achievement_id: Option<String>,
+    pub achieved_at: Option<DateTime<Utc>>,
+    pub progress: Option<i32>, // 當前進度
+}
+crud!(UserAchievement{});
+
+// 創建用戶資料請求
+#[derive(Deserialize)]
+pub struct CreateUserProfileRequest {
+    pub level: Option<i32>,
+    pub experience: Option<i32>,
+    pub max_experience: Option<i32>,
+    pub title: Option<String>,
+    pub adventure_days: Option<i32>,
+    pub consecutive_login_days: Option<i32>,
+    pub persona_type: Option<String>,
+}
+
+// 更新用戶屬性請求
+#[derive(Deserialize)]
+pub struct UpdateUserAttributesRequest {
+    pub intelligence: Option<i32>,
+    pub endurance: Option<i32>,
+    pub creativity: Option<i32>,
+    pub social: Option<i32>,
+    pub focus: Option<i32>,
+    pub adaptability: Option<i32>,
+}
+
+// 今日進度回應
+#[derive(Serialize)]
+pub struct TodayProgressResponse {
+    pub completed_tasks: i32,
+    pub total_tasks: i32,
+    pub experience_gained: i32,
+    pub attribute_gains: serde_json::Value,
 } 

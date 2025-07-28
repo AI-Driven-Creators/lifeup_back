@@ -15,6 +15,11 @@ pub async fn reset_database(rb: &RBatis) -> Result<(), Box<dyn std::error::Error
 
     // 刪除所有表（按依賴順序）
     let drop_tables = vec![
+        "DROP TABLE IF EXISTS user_achievement",
+        "DROP TABLE IF EXISTS daily_progress",
+        "DROP TABLE IF EXISTS achievement",
+        "DROP TABLE IF EXISTS user_attributes",
+        "DROP TABLE IF EXISTS user_profile",
         "DROP TABLE IF EXISTS chat_message",
         "DROP TABLE IF EXISTS recurring_task_template", 
         "DROP TABLE IF EXISTS task",
@@ -118,6 +123,82 @@ async fn create_all_tables(rb: &RBatis) -> Result<(), Box<dyn std::error::Error>
             created_at TEXT,
             updated_at TEXT,
             FOREIGN KEY (parent_task_id) REFERENCES task (id)
+        )
+        "#,
+        // 用戶遊戲化資料表
+        r#"
+        CREATE TABLE IF NOT EXISTS user_profile (
+            id TEXT PRIMARY KEY,
+            user_id TEXT UNIQUE NOT NULL,
+            level INTEGER DEFAULT 1,
+            experience INTEGER DEFAULT 0,
+            max_experience INTEGER DEFAULT 100,
+            title TEXT DEFAULT '新手冒險者',
+            adventure_days INTEGER DEFAULT 1,
+            consecutive_login_days INTEGER DEFAULT 1,
+            persona_type TEXT DEFAULT 'internal',
+            created_at TEXT,
+            updated_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES user (id)
+        )
+        "#,
+        // 用戶屬性表
+        r#"
+        CREATE TABLE IF NOT EXISTS user_attributes (
+            id TEXT PRIMARY KEY,
+            user_id TEXT UNIQUE NOT NULL,
+            intelligence INTEGER DEFAULT 50,
+            endurance INTEGER DEFAULT 50,
+            creativity INTEGER DEFAULT 50,
+            social INTEGER DEFAULT 50,
+            focus INTEGER DEFAULT 50,
+            adaptability INTEGER DEFAULT 50,
+            created_at TEXT,
+            updated_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES user (id)
+        )
+        "#,
+        // 每日進度表
+        r#"
+        CREATE TABLE IF NOT EXISTS daily_progress (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            date TEXT NOT NULL,
+            completed_tasks INTEGER DEFAULT 0,
+            total_tasks INTEGER DEFAULT 0,
+            experience_gained INTEGER DEFAULT 0,
+            attributes_gained TEXT DEFAULT '{}',
+            created_at TEXT,
+            updated_at TEXT,
+            UNIQUE(user_id, date),
+            FOREIGN KEY (user_id) REFERENCES user (id)
+        )
+        "#,
+        // 成就表
+        r#"
+        CREATE TABLE IF NOT EXISTS achievement (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            icon TEXT,
+            category TEXT DEFAULT 'general',
+            requirement_type TEXT NOT NULL,
+            requirement_value INTEGER DEFAULT 1,
+            experience_reward INTEGER DEFAULT 50,
+            created_at TEXT
+        )
+        "#,
+        // 用戶成就關聯表
+        r#"
+        CREATE TABLE IF NOT EXISTS user_achievement (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            achievement_id TEXT NOT NULL,
+            achieved_at TEXT,
+            progress INTEGER DEFAULT 0,
+            UNIQUE(user_id, achievement_id),
+            FOREIGN KEY (user_id) REFERENCES user (id),
+            FOREIGN KEY (achievement_id) REFERENCES achievement (id)
         )
         "#,
     ];
