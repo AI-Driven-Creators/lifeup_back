@@ -1,7 +1,8 @@
 use rbatis::RBatis;
 use uuid::Uuid;
-use chrono::{Utc, Duration};
+use chrono::{Utc, Duration, Datelike, NaiveDate};
 use log::{info, error};
+use rand::Rng;
 
 /// 插入種子數據到數據庫
 pub async fn seed_database(rb: &RBatis) -> Result<(), Box<dyn std::error::Error>> {
@@ -33,6 +34,9 @@ pub async fn seed_database(rb: &RBatis) -> Result<(), Box<dyn std::error::Error>
     
     // 插入每日進度數據
     insert_daily_progress(rb, &user_id).await?;
+    
+    // 插入週屬性快照數據
+    insert_weekly_attribute_snapshots(rb, &user_id).await?;
 
     info!("種子數據插入完成！");
     Ok(())
@@ -749,6 +753,12 @@ async fn insert_user_profile(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn s
     let profile_id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
     
+    // 生成隨機的連續登入天數 (1-100)
+    let mut rng = rand::thread_rng();
+    let consecutive_login_days = rng.gen_range(1..=100);
+    
+    info!("生成隨機連續登入天數: {} 天", consecutive_login_days);
+    
     let sql = r#"
         INSERT INTO user_profile (id, user_id, level, experience, max_experience, title, 
                                   adventure_days, consecutive_login_days, persona_type, 
@@ -764,7 +774,7 @@ async fn insert_user_profile(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn s
         2500i32.into(), // max_experience
         "自律達人".into(), // title
         87i32.into(),   // adventure_days
-        12i32.into(),   // consecutive_login_days
+        consecutive_login_days.into(),   // consecutive_login_days (隨機 1-100)
         "internal".into(), // persona_type
         now.clone().into(),
         now.into(),
@@ -903,19 +913,35 @@ async fn insert_daily_progress(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn
         let created_at = (now - Duration::days(i)).to_rfc3339();
         
         // 模擬不同的每日進度
-        let (completed, total, exp_gained) = match i {
-            0 => (3, 5, 150),  // 今天
-            1 => (4, 5, 200),  // 昨天
-            2 => (5, 5, 250),  // 前天
-            3 => (2, 5, 100),
-            4 => (3, 4, 175),
-            5 => (4, 6, 220),
-            6 => (1, 3, 75),
-            _ => (3, 5, 150),
+        let mut rng = rand::thread_rng();
+        let (completed, total, exp_gained) = if i == 0 {
+            // 今天：隨機生成
+            let total_tasks = rng.gen_range(3..=8);
+            let completed_tasks = rng.gen_range(1..=total_tasks);
+            let experience = completed_tasks * rng.gen_range(20..=50);
+            (completed_tasks, total_tasks, experience)
+        } else {
+            // 過去幾天：使用預設值
+            match i {
+                1 => (4, 5, 200),  // 昨天
+                2 => (5, 5, 250),  // 前天
+                3 => (2, 5, 100),
+                4 => (3, 4, 175),
+                5 => (4, 6, 220),
+                6 => (1, 3, 75),
+                _ => (3, 5, 150),
+            }
         };
         
         // 屬性增長 JSON
-        let attributes_gained = r#"{"intelligence": 2, "endurance": 1}"#;
+        let intelligence_gain = if i == 0 { rng.gen_range(1..=5) } else { 2 };
+        let endurance_gain = if i == 0 { rng.gen_range(0..=3) } else { 1 };
+        let attributes_gained = format!(r#"{{"intelligence": {}, "endurance": {}}}"#, intelligence_gain, endurance_gain);
+        
+        if i == 0 {
+            info!("生成隨機今日進度: 完成 {}/{} 任務，獲得 {} 經驗，智力 +{}，耐力 +{}", 
+                  completed, total, exp_gained, intelligence_gain, endurance_gain);
+        }
         
         let sql = r#"
             INSERT INTO daily_progress (id, user_id, date, completed_tasks, total_tasks, 
@@ -937,5 +963,82 @@ async fn insert_daily_progress(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn
     }
 
     info!("每日進度數據插入完成");
+    Ok(())
+}
+
+/// 插入週屬性快照數據
+async fn insert_weekly_attribute_snapshots(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let now = Utc::now();
+    let mut rng = rand::thread_rng();
+    
+    // 生成過去 8 週的屬性快照數據（包含本週）
+    for weeks_ago in 0..8 {
+        let target_date = now - Duration::weeks(weeks_ago);
+        let target_naive = target_date.naive_utc().date();
+        
+        // 計算該週的週一日期（ISO 8601 標準）
+        let days_from_monday = target_naive.weekday().days_since(chrono::Weekday::Mon);
+        let week_start = target_naive - Duration::days(days_from_monday as i64);
+        
+        // 計算 ISO 週數和年份
+        let iso_week = week_start.iso_week();
+        let year = iso_week.year();
+        let week_number = iso_week.week();
+        
+        let snapshot_id = Uuid::new_v4().to_string();
+        let created_at = target_date.to_rfc3339();
+        
+        // 計算該週的屬性值 - 基於當前屬性值生成歷史變化
+        // 假設屬性有隨機波動，但總體趨勢是成長的
+        let base_intelligence = 82i32;
+        let base_endurance = 45i32;
+        let base_creativity = 75i32;
+        let base_social = 52i32;
+        let base_focus = 68i32;
+        let base_adaptability = 58i32;
+        
+        // 根據週數計算屬性差異，越久以前的數值越低
+        let growth_factor = if weeks_ago == 0 { 0.0 } else { weeks_ago as f32 * 0.5 }; // 每週約降低0.5的屬性
+        let random_variance = 3; // 隨機波動範圍
+        
+        let intelligence = std::cmp::max(30, base_intelligence - (growth_factor as i32) + rng.gen_range(-random_variance..=random_variance));
+        let endurance = std::cmp::max(30, base_endurance - (growth_factor as i32) + rng.gen_range(-random_variance..=random_variance));
+        let creativity = std::cmp::max(30, base_creativity - (growth_factor as i32) + rng.gen_range(-random_variance..=random_variance));
+        let social = std::cmp::max(30, base_social - (growth_factor as i32) + rng.gen_range(-random_variance..=random_variance));
+        let focus = std::cmp::max(30, base_focus - (growth_factor as i32) + rng.gen_range(-random_variance..=random_variance));
+        let adaptability = std::cmp::max(30, base_adaptability - (growth_factor as i32) + rng.gen_range(-random_variance..=random_variance));
+        
+        if weeks_ago == 0 {
+            info!("生成本週屬性快照: 智力 {}, 專注 {}, 創意 {}, 社交 {}, 適應 {}, 耐力 {}", 
+                  intelligence, focus, creativity, social, adaptability, endurance);
+        } else if weeks_ago == 1 {
+            info!("生成上週屬性快照: 智力 {}, 專注 {}, 創意 {}, 社交 {}, 適應 {}, 耐力 {}", 
+                  intelligence, focus, creativity, social, adaptability, endurance);
+        }
+        
+        let sql = r#"
+            INSERT INTO weekly_attribute_snapshot 
+            (id, user_id, week_start_date, year, week_number, intelligence, endurance, 
+             creativity, social, focus, adaptability, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "#;
+        
+        rb.exec(sql, vec![
+            snapshot_id.into(),
+            user_id.into(),
+            week_start.format("%Y-%m-%d").to_string().into(),
+            year.into(),
+            (week_number as i32).into(),
+            intelligence.into(),
+            endurance.into(),
+            creativity.into(),
+            social.into(),
+            focus.into(),
+            adaptability.into(),
+            created_at.into(),
+        ]).await?;
+    }
+    
+    info!("週屬性快照數據插入完成（8 週數據）");
     Ok(())
 }

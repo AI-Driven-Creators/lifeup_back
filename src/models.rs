@@ -303,4 +303,22 @@ pub struct TodayProgressResponse {
     pub total_tasks: i32,
     pub experience_gained: i32,
     pub attribute_gains: serde_json::Value,
-} 
+}
+
+// 週屬性快照模型
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct WeeklyAttributeSnapshot {
+    pub id: Option<String>,
+    pub user_id: Option<String>,
+    pub week_start_date: Option<String>, // YYYY-MM-DD 格式，該週的週一日期
+    pub year: Option<i32>,
+    pub week_number: Option<i32>, // 該年的第幾週
+    pub intelligence: Option<i32>,
+    pub endurance: Option<i32>,
+    pub creativity: Option<i32>,
+    pub social: Option<i32>,
+    pub focus: Option<i32>,
+    pub adaptability: Option<i32>,
+    pub created_at: Option<DateTime<Utc>>,
+}
+crud!(WeeklyAttributeSnapshot{}); 

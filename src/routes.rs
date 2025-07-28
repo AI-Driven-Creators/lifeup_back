@@ -1,7 +1,7 @@
 use actix_web::{web, HttpResponse, Result};
 use rbatis::RBatis;
 use uuid::Uuid;
-use chrono::Utc;
+use chrono::{Utc, Datelike};
 use crate::models::*;
 use rbs::{Value, value};
 
@@ -1226,5 +1226,225 @@ pub async fn get_gamified_user_data(rb: web::Data<RBatis>, path: web::Path<Strin
                 message: e,
             }))
         }
+    }
+}
+
+// 成就相關 API
+
+// 獲取所有成就
+pub async fn get_achievements(rb: web::Data<RBatis>) -> Result<HttpResponse> {
+    match Achievement::select_all(rb.get_ref()).await {
+        Ok(achievements) => Ok(HttpResponse::Ok().json(ApiResponse {
+            success: true,
+            data: Some(achievements),
+            message: "獲取成就列表成功".to_string(),
+        })),
+        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: format!("獲取成就列表失敗: {}", e),
+        })),
+    }
+}
+
+// 獲取用戶成就狀態
+pub async fn get_user_achievements(
+    rb: web::Data<RBatis>,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let user_id = path.into_inner();
+    
+    // 先獲取所有成就
+    match Achievement::select_all(rb.get_ref()).await {
+        Ok(all_achievements) => {
+            // 獲取用戶已解鎖的成就
+            match UserAchievement::select_by_map(rb.get_ref(), value!{"user_id": user_id}).await {
+                Ok(user_achievements) => {
+                    // 組合數據
+                    let mut result = Vec::new();
+                    
+                    for achievement in all_achievements {
+                        // 查找是否已解鎖
+                        let user_achievement = user_achievements.iter()
+                            .find(|ua| ua.achievement_id == achievement.id);
+                        
+                        let achievement_data = serde_json::json!({
+                            "id": achievement.id,
+                            "name": achievement.name,
+                            "description": achievement.description,
+                            "icon": achievement.icon,
+                            "category": achievement.category,
+                            "requirement_type": achievement.requirement_type,
+                            "requirement_value": achievement.requirement_value,
+                            "experience_reward": achievement.experience_reward,
+                            "unlocked": user_achievement.is_some(),
+                            "progress": user_achievement.map(|ua| ua.progress.unwrap_or(0)).unwrap_or(0),
+                            "achieved_at": user_achievement.and_then(|ua| ua.achieved_at.as_ref().map(|dt| dt.to_string()))
+                        });
+                        
+                        result.push(achievement_data);
+                    }
+                    
+                    Ok(HttpResponse::Ok().json(ApiResponse {
+                        success: true,
+                        data: Some(result),
+                        message: "獲取用戶成就狀態成功".to_string(),
+                    }))
+                }
+                Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: format!("獲取用戶成就關聯失敗: {}", e),
+                })),
+            }
+        }
+        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: format!("獲取成就列表失敗: {}", e),
+        })),
+    }
+}
+
+// 解鎖用戶成就
+pub async fn unlock_user_achievement(
+    rb: web::Data<RBatis>,
+    path: web::Path<(String, String)>,
+) -> Result<HttpResponse> {
+    let (user_id, achievement_id) = path.into_inner();
+    let now = Utc::now();
+    
+    // 檢查成就是否存在
+    match Achievement::select_by_map(rb.get_ref(), value!{"id": achievement_id.clone()}).await {
+        Ok(achievements) => {
+            if let Some(achievement) = achievements.first() {
+                // 檢查用戶是否已經解鎖此成就
+                match UserAchievement::select_by_map(
+                    rb.get_ref(), 
+                    value!{"user_id": user_id.clone(), "achievement_id": achievement_id.clone()}
+                ).await {
+                    Ok(user_achievements) => {
+                        if user_achievements.is_empty() {
+                            // 創建新的用戶成就記錄
+                            let user_achievement = UserAchievement {
+                                id: Some(Uuid::new_v4().to_string()),
+                                user_id: Some(user_id.clone()),
+                                achievement_id: Some(achievement_id.clone()),
+                                achieved_at: Some(now),
+                                progress: achievement.requirement_value.clone(),
+                            };
+                            
+                            match UserAchievement::insert(rb.get_ref(), &user_achievement).await {
+                                Ok(_) => Ok(HttpResponse::Created().json(ApiResponse {
+                                    success: true,
+                                    data: Some(serde_json::json!({
+                                        "achievement": achievement,
+                                        "unlocked_at": now.to_string(),
+                                        "experience_reward": achievement.experience_reward
+                                    })),
+                                    message: format!("成就「{}」解鎖成功！", achievement.name.as_ref().unwrap_or(&"未知成就".to_string())),
+                                })),
+                                Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                                    success: false,
+                                    data: None,
+                                    message: format!("解鎖成就失敗: {}", e),
+                                })),
+                            }
+                        } else {
+                            Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                                success: false,
+                                data: None,
+                                message: "成就已經解鎖".to_string(),
+                            }))
+                        }
+                    }
+                    Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                        success: false,
+                        data: None,
+                        message: format!("檢查用戶成就失敗: {}", e),
+                    })),
+                }
+            } else {
+                Ok(HttpResponse::NotFound().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: "成就不存在".to_string(),
+                }))
+            }
+        }
+        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: format!("查詢成就失敗: {}", e),
+        })),
+    }
+}
+
+// 週屬性相關 API
+
+// 獲取用戶指定週數的屬性快照
+pub async fn get_weekly_attributes(
+    rb: web::Data<RBatis>,  
+    path: web::Path<(String, i32)>,
+) -> Result<HttpResponse> {
+    let (user_id, weeks_ago) = path.into_inner();
+    
+    // 計算目標週的年份和週數
+    let target_date = Utc::now() - chrono::Duration::weeks(weeks_ago as i64);
+    let year = target_date.year();
+    let week_number = target_date.iso_week().week() as i32;
+    
+    match WeeklyAttributeSnapshot::select_by_map(
+        rb.get_ref(), 
+        value!{"user_id": user_id.clone(), "year": year, "week_number": week_number}
+    ).await {
+        Ok(snapshots) => {
+            if let Some(snapshot) = snapshots.first() {
+                Ok(HttpResponse::Ok().json(ApiResponse {
+                    success: true,
+                    data: Some(snapshot.clone()),
+                    message: format!("獲取第{}週前屬性快照成功", weeks_ago),
+                }))
+            } else {
+                // 如果沒有快照，返回當前屬性作為fallback
+                match UserAttributes::select_by_map(rb.get_ref(), value!{"user_id": user_id}).await {
+                    Ok(current_attrs) => {
+                        if let Some(attrs) = current_attrs.first() {
+                            let fallback_snapshot = serde_json::json!({
+                                "intelligence": attrs.intelligence,
+                                "endurance": attrs.endurance,
+                                "creativity": attrs.creativity,
+                                "social": attrs.social,
+                                "focus": attrs.focus,
+                                "adaptability": attrs.adaptability,
+                                "is_fallback": true
+                            });
+                            
+                            Ok(HttpResponse::Ok().json(ApiResponse {
+                                success: true,
+                                data: Some(fallback_snapshot),
+                                message: format!("第{}週前無快照數據，返回當前屬性", weeks_ago),
+                            }))
+                        } else {
+                            Ok(HttpResponse::NotFound().json(ApiResponse::<()> {
+                                success: false,
+                                data: None,
+                                message: "用戶屬性不存在".to_string(),
+                            }))
+                        }
+                    }
+                    Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                        success: false,
+                        data: None,
+                        message: format!("獲取用戶屬性失敗: {}", e),
+                    })),
+                }
+            }
+        }
+        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: format!("獲取週屬性快照失敗: {}", e),
+        })),
     }
 } 
