@@ -180,8 +180,11 @@ pub async fn create_skill(
         user_id: Some("d487f83e-dadd-4616-aeb2-959d6af9963b".to_string()), // 暫時使用已創建的使用者
         name: Some(req.name.clone()),
         description: req.description.clone(),
+        category: req.category.clone(),
         level: req.level,
-        progress: Some(0.0), // 初始進度為 0
+        experience: req.experience,
+        max_experience: req.max_experience,
+        icon: req.icon.clone(),
         created_at: Some(now),
         updated_at: Some(now),
     };
@@ -851,7 +854,7 @@ pub async fn generate_daily_tasks(
     ]).await;
     
     match result {
-        Ok(exec_result) => {
+        Ok(_exec_result) => {
             // 如果有結果且count > 0，說明今日任務已存在
             // 這裡簡化處理，直接嘗試生成任務，如果重複則會失敗
         }

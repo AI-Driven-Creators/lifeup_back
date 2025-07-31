@@ -93,8 +93,11 @@ async fn create_all_tables(rb: &RBatis) -> Result<(), Box<dyn std::error::Error>
             user_id TEXT,
             name TEXT,
             description TEXT,
+            category TEXT DEFAULT 'technical',
             level INTEGER DEFAULT 1,
-            progress REAL DEFAULT 0.0,
+            experience INTEGER DEFAULT 0,
+            max_experience INTEGER DEFAULT 100,
+            icon TEXT DEFAULT '⭐',
             created_at TEXT,
             updated_at TEXT,
             FOREIGN KEY (user_id) REFERENCES user (id)

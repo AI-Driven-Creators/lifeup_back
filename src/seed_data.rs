@@ -676,25 +676,39 @@ async fn insert_subtasks_for_branding(rb: &RBatis, user_id: &str, parent_id: &st
 
 /// 插入測試技能數據
 async fn insert_test_skills(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let skills = vec![
-        ("Vue.js", "前端框架開發技能", 3, 65.5),
-        ("Rust", "系統程式設計語言", 2, 30.0),
-        ("JavaScript", "動態程式語言", 4, 78.2),
-        ("TypeScript", "JavaScript 超集", 3, 45.8),
-        ("UI/UX 設計", "使用者介面設計", 2, 25.0),
-        ("專案管理", "軟體專案管理能力", 3, 55.0),
+    let technical_skills = vec![
+        ("Vue.js", "前端框架開發技能", "technical", 3, 1250, 1500, "💻"),
+        ("Rust", "系統程式設計語言", "technical", 2, 800, 1200, "⚙️"),
+        ("JavaScript", "動態程式語言", "technical", 4, 1800, 2000, "📝"),
+        ("TypeScript", "JavaScript 超集", "technical", 3, 1100, 1500, "🔷"),
+        ("UI/UX 設計", "使用者介面設計", "technical", 4, 1600, 2000, "🎨"),
+        ("機器學習", "人工智慧技術", "technical", 2, 600, 1200, "🤖"),
+    ];
+
+    let soft_skills = vec![
+        ("溝通", "有效的人際溝通能力", "soft", 4, 1400, 2000, "💬"),
+        ("領導力", "團隊領導與管理能力", "soft", 3, 1200, 1500, "👑"),
+        ("問題解決", "分析和解決複雜問題", "soft", 5, 2200, 2500, "🧩"),
+        ("時間管理", "高效安排和利用時間", "soft", 2, 700, 1200, "⏰"),
+        ("團隊合作", "與他人協作完成目標", "soft", 4, 1500, 2000, "🤝"),
+        ("適應力", "快速適應環境變化", "soft", 3, 1000, 1500, "🔄"),
     ];
 
     let now = Utc::now();
+    let mut all_skills = Vec::new();
+    all_skills.extend(technical_skills);
+    all_skills.extend(soft_skills);
     
-    for (name, desc, level, progress) in skills {
+    let skills_count = all_skills.len();
+    
+    for (name, desc, category, level, experience, max_experience, icon) in all_skills {
         let skill_id = Uuid::new_v4().to_string();
         let created_at = (now - Duration::days(60)).to_rfc3339();
         let updated_at = (now - Duration::days(1)).to_rfc3339();
         
         let sql = r#"
-            INSERT INTO skill (id, user_id, name, description, level, progress, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO skill (id, user_id, name, description, category, level, experience, max_experience, icon, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#;
         
         rb.exec(sql, vec![
@@ -702,14 +716,17 @@ async fn insert_test_skills(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn st
             user_id.into(),
             name.into(),
             desc.into(),
+            category.into(),
             level.into(),
-            progress.into(),
+            experience.into(),
+            max_experience.into(),
+            icon.into(),
             created_at.into(),
             updated_at.into(),
         ]).await?;
     }
 
-    info!("測試技能數據插入完成");
+    info!("測試技能數據插入完成（{} 個技能）", skills_count);
     Ok(())
 }
 
