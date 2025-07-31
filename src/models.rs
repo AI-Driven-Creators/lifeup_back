@@ -68,8 +68,11 @@ pub struct Skill {
     pub user_id: Option<String>,
     pub name: Option<String>,
     pub description: Option<String>,
+    pub category: Option<String>, // 'technical' 或 'soft'
     pub level: Option<i32>, // 1-10 等級
-    pub progress: Option<f64>, // 0.0-1.0 進度
+    pub experience: Option<i32>, // 當前經驗值
+    pub max_experience: Option<i32>, // 最大經驗值
+    pub icon: Option<String>, // emoji 圖標
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
 }
@@ -162,7 +165,11 @@ pub struct StartTaskRequest {
 pub struct CreateSkillRequest {
     pub name: String,
     pub description: Option<String>,
+    pub category: Option<String>, // 'technical' 或 'soft'
     pub level: Option<i32>,
+    pub experience: Option<i32>,
+    pub max_experience: Option<i32>,
+    pub icon: Option<String>,
 }
 
 // 聊天請求
