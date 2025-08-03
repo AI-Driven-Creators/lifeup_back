@@ -1355,7 +1355,10 @@ async fn insert_recurring_task_history(
     info!("歷史記錄天數 - 工作日: {}, 每日: {}, 週末: {}", 
           weekday_history_days, daily_history_days, weekend_history_days);
     
-    // 為工作日學習任務插入歷史記錄（包含今天，只有工作日）
+    // 收集所有需要插入的任務數據
+    let mut all_task_data = Vec::new();
+    
+    // 為工作日學習任務收集歷史記錄（包含今天，只有工作日）
     let mut weekday_completed = 0;
     let mut weekday_total = 0;
     let mut weekday_rng = rand::thread_rng(); // 獨立的隨機數生成器
@@ -1387,10 +1390,10 @@ async fn insert_recurring_task_history(
                 weekday_completed += 1;
             }
             
-            // 插入正確數量的子任務記錄（API計算需要）
-            insert_daily_subtask(rb, user_id, weekday_task_id, &date_str, "閱讀技術文章 30 分鐘", status).await?;
-            insert_daily_subtask(rb, user_id, weekday_task_id, &date_str, "練習編程 45 分鐘", status).await?;
-            insert_daily_subtask(rb, user_id, weekday_task_id, &date_str, "學習新概念", status).await?;
+            // 收集工作日任務數據
+            collect_daily_subtask_data(&mut all_task_data, user_id, weekday_task_id, &date_str, "閱讀技術文章 30 分鐘", status);
+            collect_daily_subtask_data(&mut all_task_data, user_id, weekday_task_id, &date_str, "練習編程 45 分鐘", status);
+            collect_daily_subtask_data(&mut all_task_data, user_id, weekday_task_id, &date_str, "學習新概念", status);
         }
     }
     
@@ -1400,7 +1403,7 @@ async fn insert_recurring_task_history(
     let sample_rate = weekday_completed as f64 / weekday_total as f64;
     let annual_completed = (sample_rate * weekday_total_annual as f64) as i32;
     
-    // 為每日冥想任務插入歷史記錄（包含今天）
+    // 為每日冥想任務收集歷史記錄（包含今天）
     let mut daily_completed = 0;
     let daily_total_sample = daily_history_days + 1; // 包含今天
     let mut daily_rng = rand::thread_rng(); // 獨立的隨機數生成器
@@ -1427,9 +1430,9 @@ async fn insert_recurring_task_history(
             daily_completed += 1;
         }
         
-        // 插入正確數量的子任務記錄（API計算需要）
-        insert_daily_subtask(rb, user_id, daily_task_id, &date_str, "晨間冥想 15 分鐘", status).await?;
-        insert_daily_subtask(rb, user_id, daily_task_id, &date_str, "正念呼吸練習", status).await?;
+        // 收集每日任務數據
+        collect_daily_subtask_data(&mut all_task_data, user_id, daily_task_id, &date_str, "晨間冥想 15 分鐘", status);
+        collect_daily_subtask_data(&mut all_task_data, user_id, daily_task_id, &date_str, "正念呼吸練習", status);
     }
     
     // 計算半年期間的預估天數 (183天)
@@ -1438,7 +1441,7 @@ async fn insert_recurring_task_history(
     let daily_sample_rate = daily_completed as f64 / daily_total_sample as f64;
     let daily_annual_completed = (daily_sample_rate * daily_total_halfyear as f64) as i32;
     
-    // 為週末戶外活動插入歷史記錄（包含今天，只有週末）
+    // 為週末戶外活動收集歷史記錄（包含今天，只有週末）
     let mut weekend_completed = 0;
     let mut weekend_total = 0;
     let mut weekend_rng = rand::thread_rng(); // 獨立的隨機數生成器
@@ -1470,11 +1473,16 @@ async fn insert_recurring_task_history(
                 weekend_completed += 1;
             }
             
-            // 插入正確數量的子任務記錄（API計算需要）
-            insert_daily_subtask(rb, user_id, weekend_task_id, &date_str, "戶外健行 2 小時", status).await?;
-            insert_daily_subtask(rb, user_id, weekend_task_id, &date_str, "攝影記錄", status).await?;
-            insert_daily_subtask(rb, user_id, weekend_task_id, &date_str, "自然觀察", status).await?;
+            // 收集週末任務數據
+            collect_daily_subtask_data(&mut all_task_data, user_id, weekend_task_id, &date_str, "戶外健行 2 小時", status);
+            collect_daily_subtask_data(&mut all_task_data, user_id, weekend_task_id, &date_str, "攝影記錄", status);
+            collect_daily_subtask_data(&mut all_task_data, user_id, weekend_task_id, &date_str, "自然觀察", status);
         }
+    }
+    
+    // 批量插入所有任務數據
+    if !all_task_data.is_empty() {
+        batch_insert_daily_subtasks(rb, &all_task_data).await?;
     }
     
     // 計算一年期間的預估週末數 (約104天)
@@ -1506,7 +1514,93 @@ async fn insert_recurring_task_history(
     Ok(())
 }
 
-/// 插入每日子任務記錄
+/// 收集每日子任務數據（用於批量插入）
+fn collect_daily_subtask_data(
+    all_task_data: &mut Vec<(String, String, String, String, String, i32, String, String)>,
+    user_id: &str,
+    parent_task_id: &str,
+    task_date: &str,
+    title: &str,
+    status: i32,
+) {
+    let task_id = Uuid::new_v4().to_string();
+    let now = Utc::now();
+    let created_at = now.to_rfc3339();
+    let updated_at = if status == TaskStatus::DailyCompleted.to_i32() { 
+        // 如果已完成，設定更新時間為該日期的晚上
+        let task_date_parsed = NaiveDate::parse_from_str(task_date, "%Y-%m-%d").unwrap();
+        let completion_time = task_date_parsed.and_hms_opt(20, 0, 0).unwrap();
+        completion_time.and_utc().to_rfc3339()
+    } else { 
+        created_at.clone() 
+    };
+    
+    all_task_data.push((
+        task_id,
+        user_id.to_string(),
+        title.to_string(),
+        parent_task_id.to_string(),
+        task_date.to_string(),
+        status,
+        created_at,
+        updated_at,
+    ));
+}
+
+/// 批量插入每日子任務記錄
+async fn batch_insert_daily_subtasks(
+    rb: &RBatis,
+    task_data: &[(String, String, String, String, String, i32, String, String)],
+) -> Result<(), Box<dyn std::error::Error>> {
+    if task_data.is_empty() {
+        return Ok(());
+    }
+    
+    // 構建批量插入的 SQL 語句
+    let mut sql = String::from(r#"
+        INSERT INTO task (
+            id, user_id, title, parent_task_id, task_date, status, 
+            priority, task_type, difficulty, experience, is_parent_task,
+            created_at, updated_at
+        ) VALUES
+    "#);
+    
+    let mut values = Vec::new();
+    let mut placeholders = Vec::new();
+    
+    for (i, (task_id, user_id, title, parent_task_id, task_date, status, created_at, updated_at)) in task_data.iter().enumerate() {
+        if i > 0 {
+            placeholders.push(",".to_string());
+        }
+        placeholders.push(format!("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"));
+        
+        values.extend_from_slice(&[
+            task_id.clone().into(),
+            user_id.clone().into(),
+            title.clone().into(),
+            parent_task_id.clone().into(),
+            task_date.clone().into(),
+            (*status).into(),
+            1i32.into(),
+            "subtask".into(),
+            1i32.into(), // 簡化的難度
+            10i32.into(), // 簡化的經驗值
+            false.into(),
+            created_at.clone().into(),
+            updated_at.clone().into(),
+        ]);
+    }
+    
+    sql.push_str(&placeholders.join(" "));
+    
+    // 執行批量插入
+    rb.exec(&sql, values).await?;
+    
+    info!("批量插入 {} 個子任務記錄", task_data.len());
+    Ok(())
+}
+
+/// 插入每日子任務記錄（保留原函數以備單個插入使用）
 async fn insert_daily_subtask(
     rb: &RBatis,
     user_id: &str,
