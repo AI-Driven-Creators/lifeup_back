@@ -611,20 +611,77 @@ pub async fn start_task(
 pub async fn get_subtasks(
     rb: web::Data<RBatis>,
     path: web::Path<String>,
+    query: web::Query<std::collections::HashMap<String, String>>,
 ) -> Result<HttpResponse> {
     let parent_task_id = path.into_inner();
+    let query_params = query.into_inner();
     
-    match Task::select_by_map(rb.get_ref(), value!{"parent_task_id": parent_task_id}).await {
-        Ok(subtasks) => Ok(HttpResponse::Ok().json(ApiResponse {
-            success: true,
-            data: Some(subtasks),
-            message: "獲取子任務列表成功".to_string(),
-        })),
-        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
-            success: false,
-            data: None,
-            message: format!("獲取子任務列表失敗: {}", e),
-        })),
+    // 檢查是否為每日任務查詢（通過查詢參數判斷）
+    let is_daily_task = query_params.get("daily").map(|v| v == "true").unwrap_or(false);
+    let days_limit = query_params.get("days").and_then(|v| v.parse::<i32>().ok()).unwrap_or(3);
+    
+    if is_daily_task {
+        // 對於每日任務，先獲取所有子任務，然後在前端過濾
+        // 由於 RBatis 的限制，我們先獲取所有數據，然後在後端過濾
+        match Task::select_by_map(rb.get_ref(), value!{"parent_task_id": parent_task_id}).await {
+            Ok(all_subtasks) => {
+                // 過濾最近幾天的數據（包含今天）
+                let today = Utc::now().date_naive();
+                let start_date = today - chrono::Duration::days((days_limit - 1) as i64);
+                
+                let filtered_subtasks: Vec<Task> = all_subtasks
+                    .into_iter()
+                    .filter(|task| {
+                        if let Some(task_date_str) = &task.task_date {
+                            if let Ok(task_date) = task_date_str.parse::<chrono::NaiveDate>() {
+                                return task_date >= start_date;
+                            }
+                        }
+                        false
+                    })
+                    .map(|mut task| {
+                        // 對於每日任務，將所有未完成的狀態統一為 daily_not_completed
+                        if let Some(status) = task.status {
+                            match status {
+                                0 | 1 | 4 | 5 => { // pending, in_progress, paused, daily_in_progress
+                                    task.status = Some(TaskStatus::DailyNotCompleted.to_i32());
+                                },
+                                2 | 6 => { // completed, daily_completed
+                                    task.status = Some(TaskStatus::DailyCompleted.to_i32());
+                                },
+                                _ => {} // 其他狀態保持不變
+                            }
+                        }
+                        task
+                    })
+                    .collect();
+                
+                Ok(HttpResponse::Ok().json(ApiResponse {
+                    success: true,
+                    data: Some(filtered_subtasks),
+                    message: "獲取每日子任務列表成功".to_string(),
+                }))
+            },
+            Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("獲取每日子任務列表失敗: {}", e),
+            })),
+        }
+    } else {
+        // 對於普通任務，查詢所有子任務
+        match Task::select_by_map(rb.get_ref(), value!{"parent_task_id": parent_task_id}).await {
+            Ok(subtasks) => Ok(HttpResponse::Ok().json(ApiResponse {
+                success: true,
+                data: Some(subtasks),
+                message: "獲取子任務列表成功".to_string(),
+            })),
+            Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("獲取子任務列表失敗: {}", e),
+            })),
+        }
     }
 }
 
@@ -787,8 +844,9 @@ pub async fn get_homepage_tasks(rb: web::Data<RBatis>) -> Result<HttpResponse> {
         FROM task t
         LEFT JOIN task p ON t.parent_task_id = p.id
         WHERE t.parent_task_id IS NOT NULL 
-            AND (t.task_date >= date('now', '-1 day') OR t.task_date IS NULL)
-        ORDER BY t.task_order, t.created_at
+            AND (t.task_date >= date('now', '-2 days') OR t.task_date IS NULL)
+            AND t.status IN (0, 1, 4, 5, 6, 7)  -- 只顯示進行中、每日進行中、每日已完成、每日未完成等狀態
+        ORDER BY t.task_date DESC, t.task_order, t.created_at
     "#;
     
     log::debug!("執行SQL查詢: {}", sql);
