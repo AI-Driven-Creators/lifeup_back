@@ -12,6 +12,7 @@ pub enum TaskStatus {
     Paused = 4,           // 已暫停
     DailyInProgress = 5,  // 每日任務進行中
     DailyCompleted = 6,   // 每日任務已完成
+    DailyNotCompleted = 7, // 每日任務未完成
 }
 
 impl TaskStatus {
@@ -25,6 +26,7 @@ impl TaskStatus {
             4 => Some(TaskStatus::Paused),
             5 => Some(TaskStatus::DailyInProgress),
             6 => Some(TaskStatus::DailyCompleted),
+            7 => Some(TaskStatus::DailyNotCompleted),
             _ => None,
         }
     }
@@ -39,6 +41,7 @@ impl TaskStatus {
             TaskStatus::Paused => 4,
             TaskStatus::DailyInProgress => 5,
             TaskStatus::DailyCompleted => 6,
+            TaskStatus::DailyNotCompleted => 7,
         }
     }
 
@@ -52,6 +55,7 @@ impl TaskStatus {
             TaskStatus::Paused => "paused",
             TaskStatus::DailyInProgress => "daily_in_progress",
             TaskStatus::DailyCompleted => "daily_completed",
+            TaskStatus::DailyNotCompleted => "daily_not_completed",
         }
     }
 
@@ -65,6 +69,7 @@ impl TaskStatus {
             "paused" => Some(TaskStatus::Paused),
             "daily_in_progress" => Some(TaskStatus::DailyInProgress),
             "daily_completed" => Some(TaskStatus::DailyCompleted),
+            "daily_not_completed" => Some(TaskStatus::DailyNotCompleted),
             _ => None,
         }
     }

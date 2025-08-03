@@ -224,42 +224,6 @@ async fn insert_test_tasks(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn std
         ]).await?;
     }
 
-    // 每日任務 - 已移除獨立每日任務，所有任務現在都通過重複性任務系統創建（有父子關係）
-    // let daily_tasks = vec![
-    //     ("冥想 15 分鐘", "每日冥想練習，培養專注力", "daily", 1, 20, 2), // completed
-    //     ("閱讀 30 分鐘", "每日閱讀習慣", "daily", 2, 25, 1), // in_progress
-    //     ("運動 45 分鐘", "保持身體健康", "daily", 3, 40, 0), // pending
-    //     ("寫日記", "記錄每日生活和想法", "daily", 1, 15, 4), // paused
-    //     ("學習新單字", "擴展詞彙量", "daily", 2, 20, 1), // in_progress
-    // ];
-
-    // for (title, desc, task_type, difficulty, exp, status) in daily_tasks {
-    //     let task_id = Uuid::new_v4().to_string();
-    //     let created_at = (now - Duration::days(10)).to_rfc3339();
-    //     let updated_at = now.to_rfc3339();
-    //     
-    //     let sql = r#"
-    //         INSERT INTO task (id, user_id, title, description, status, priority, task_type, 
-    //                         difficulty, experience, is_parent_task, created_at, updated_at)
-    //         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    //     "#;
-    //     
-    //     rb.exec(sql, vec![
-    //         task_id.into(),
-    //         user_id.into(),
-    //         title.into(),
-    //         desc.into(),
-    //         status.into(),
-    //         1i32.into(),
-    //         task_type.into(),
-    //         difficulty.into(),
-    //         exp.into(),
-    //         false.into(),
-    //         created_at.into(),
-    //         updated_at.into(),
-    //     ]).await?;
-    // }
-
     // 為所有主任務插入子任務
     for (i, task_id) in main_task_ids.iter().enumerate() {
         match i {
@@ -1391,13 +1355,13 @@ async fn insert_recurring_task_history(
     info!("歷史記錄天數 - 工作日: {}, 每日: {}, 週末: {}", 
           weekday_history_days, daily_history_days, weekend_history_days);
     
-    // 為工作日學習任務插入歷史記錄（只有工作日）
+    // 為工作日學習任務插入歷史記錄（包含今天，只有工作日）
     let mut weekday_completed = 0;
     let mut weekday_total = 0;
     let mut weekday_rng = rand::thread_rng(); // 獨立的隨機數生成器
     
-    for i in 1..=weekday_history_days {
-        let date = now - Duration::days(i);
+    for i in 0..=weekday_history_days {
+        let date = if i == 0 { now } else { now - Duration::days(i) };
         let weekday = date.weekday();
         
         // 只在工作日（週一到週五）創建記錄
@@ -1405,16 +1369,21 @@ async fn insert_recurring_task_history(
             weekday_total += 1;
             let date_str = date.format("%Y-%m-%d").to_string();
             
-            // 使用更精確的隨機數生成（0.0-1.0範圍）
-            let random_value: f64 = weekday_rng.gen();
-            let completed = random_value < weekday_target_rate;
-            let status = if completed { 
-                TaskStatus::DailyCompleted.to_i32() 
-            } else { 
-                TaskStatus::DailyInProgress.to_i32() 
-            }; // daily_completed or daily_in_progress
+            // 今天的任務預設為未完成狀態
+            let status = if i == 0 {
+                TaskStatus::DailyNotCompleted.to_i32()
+            } else {
+                // 使用更精確的隨機數生成（0.0-1.0範圍）
+                let random_value: f64 = weekday_rng.gen();
+                let completed = random_value < weekday_target_rate;
+                if completed { 
+                    TaskStatus::DailyCompleted.to_i32() 
+                } else { 
+                    TaskStatus::DailyNotCompleted.to_i32() 
+                }
+            };
             
-            if completed {
+            if status == TaskStatus::DailyCompleted.to_i32() {
                 weekday_completed += 1;
             }
             
@@ -1431,25 +1400,30 @@ async fn insert_recurring_task_history(
     let sample_rate = weekday_completed as f64 / weekday_total as f64;
     let annual_completed = (sample_rate * weekday_total_annual as f64) as i32;
     
-    // 為每日冥想任務插入歷史記錄
+    // 為每日冥想任務插入歷史記錄（包含今天）
     let mut daily_completed = 0;
-    let daily_total_sample = daily_history_days;
+    let daily_total_sample = daily_history_days + 1; // 包含今天
     let mut daily_rng = rand::thread_rng(); // 獨立的隨機數生成器
     
-    for i in 1..=daily_history_days {
-        let date = now - Duration::days(i);
+    for i in 0..=daily_history_days {
+        let date = if i == 0 { now } else { now - Duration::days(i) };
         let date_str = date.format("%Y-%m-%d").to_string();
         
-        // 使用更精確的隨機數生成（0.0-1.0範圍）
-        let random_value: f64 = daily_rng.gen();
-        let completed = random_value < daily_target_rate;
-        let status = if completed { 
-            TaskStatus::DailyCompleted.to_i32() 
-        } else { 
-            TaskStatus::DailyInProgress.to_i32() 
-        }; // daily_completed or daily_in_progress
+        // 今天的任務預設為未完成狀態
+        let status = if i == 0 {
+            TaskStatus::DailyNotCompleted.to_i32()
+        } else {
+            // 使用更精確的隨機數生成（0.0-1.0範圍）
+            let random_value: f64 = daily_rng.gen();
+            let completed = random_value < daily_target_rate;
+            if completed { 
+                TaskStatus::DailyCompleted.to_i32() 
+            } else { 
+                TaskStatus::DailyNotCompleted.to_i32() 
+            }
+        };
         
-        if completed {
+        if status == TaskStatus::DailyCompleted.to_i32() {
             daily_completed += 1;
         }
         
@@ -1464,13 +1438,13 @@ async fn insert_recurring_task_history(
     let daily_sample_rate = daily_completed as f64 / daily_total_sample as f64;
     let daily_annual_completed = (daily_sample_rate * daily_total_halfyear as f64) as i32;
     
-    // 為週末戶外活動插入歷史記錄（只有週末）
+    // 為週末戶外活動插入歷史記錄（包含今天，只有週末）
     let mut weekend_completed = 0;
     let mut weekend_total = 0;
     let mut weekend_rng = rand::thread_rng(); // 獨立的隨機數生成器
     
-    for i in 1..=weekend_history_days {
-        let date = now - Duration::days(i);
+    for i in 0..=weekend_history_days {
+        let date = if i == 0 { now } else { now - Duration::days(i) };
         let weekday = date.weekday();
         
         // 只在週末（週六、週日）創建記錄
@@ -1478,16 +1452,21 @@ async fn insert_recurring_task_history(
             weekend_total += 1;
             let date_str = date.format("%Y-%m-%d").to_string();
             
-            // 使用更精確的隨機數生成（0.0-1.0範圍）
-            let random_value: f64 = weekend_rng.gen();
-            let completed = random_value < weekend_target_rate;
-            let status = if completed { 
-            TaskStatus::DailyCompleted.to_i32() 
-        } else { 
-            TaskStatus::DailyInProgress.to_i32() 
-        }; // daily_completed or daily_in_progress
+            // 今天的任務預設為未完成狀態
+            let status = if i == 0 {
+                TaskStatus::DailyNotCompleted.to_i32()
+            } else {
+                // 使用更精確的隨機數生成（0.0-1.0範圍）
+                let random_value: f64 = weekend_rng.gen();
+                let completed = random_value < weekend_target_rate;
+                if completed { 
+                    TaskStatus::DailyCompleted.to_i32() 
+                } else { 
+                    TaskStatus::DailyNotCompleted.to_i32() 
+                }
+            };
             
-            if completed {
+            if status == TaskStatus::DailyCompleted.to_i32() {
                 weekend_completed += 1;
             }
             
