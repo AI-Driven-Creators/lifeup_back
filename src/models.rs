@@ -2,6 +2,74 @@ use rbatis::crud;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize, Deserializer};
 
+// 任務狀態枚舉
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum TaskStatus {
+    Pending = 0,          // 待處理
+    InProgress = 1,       // 進行中
+    Completed = 2,        // 已完成
+    Cancelled = 3,        // 已取消
+    Paused = 4,           // 已暫停
+    DailyInProgress = 5,  // 每日任務進行中
+    DailyCompleted = 6,   // 每日任務已完成
+}
+
+impl TaskStatus {
+    // 從數值轉換為狀態
+    pub fn from_i32(value: i32) -> Option<TaskStatus> {
+        match value {
+            0 => Some(TaskStatus::Pending),
+            1 => Some(TaskStatus::InProgress),
+            2 => Some(TaskStatus::Completed),
+            3 => Some(TaskStatus::Cancelled),
+            4 => Some(TaskStatus::Paused),
+            5 => Some(TaskStatus::DailyInProgress),
+            6 => Some(TaskStatus::DailyCompleted),
+            _ => None,
+        }
+    }
+
+    // 轉換為數值
+    pub fn to_i32(&self) -> i32 {
+        match self {
+            TaskStatus::Pending => 0,
+            TaskStatus::InProgress => 1,
+            TaskStatus::Completed => 2,
+            TaskStatus::Cancelled => 3,
+            TaskStatus::Paused => 4,
+            TaskStatus::DailyInProgress => 5,
+            TaskStatus::DailyCompleted => 6,
+        }
+    }
+
+    // 轉換為字符串
+    pub fn to_string(&self) -> &'static str {
+        match self {
+            TaskStatus::Pending => "pending",
+            TaskStatus::InProgress => "in_progress",
+            TaskStatus::Completed => "completed",
+            TaskStatus::Cancelled => "cancelled",
+            TaskStatus::Paused => "paused",
+            TaskStatus::DailyInProgress => "daily_in_progress",
+            TaskStatus::DailyCompleted => "daily_completed",
+        }
+    }
+
+    // 從字符串轉換為狀態
+    pub fn from_string(value: &str) -> Option<TaskStatus> {
+        match value {
+            "pending" => Some(TaskStatus::Pending),
+            "in_progress" => Some(TaskStatus::InProgress),
+            "completed" => Some(TaskStatus::Completed),
+            "cancelled" => Some(TaskStatus::Cancelled),
+            "paused" => Some(TaskStatus::Paused),
+            "daily_in_progress" => Some(TaskStatus::DailyInProgress),
+            "daily_completed" => Some(TaskStatus::DailyCompleted),
+            _ => None,
+        }
+    }
+}
+
 // 自定義反序列化函數處理空字串的 DateTime
 fn deserialize_optional_datetime<'de, D>(deserializer: D) -> Result<Option<DateTime<Utc>>, D::Error>
 where
@@ -200,6 +268,7 @@ pub struct TaskProgressResponse {
     pub task_id: String,
     pub total_days: i32,
     pub completed_days: i32,
+    pub missed_days: i32, // 缺席天數
     pub completion_rate: f64,
     pub target_rate: f64,
     pub is_daily_completed: bool,

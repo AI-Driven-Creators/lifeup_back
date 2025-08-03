@@ -652,9 +652,12 @@ pub async fn pause_task(
     }
     
     // 暫停所有子任務
-    let update_subtasks_sql = "UPDATE task SET status = 4, updated_at = ? WHERE parent_task_id = ? AND status != 2";
+    let update_subtasks_sql = format!(
+        "UPDATE task SET status = 4, updated_at = ? WHERE parent_task_id = ? AND status != {}",
+        crate::models::TaskStatus::DailyCompleted.to_i32()
+    );
     if let Err(e) = rb.exec(
-        update_subtasks_sql,
+        &update_subtasks_sql,
         vec![
             Value::String(Utc::now().to_string()),
             Value::String(task_id.clone()),
@@ -707,9 +710,12 @@ pub async fn cancel_task(
                 }
                 
                 // 刪除所有未完成的子任務
-                let delete_subtasks_sql = "DELETE FROM task WHERE parent_task_id = ? AND status != 2";
+                let delete_subtasks_sql = format!(
+                    "DELETE FROM task WHERE parent_task_id = ? AND status != {}",
+                    crate::models::TaskStatus::DailyCompleted.to_i32()
+                );
                 if let Err(e) = rb.exec(
-                    delete_subtasks_sql,
+                    &delete_subtasks_sql,
                     vec![
                         Value::String(task_id.clone()),
                     ],
@@ -748,19 +754,91 @@ pub async fn cancel_task(
 
 // 獲取首頁任務（只返回子任務和每日任務）
 pub async fn get_homepage_tasks(rb: web::Data<RBatis>) -> Result<HttpResponse> {
-    // 獲取子任務和每日任務
-    let sql = "SELECT * FROM task WHERE (parent_task_id IS NOT NULL) OR (task_type = 'daily' AND parent_task_id IS NULL) ORDER BY task_order, created_at";
+    log::info!("開始獲取首頁任務...");
+    
+    // 獲取子任務和每日任務，並關聯父任務標題
+    let sql = r#"
+        SELECT 
+            t.id,
+            t.user_id,
+            t.title,
+            t.description,
+            t.status,
+            t.priority,
+            t.task_type,
+            t.difficulty,
+            t.experience,
+            t.parent_task_id,
+            t.is_parent_task,
+            t.task_order,
+            t.due_date,
+            t.created_at,
+            t.updated_at,
+            t.is_recurring,
+            t.recurrence_pattern,
+            t.start_date,
+            t.end_date,
+            t.completion_target,
+            t.completion_rate,
+            t.task_date,
+            t.cancel_count,
+            t.last_cancelled_at,
+            p.title as parent_task_title
+        FROM task t
+        LEFT JOIN task p ON t.parent_task_id = p.id
+        WHERE t.parent_task_id IS NOT NULL 
+            AND (t.task_date >= date('now', '-1 day') OR t.task_date IS NULL)
+        ORDER BY t.task_order, t.created_at
+    "#;
+    
+    log::debug!("執行SQL查詢: {}", sql);
+    
     match rb.query(sql, vec![]).await {
-        Ok(tasks) => Ok(HttpResponse::Ok().json(ApiResponse {
-            success: true,
-            data: Some(tasks),
-            message: "獲取首頁任務成功".to_string(),
-        })),
-        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
-            success: false,
-            data: None,
-            message: format!("獲取首頁任務失敗: {}", e),
-        })),
+        Ok(tasks) => {
+            let tasks_count = if let rbs::Value::Array(ref arr) = tasks {
+                arr.len()
+            } else {
+                0
+            };
+            log::info!("成功獲取 {} 個首頁任務", tasks_count);
+            
+            // 檢查前幾個任務的parent_task_title字段
+            if let rbs::Value::Array(ref task_array) = tasks {
+                for (i, task) in task_array.iter().take(5).enumerate() {
+                    if let rbs::Value::Map(ref task_map) = task {
+                        let title_key = rbs::Value::String("title".to_string());
+                        let parent_key = rbs::Value::String("parent_task_title".to_string());
+                        
+                        let title = match task_map.get(&title_key) {
+                            rbs::Value::String(s) => s.as_str(),
+                            _ => "無標題"
+                        };
+                        
+                        let parent_title = match task_map.get(&parent_key) {
+                            rbs::Value::String(s) => s.as_str(),
+                            rbs::Value::Null => "無父任務",
+                            _ => "未知"
+                        };
+                        
+                        log::info!("任務 {}: {} -> 父任務: {}", i+1, title, parent_title);
+                    }
+                }
+            }
+            
+            Ok(HttpResponse::Ok().json(ApiResponse {
+                success: true,
+                data: Some(tasks),
+                message: "獲取首頁任務成功".to_string(),
+            }))
+        },
+        Err(e) => {
+            log::error!("獲取首頁任務失敗: {}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("獲取首頁任務失敗: {}", e),
+            }))
+        },
     }
 }
 
@@ -931,64 +1009,192 @@ pub async fn get_task_progress(
     match Task::select_by_map(rb.get_ref(), value!{"id": parent_task_id.clone()}).await {
         Ok(tasks) => {
             if let Some(parent_task) = tasks.first() {
-                // 計算總天數
-                let start_date = parent_task.start_date.unwrap_or(Utc::now());
-                let end_date = parent_task.end_date.unwrap_or(Utc::now() + chrono::Duration::days(365));
-                let total_days = (end_date - start_date).num_days() as i32;
-                
-                // 查詢已完成的天數（簡化處理）
-                let completed_days_sql = "SELECT COUNT(DISTINCT task_date) as count FROM task WHERE parent_task_id = ? AND status = 2 AND task_date IS NOT NULL";
-                match rb.exec(completed_days_sql, vec![Value::String(parent_task_id.clone())]).await {
-                    Ok(_) => {
-                        // 簡化處理：假設有一些完成的天數
-                        let completed_days = 5; // 暫時固定值，實際應該從查詢結果解析
-                        
-                        // 檢查今日是否完成（簡化處理）
-                        let today_tasks_sql = "SELECT COUNT(*) as total FROM task WHERE parent_task_id = ? AND task_date = ?";
-                        match rb.exec(today_tasks_sql, vec![
-                            Value::String(parent_task_id.clone()),
-                            Value::String(today.clone()),
-                        ]).await {
-                            Ok(_) => {
-                                // 簡化處理：假設今日有任務且部分完成
-                                let (total_today, completed_today) = (3, 2); // 暫時固定值
-                                
-                                let is_daily_completed = total_today > 0 && completed_today == total_today;
-                                let completion_rate = if total_days > 0 {
-                                    completed_days as f64 / total_days as f64
-                                } else {
-                                    0.0
-                                };
-                                let target_rate = parent_task.completion_target.unwrap_or(0.8);
-                                let remaining_days = total_days - completed_days;
-                                
-                                let progress = TaskProgressResponse {
-                                    task_id: parent_task_id,
-                                    total_days,
-                                    completed_days,
-                                    completion_rate,
-                                    target_rate,
-                                    is_daily_completed,
-                                    remaining_days,
-                                };
-                                
-                                Ok(HttpResponse::Ok().json(ApiResponse {
-                                    success: true,
-                                    data: Some(progress),
-                                    message: "獲取任務進度成功".to_string(),
-                                }))
+                if parent_task.is_recurring == Some(1) {
+                    // 重複性任務的進度計算
+                    let start_date = parent_task.start_date.unwrap_or(Utc::now());
+                    let end_date = parent_task.end_date.unwrap_or(Utc::now() + chrono::Duration::days(365));
+                    let recurrence_pattern = parent_task.recurrence_pattern.as_deref().unwrap_or("daily");
+                    
+                    // 根據重複模式計算實際應該執行的總天數
+                    let period_days = (end_date - start_date).num_days() as i32 + 1;
+                    log::info!("任務 {} 日期範圍: {} 到 {}, 期間天數: {}, 重複模式: {}", 
+                               parent_task_id, 
+                               start_date.format("%Y-%m-%d"), 
+                               end_date.format("%Y-%m-%d"), 
+                               period_days, 
+                               recurrence_pattern);
+                    
+                    let total_days = match recurrence_pattern {
+                        "daily" => period_days,
+                        "weekdays" => {
+                            // 計算期間內的工作日天數
+                            let mut weekdays = 0;
+                            for i in 0..period_days {
+                                let check_date = start_date + chrono::Duration::days(i as i64);
+                                let weekday = check_date.weekday();
+                                if weekday != chrono::Weekday::Sat && weekday != chrono::Weekday::Sun {
+                                    weekdays += 1;
+                                }
                             }
-                            Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
-                                success: false,
-                                data: None,
-                                message: format!("查詢今日任務失敗: {}", e),
-                            }))
+                            weekdays
+                        },
+                        "weekends" => {
+                            // 計算期間內的週末天數
+                            let mut weekends = 0;
+                            for i in 0..period_days {
+                                let check_date = start_date + chrono::Duration::days(i as i64);
+                                let weekday = check_date.weekday();
+                                if weekday == chrono::Weekday::Sat || weekday == chrono::Weekday::Sun {
+                                    weekends += 1;
+                                }
+                            }
+                            weekends
+                        },
+                        _ => period_days, // 預設為每日
+                    };
+                    
+                    // 計算到今日為止應該有的天數
+                    let current_period_days = std::cmp::min(
+                        (Utc::now() - start_date).num_days() as i32 + 1,
+                        period_days
+                    );
+                    let days_since_start = match recurrence_pattern {
+                        "daily" => current_period_days,
+                        "weekdays" => {
+                            let mut weekdays = 0;
+                            for i in 0..current_period_days {
+                                let check_date = start_date + chrono::Duration::days(i as i64);
+                                let weekday = check_date.weekday();
+                                if weekday != chrono::Weekday::Sat && weekday != chrono::Weekday::Sun {
+                                    weekdays += 1;
+                                }
+                            }
+                            weekdays
+                        },
+                        "weekends" => {
+                            let mut weekends = 0;
+                            for i in 0..current_period_days {
+                                let check_date = start_date + chrono::Duration::days(i as i64);
+                                let weekday = check_date.weekday();
+                                if weekday == chrono::Weekday::Sat || weekday == chrono::Weekday::Sun {
+                                    weekends += 1;
+                                }
+                            }
+                            weekends
+                        },
+                        _ => current_period_days,
+                    };
+                    
+                    // 先簡化查詢，看看是否有任何已完成的子任務
+                    let completed_days_sql = format!(
+                        "SELECT COUNT(DISTINCT task_date) as count FROM task 
+                         WHERE parent_task_id = '{}' AND status = {} AND task_date IS NOT NULL 
+                         AND task_date >= '{}' AND task_date <= '{}'",
+                        parent_task_id,
+                        crate::models::TaskStatus::DailyCompleted.to_i32(),
+                        start_date.format("%Y-%m-%d"),
+                        std::cmp::min(Utc::now(), end_date).format("%Y-%m-%d")
+                    );
+                    
+                    let completed_days = match rb.query_decode::<Vec<serde_json::Value>>(&completed_days_sql, vec![]).await {
+                        Ok(result) => {
+                            if let Some(row) = result.first() {
+                                if let Some(count) = row.get("count").and_then(|v| v.as_i64()) {
+                                    log::info!("任務 {} 查詢到 {} 個已完成天數", parent_task_id, count);
+                                    count as i32
+                                } else {
+                                    log::warn!("任務 {} 無法解析count欄位: {:?}", parent_task_id, row);
+                                    0
+                                }
+                            } else {
+                                log::warn!("任務 {} 查詢結果為空", parent_task_id);
+                                0
+                            }
+                        },
+                        Err(e) => {
+                            log::error!("任務 {} 查詢失敗: {}", parent_task_id, e);
+                            log::error!("SQL: {}", completed_days_sql);
+                            0
+                        },
+                    };
+                    
+                    // 計算錯過的天數（到今日為止應該完成但未完成的天數）
+                    let missed_days = days_since_start - completed_days;
+                    
+                    // 檢查今日是否完成
+                    let today_tasks_sql = format!(
+                        "SELECT 
+                            COUNT(*) as total,
+                            SUM(CASE WHEN status = {} THEN 1 ELSE 0 END) as completed
+                         FROM task 
+                         WHERE parent_task_id = '{}' AND task_date = '{}'",
+                        crate::models::TaskStatus::DailyCompleted.to_i32(),
+                        parent_task_id, today
+                    );
+                    
+                    let (is_daily_completed, _total_today, _completed_today) = match rb.query_decode::<Vec<serde_json::Value>>(&today_tasks_sql, vec![]).await {
+                        Ok(result) => {
+                            if let Some(row) = result.first() {
+                                let total = row.get("total").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                                let completed = row.get("completed").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                                (total > 0 && completed == total, total, completed)
+                            } else {
+                                (false, 0, 0)
+                            }
                         }
-                    }
-                    Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
-                        success: false,
-                        data: None,
-                        message: format!("查詢完成天數失敗: {}", e),
+                        Err(_) => (false, 0, 0),
+                    };
+                    
+                    // 計算完成率和剩餘天數
+                    let completion_rate = if total_days > 0 {
+                        completed_days as f64 / total_days as f64
+                    } else {
+                        0.0
+                    };
+                    
+                    log::info!("任務 {} 完成率計算: {}/{} = {:.1}%", 
+                               parent_task_id, completed_days, total_days, completion_rate * 100.0);
+                    
+                    let target_rate = parent_task.completion_target.unwrap_or(0.8);
+                    let remaining_days = std::cmp::max(0, total_days - days_since_start);
+                    
+                    let progress = TaskProgressResponse {
+                        task_id: parent_task_id,
+                        total_days,
+                        completed_days,
+                        missed_days: std::cmp::max(0, missed_days), // 確保不為負數
+                        completion_rate,
+                        target_rate,
+                        is_daily_completed,
+                        remaining_days,
+                    };
+                    
+                    Ok(HttpResponse::Ok().json(ApiResponse {
+                        success: true,
+                        data: Some(progress),
+                        message: "獲取任務進度成功".to_string(),
+                    }))
+                } else {
+                    // 一般任務的進度計算
+                    let completion_rate = parent_task.completion_rate.unwrap_or(0.0);
+                    let target_rate = parent_task.completion_target.unwrap_or(1.0);
+                    
+                    // 對於一般任務，我們簡化處理
+                    let progress = TaskProgressResponse {
+                        task_id: parent_task_id,
+                        total_days: 1,
+                        completed_days: if parent_task.status == Some(crate::models::TaskStatus::Completed.to_i32()) { 1 } else { 0 },
+                        missed_days: 0,
+                        completion_rate,
+                        target_rate,
+                        is_daily_completed: parent_task.status == Some(crate::models::TaskStatus::Completed.to_i32()),
+                        remaining_days: if parent_task.status == Some(crate::models::TaskStatus::Completed.to_i32()) { 0 } else { 1 },
+                    };
+                    
+                    Ok(HttpResponse::Ok().json(ApiResponse {
+                        success: true,
+                        data: Some(progress),
+                        message: "獲取任務進度成功".to_string(),
                     }))
                 }
             } else {

@@ -3,6 +3,7 @@ use uuid::Uuid;
 use chrono::{Utc, Duration, Datelike, NaiveDate};
 use log::{info, error};
 use rand::Rng;
+use crate::models::TaskStatus;
 
 /// 插入種子數據到數據庫
 pub async fn seed_database(rb: &RBatis) -> Result<(), Box<dyn std::error::Error>> {
@@ -37,6 +38,9 @@ pub async fn seed_database(rb: &RBatis) -> Result<(), Box<dyn std::error::Error>
     
     // 插入週屬性快照數據
     insert_weekly_attribute_snapshots(rb, &user_id).await?;
+    
+    // 插入重複性任務示例
+    insert_recurring_tasks(rb, &user_id).await?;
 
     info!("種子數據插入完成！");
     Ok(())
@@ -220,41 +224,41 @@ async fn insert_test_tasks(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn std
         ]).await?;
     }
 
-    // 每日任務
-    let daily_tasks = vec![
-        ("冥想 15 分鐘", "每日冥想練習，培養專注力", "daily", 1, 20, 2), // completed
-        ("閱讀 30 分鐘", "每日閱讀習慣", "daily", 2, 25, 1), // in_progress
-        ("運動 45 分鐘", "保持身體健康", "daily", 3, 40, 0), // pending
-        ("寫日記", "記錄每日生活和想法", "daily", 1, 15, 4), // paused
-        ("學習新單字", "擴展詞彙量", "daily", 2, 20, 1), // in_progress
-    ];
+    // 每日任務 - 已移除獨立每日任務，所有任務現在都通過重複性任務系統創建（有父子關係）
+    // let daily_tasks = vec![
+    //     ("冥想 15 分鐘", "每日冥想練習，培養專注力", "daily", 1, 20, 2), // completed
+    //     ("閱讀 30 分鐘", "每日閱讀習慣", "daily", 2, 25, 1), // in_progress
+    //     ("運動 45 分鐘", "保持身體健康", "daily", 3, 40, 0), // pending
+    //     ("寫日記", "記錄每日生活和想法", "daily", 1, 15, 4), // paused
+    //     ("學習新單字", "擴展詞彙量", "daily", 2, 20, 1), // in_progress
+    // ];
 
-    for (title, desc, task_type, difficulty, exp, status) in daily_tasks {
-        let task_id = Uuid::new_v4().to_string();
-        let created_at = (now - Duration::days(10)).to_rfc3339();
-        let updated_at = now.to_rfc3339();
-        
-        let sql = r#"
-            INSERT INTO task (id, user_id, title, description, status, priority, task_type, 
-                            difficulty, experience, is_parent_task, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        "#;
-        
-        rb.exec(sql, vec![
-            task_id.into(),
-            user_id.into(),
-            title.into(),
-            desc.into(),
-            status.into(),
-            1i32.into(),
-            task_type.into(),
-            difficulty.into(),
-            exp.into(),
-            false.into(),
-            created_at.into(),
-            updated_at.into(),
-        ]).await?;
-    }
+    // for (title, desc, task_type, difficulty, exp, status) in daily_tasks {
+    //     let task_id = Uuid::new_v4().to_string();
+    //     let created_at = (now - Duration::days(10)).to_rfc3339();
+    //     let updated_at = now.to_rfc3339();
+    //     
+    //     let sql = r#"
+    //         INSERT INTO task (id, user_id, title, description, status, priority, task_type, 
+    //                         difficulty, experience, is_parent_task, created_at, updated_at)
+    //         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    //     "#;
+    //     
+    //     rb.exec(sql, vec![
+    //         task_id.into(),
+    //         user_id.into(),
+    //         title.into(),
+    //         desc.into(),
+    //         status.into(),
+    //         1i32.into(),
+    //         task_type.into(),
+    //         difficulty.into(),
+    //         exp.into(),
+    //         false.into(),
+    //         created_at.into(),
+    //         updated_at.into(),
+    //     ]).await?;
+    // }
 
     // 為所有主任務插入子任務
     for (i, task_id) in main_task_ids.iter().enumerate() {
@@ -1057,5 +1061,538 @@ async fn insert_weekly_attribute_snapshots(rb: &RBatis, user_id: &str) -> Result
     }
     
     info!("週屬性快照數據插入完成（8 週數據）");
+    Ok(())
+}
+
+/// 插入重複性任務示例
+async fn insert_recurring_tasks(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+    info!("開始插入重複性任務示例...");
+    
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+    
+    // 為每個任務生成5-80%之間的隨機目標完成率
+    let weekday_target_rate = rng.gen_range(5..=80) as f64 / 100.0;
+    let daily_target_rate = rng.gen_range(5..=80) as f64 / 100.0;
+    let weekend_target_rate = rng.gen_range(5..=80) as f64 / 100.0;
+    
+    info!("生成隨機目標完成率 - 工作日: {:.1}%, 每日: {:.1}%, 週末: {:.1}%", 
+          weekday_target_rate * 100.0, daily_target_rate * 100.0, weekend_target_rate * 100.0);
+    
+    // 插入工作日學習任務（週一到週五，一年）
+    let weekday_task_id = insert_weekday_learning_task(rb, user_id, weekday_target_rate).await?;
+    
+    // 插入每日冥想任務（每日，半年）
+    let daily_task_id = insert_daily_meditation_task(rb, user_id, daily_target_rate).await?;
+    
+    // 插入週末戶外活動任務（週六日，一年）
+    let weekend_task_id = insert_weekend_outdoor_task(rb, user_id, weekend_target_rate).await?;
+    
+    // 為每個重複性任務插入子任務模板
+    insert_weekday_learning_templates(rb, &weekday_task_id).await?;
+    insert_daily_meditation_templates(rb, &daily_task_id).await?;
+    insert_weekend_outdoor_templates(rb, &weekend_task_id).await?;
+    
+    // 插入一些完成歷史記錄來顯示真實的完成百分比
+    insert_recurring_task_history(rb, user_id, &weekday_task_id, &daily_task_id, &weekend_task_id, weekday_target_rate, daily_target_rate, weekend_target_rate).await?;
+    
+    info!("重複性任務示例插入完成！");
+    Ok(())
+}
+
+/// 插入工作日學習任務（週一到週五，一年）
+async fn insert_weekday_learning_task(rb: &RBatis, user_id: &str, target_rate: f64) -> Result<String, Box<dyn std::error::Error>> {
+    let task_id = Uuid::new_v4().to_string();
+    let now = Utc::now();
+    
+    // 根據目標完成率計算需要的歷史天數
+    // 一年總共約260個工作日，要達到target_rate的完成率，需要至少target_rate * 260天的歷史
+    let required_history_days = (target_rate * 260.0).ceil() as i64;
+    // 考慮到週末，實際天數需要乘以 7/5
+    let actual_history_days = ((required_history_days as f64) * 7.0 / 5.0).ceil() as i64;
+    
+    let start_date = now - Duration::days(actual_history_days);  // 動態計算開始日期
+    let end_date = now + Duration::days(365 - actual_history_days);  // 總共還是一年期間
+    
+    info!("工作日任務: 目標完成率 {:.1}%, 需要歷史天數 {}, 開始日期: {}", 
+          target_rate * 100.0, actual_history_days, start_date.format("%Y-%m-%d"));
+    
+    let sql = r#"
+        INSERT INTO task (
+            id, user_id, title, description, status, priority, task_type, 
+            difficulty, experience, is_parent_task, is_recurring, 
+            recurrence_pattern, start_date, end_date, completion_target, 
+            completion_rate, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    "#;
+    
+    rb.exec(sql, vec![
+        task_id.clone().into(),
+        user_id.into(),
+        "工作日技能提升計劃".into(),
+        "週一至週五專注於技術學習和專業技能提升，建立穩定的學習習慣".into(),
+        TaskStatus::DailyInProgress.to_i32().into(), // daily_in_progress
+        2i32.into(), // high priority
+        "daily".into(),
+        3i32.into(), // difficulty
+        200i32.into(), // experience
+        true.into(), // is_parent_task
+        true.into(), // is_recurring
+        "weekdays".into(), // recurrence_pattern
+        start_date.to_rfc3339().into(),
+        end_date.to_rfc3339().into(),
+        target_rate.into(), // completion_target
+        0.0f64.into(), // completion_rate
+        now.to_rfc3339().into(),
+        now.to_rfc3339().into(),
+    ]).await?;
+    
+    info!("工作日學習任務插入成功: {}", task_id);
+    Ok(task_id)
+}
+
+/// 插入每日冥想任務（每日，半年）
+async fn insert_daily_meditation_task(rb: &RBatis, user_id: &str, target_rate: f64) -> Result<String, Box<dyn std::error::Error>> {
+    let task_id = Uuid::new_v4().to_string();
+    let now = Utc::now();
+    
+    // 根據目標完成率計算需要的歷史天數
+    // 半年總共183天，要達到target_rate的完成率，需要至少target_rate * 183天的歷史
+    let required_history_days = (target_rate * 183.0).ceil() as i64;
+    
+    let start_date = now - Duration::days(required_history_days);  // 動態計算開始日期
+    let end_date = now + Duration::days(183 - required_history_days);  // 總共還是半年期間
+    
+    info!("每日任務: 目標完成率 {:.1}%, 需要歷史天數 {}, 開始日期: {}", 
+          target_rate * 100.0, required_history_days, start_date.format("%Y-%m-%d"));
+    
+    let sql = r#"
+        INSERT INTO task (
+            id, user_id, title, description, status, priority, task_type, 
+            difficulty, experience, is_parent_task, is_recurring, 
+            recurrence_pattern, start_date, end_date, completion_target, 
+            completion_rate, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    "#;
+    
+    rb.exec(sql, vec![
+        task_id.clone().into(),
+        user_id.into(),
+        "每日正念冥想".into(),
+        "建立每日冥想習慣，提升專注力和心理健康，培養內在平靜".into(),
+        TaskStatus::DailyInProgress.to_i32().into(), // daily_in_progress
+        1i32.into(), // normal priority
+        "daily".into(),
+        2i32.into(), // difficulty
+        150i32.into(), // experience
+        true.into(), // is_parent_task
+        true.into(), // is_recurring
+        "daily".into(), // recurrence_pattern
+        start_date.to_rfc3339().into(),
+        end_date.to_rfc3339().into(),
+        target_rate.into(), // completion_target
+        0.0f64.into(), // completion_rate
+        now.to_rfc3339().into(),
+        now.to_rfc3339().into(),
+    ]).await?;
+    
+    info!("每日冥想任務插入成功: {}", task_id);
+    Ok(task_id)
+}
+
+/// 插入週末戶外活動任務（週六日，一年）
+async fn insert_weekend_outdoor_task(rb: &RBatis, user_id: &str, target_rate: f64) -> Result<String, Box<dyn std::error::Error>> {
+    let task_id = Uuid::new_v4().to_string();
+    let now = Utc::now();
+    
+    // 根據目標完成率計算需要的歷史天數
+    // 一年總共約104個週末日，要達到target_rate的完成率，需要至少target_rate * 104天的歷史
+    let required_history_days = (target_rate * 104.0).ceil() as i64;
+    // 考慮到工作日，實際天數需要乘以 7/2
+    let actual_history_days = ((required_history_days as f64) * 7.0 / 2.0).ceil() as i64;
+    
+    let start_date = now - Duration::days(actual_history_days);  // 動態計算開始日期
+    let end_date = now + Duration::days(365 - actual_history_days);  // 總共還是一年期間
+    
+    info!("週末任務: 目標完成率 {:.1}%, 需要歷史天數 {}, 開始日期: {}", 
+          target_rate * 100.0, actual_history_days, start_date.format("%Y-%m-%d"));
+    
+    let sql = r#"
+        INSERT INTO task (
+            id, user_id, title, description, status, priority, task_type, 
+            difficulty, experience, is_parent_task, is_recurring, 
+            recurrence_pattern, start_date, end_date, completion_target, 
+            completion_rate, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    "#;
+    
+    rb.exec(sql, vec![
+        task_id.clone().into(),
+        user_id.into(),
+        "週末戶外探索".into(),
+        "週末進行戶外活動，平衡工作與生活，享受自然環境".into(),
+        TaskStatus::DailyInProgress.to_i32().into(), // daily_in_progress
+        1i32.into(), // normal priority
+        "daily".into(),
+        3i32.into(), // difficulty
+        180i32.into(), // experience
+        true.into(), // is_parent_task
+        true.into(), // is_recurring
+        "weekends".into(), // recurrence_pattern
+        start_date.to_rfc3339().into(),
+        end_date.to_rfc3339().into(),
+        target_rate.into(), // completion_target
+        0.0f64.into(), // completion_rate
+        now.to_rfc3339().into(),
+        now.to_rfc3339().into(),
+    ]).await?;
+    
+    info!("週末戶外活動任務插入成功: {}", task_id);
+    Ok(task_id)
+}
+
+/// 為工作日學習任務插入子任務模板
+async fn insert_weekday_learning_templates(rb: &RBatis, parent_task_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let templates = vec![
+        ("閱讀技術文章 30 分鐘", "深入閱讀技術博客、官方文檔或技術書籍", 2, 25, 1),
+        ("練習編程 45 分鐘", "實際動手編程，解決問題或開發功能", 3, 40, 2),
+        ("學習新概念", "學習新的技術概念、工具或框架", 2, 30, 3),
+    ];
+    
+    let now = Utc::now();
+    
+    for (title, desc, difficulty, exp, order) in templates {
+        let template_id = Uuid::new_v4().to_string();
+        
+        let sql = r#"
+            INSERT INTO recurring_task_template (
+                id, parent_task_id, title, description, difficulty, 
+                experience, task_order, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "#;
+        
+        rb.exec(sql, vec![
+            template_id.into(),
+            parent_task_id.into(),
+            title.into(),
+            desc.into(),
+            difficulty.into(),
+            exp.into(),
+            order.into(),
+            now.to_rfc3339().into(),
+            now.to_rfc3339().into(),
+        ]).await?;
+    }
+    
+    info!("工作日學習任務模板插入完成");
+    Ok(())
+}
+
+/// 為每日冥想任務插入子任務模板
+async fn insert_daily_meditation_templates(rb: &RBatis, parent_task_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let templates = vec![
+        ("晨間冥想 15 分鐘", "早晨進行正念冥想，設定一天的心境", 1, 20, 1),
+        ("正念呼吸練習", "專注於呼吸，培養當下覺察力", 1, 15, 2),
+    ];
+    
+    let now = Utc::now();
+    
+    for (title, desc, difficulty, exp, order) in templates {
+        let template_id = Uuid::new_v4().to_string();
+        
+        let sql = r#"
+            INSERT INTO recurring_task_template (
+                id, parent_task_id, title, description, difficulty, 
+                experience, task_order, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "#;
+        
+        rb.exec(sql, vec![
+            template_id.into(),
+            parent_task_id.into(),
+            title.into(),
+            desc.into(),
+            difficulty.into(),
+            exp.into(),
+            order.into(),
+            now.to_rfc3339().into(),
+            now.to_rfc3339().into(),
+        ]).await?;
+    }
+    
+    info!("每日冥想任務模板插入完成");
+    Ok(())
+}
+
+/// 為週末戶外活動任務插入子任務模板
+async fn insert_weekend_outdoor_templates(rb: &RBatis, parent_task_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let templates = vec![
+        ("戶外健行 2 小時", "到郊外或山區進行健行活動", 3, 50, 1),
+        ("攝影記錄", "拍攝自然風景或有趣的戶外場景", 2, 25, 2),
+        ("自然觀察", "觀察動植物，記錄自然現象", 1, 20, 3),
+    ];
+    
+    let now = Utc::now();
+    
+    for (title, desc, difficulty, exp, order) in templates {
+        let template_id = Uuid::new_v4().to_string();
+        
+        let sql = r#"
+            INSERT INTO recurring_task_template (
+                id, parent_task_id, title, description, difficulty, 
+                experience, task_order, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "#;
+        
+        rb.exec(sql, vec![
+            template_id.into(),
+            parent_task_id.into(),
+            title.into(),
+            desc.into(),
+            difficulty.into(),
+            exp.into(),
+            order.into(),
+            now.to_rfc3339().into(),
+            now.to_rfc3339().into(),
+        ]).await?;
+    }
+    
+    info!("週末戶外活動任務模板插入完成");
+    Ok(())
+}
+
+/// 插入重複性任務的歷史完成記錄
+async fn insert_recurring_task_history(
+    rb: &RBatis, 
+    user_id: &str, 
+    weekday_task_id: &str, 
+    daily_task_id: &str, 
+    weekend_task_id: &str,
+    weekday_target_rate: f64,
+    daily_target_rate: f64,
+    weekend_target_rate: f64
+) -> Result<(), Box<dyn std::error::Error>> {
+    info!("開始插入重複性任務歷史記錄...");
+    
+    let now = Utc::now();
+    use rand::Rng;
+    
+    // 根據目標完成率計算需要的歷史天數
+    let weekday_history_days = ((weekday_target_rate * 260.0).ceil() as f64 * 7.0 / 5.0).ceil() as i64;
+    let daily_history_days = (daily_target_rate * 183.0).ceil() as i64;
+    let weekend_history_days = ((weekend_target_rate * 104.0).ceil() as f64 * 7.0 / 2.0).ceil() as i64;
+    
+    info!("歷史記錄天數 - 工作日: {}, 每日: {}, 週末: {}", 
+          weekday_history_days, daily_history_days, weekend_history_days);
+    
+    // 為工作日學習任務插入歷史記錄（只有工作日）
+    let mut weekday_completed = 0;
+    let mut weekday_total = 0;
+    let mut weekday_rng = rand::thread_rng(); // 獨立的隨機數生成器
+    
+    for i in 1..=weekday_history_days {
+        let date = now - Duration::days(i);
+        let weekday = date.weekday();
+        
+        // 只在工作日（週一到週五）創建記錄
+        if weekday != chrono::Weekday::Sat && weekday != chrono::Weekday::Sun {
+            weekday_total += 1;
+            let date_str = date.format("%Y-%m-%d").to_string();
+            
+            // 使用更精確的隨機數生成（0.0-1.0範圍）
+            let random_value: f64 = weekday_rng.gen();
+            let completed = random_value < weekday_target_rate;
+            let status = if completed { 
+                TaskStatus::DailyCompleted.to_i32() 
+            } else { 
+                TaskStatus::DailyInProgress.to_i32() 
+            }; // daily_completed or daily_in_progress
+            
+            if completed {
+                weekday_completed += 1;
+            }
+            
+            // 插入正確數量的子任務記錄（API計算需要）
+            insert_daily_subtask(rb, user_id, weekday_task_id, &date_str, "閱讀技術文章 30 分鐘", status).await?;
+            insert_daily_subtask(rb, user_id, weekday_task_id, &date_str, "練習編程 45 分鐘", status).await?;
+            insert_daily_subtask(rb, user_id, weekday_task_id, &date_str, "學習新概念", status).await?;
+        }
+    }
+    
+    // 計算一年期間的預估工作日數 (約260天)
+    let weekday_total_annual = 260;
+    // 根據60天樣本推算一年的完成率
+    let sample_rate = weekday_completed as f64 / weekday_total as f64;
+    let annual_completed = (sample_rate * weekday_total_annual as f64) as i32;
+    
+    // 為每日冥想任務插入歷史記錄
+    let mut daily_completed = 0;
+    let daily_total_sample = daily_history_days;
+    let mut daily_rng = rand::thread_rng(); // 獨立的隨機數生成器
+    
+    for i in 1..=daily_history_days {
+        let date = now - Duration::days(i);
+        let date_str = date.format("%Y-%m-%d").to_string();
+        
+        // 使用更精確的隨機數生成（0.0-1.0範圍）
+        let random_value: f64 = daily_rng.gen();
+        let completed = random_value < daily_target_rate;
+        let status = if completed { 
+            TaskStatus::DailyCompleted.to_i32() 
+        } else { 
+            TaskStatus::DailyInProgress.to_i32() 
+        }; // daily_completed or daily_in_progress
+        
+        if completed {
+            daily_completed += 1;
+        }
+        
+        // 插入正確數量的子任務記錄（API計算需要）
+        insert_daily_subtask(rb, user_id, daily_task_id, &date_str, "晨間冥想 15 分鐘", status).await?;
+        insert_daily_subtask(rb, user_id, daily_task_id, &date_str, "正念呼吸練習", status).await?;
+    }
+    
+    // 計算半年期間的預估天數 (183天)
+    let daily_total_halfyear = 183;
+    // 根據60天樣本推算半年的完成率
+    let daily_sample_rate = daily_completed as f64 / daily_total_sample as f64;
+    let daily_annual_completed = (daily_sample_rate * daily_total_halfyear as f64) as i32;
+    
+    // 為週末戶外活動插入歷史記錄（只有週末）
+    let mut weekend_completed = 0;
+    let mut weekend_total = 0;
+    let mut weekend_rng = rand::thread_rng(); // 獨立的隨機數生成器
+    
+    for i in 1..=weekend_history_days {
+        let date = now - Duration::days(i);
+        let weekday = date.weekday();
+        
+        // 只在週末（週六、週日）創建記錄
+        if weekday == chrono::Weekday::Sat || weekday == chrono::Weekday::Sun {
+            weekend_total += 1;
+            let date_str = date.format("%Y-%m-%d").to_string();
+            
+            // 使用更精確的隨機數生成（0.0-1.0範圍）
+            let random_value: f64 = weekend_rng.gen();
+            let completed = random_value < weekend_target_rate;
+            let status = if completed { 
+            TaskStatus::DailyCompleted.to_i32() 
+        } else { 
+            TaskStatus::DailyInProgress.to_i32() 
+        }; // daily_completed or daily_in_progress
+            
+            if completed {
+                weekend_completed += 1;
+            }
+            
+            // 插入正確數量的子任務記錄（API計算需要）
+            insert_daily_subtask(rb, user_id, weekend_task_id, &date_str, "戶外健行 2 小時", status).await?;
+            insert_daily_subtask(rb, user_id, weekend_task_id, &date_str, "攝影記錄", status).await?;
+            insert_daily_subtask(rb, user_id, weekend_task_id, &date_str, "自然觀察", status).await?;
+        }
+    }
+    
+    // 計算一年期間的預估週末數 (約104天)
+    let weekend_total_annual = 104;
+    // 根據60天樣本推算一年的完成率
+    let weekend_sample_rate = weekend_completed as f64 / weekend_total as f64;
+    let weekend_annual_completed = (weekend_sample_rate * weekend_total_annual as f64) as i32;
+    
+    // 基於60天樣本計算完成率，但顯示為年度推算數據
+    let weekday_completion_rate = weekday_completed as f64 / weekday_total as f64;
+    let daily_completion_rate = daily_completed as f64 / daily_total_sample as f64;
+    let weekend_completion_rate = weekend_completed as f64 / weekend_total as f64;
+    
+    update_task_completion_rate(rb, weekday_task_id, weekday_completion_rate).await?;
+    update_task_completion_rate(rb, daily_task_id, daily_completion_rate).await?;
+    update_task_completion_rate(rb, weekend_task_id, weekend_completion_rate).await?;
+    
+    info!("工作日學習任務: {}/{} 天完成 ({:.1}%) [年度推算: {}/{}]", 
+          weekday_completed, weekday_total, weekday_completion_rate * 100.0,
+          annual_completed, weekday_total_annual);
+    info!("每日冥想任務: {}/{} 天完成 ({:.1}%) [半年推算: {}/{}]", 
+          daily_completed, daily_total_sample, daily_completion_rate * 100.0,
+          daily_annual_completed, daily_total_halfyear);
+    info!("週末戶外活動: {}/{} 天完成 ({:.1}%) [年度推算: {}/{}]", 
+          weekend_completed, weekend_total, weekend_completion_rate * 100.0,
+          weekend_annual_completed, weekend_total_annual);
+    
+    info!("重複性任務歷史記錄插入完成");
+    Ok(())
+}
+
+/// 插入每日子任務記錄
+async fn insert_daily_subtask(
+    rb: &RBatis,
+    user_id: &str,
+    parent_task_id: &str,
+    task_date: &str,
+    title: &str,
+    status: i32,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let task_id = Uuid::new_v4().to_string();
+    let now = Utc::now();
+    let created_at = now.to_rfc3339();
+    let updated_at = if status == TaskStatus::DailyCompleted.to_i32() { 
+        // 如果已完成，設定更新時間為該日期的晚上
+        let task_date_parsed = NaiveDate::parse_from_str(task_date, "%Y-%m-%d").unwrap();
+        let completion_time = task_date_parsed.and_hms_opt(20, 0, 0).unwrap();
+        completion_time.and_utc().to_rfc3339()
+    } else { 
+        created_at.clone() 
+    };
+    
+    let sql = r#"
+        INSERT INTO task (
+            id, user_id, title, parent_task_id, task_date, status, 
+            priority, task_type, difficulty, experience, is_parent_task,
+            created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    "#;
+    
+    rb.exec(sql, vec![
+        task_id.into(),
+        user_id.into(),
+        title.into(),
+        parent_task_id.into(),
+        task_date.into(),
+        status.into(),
+        1i32.into(),
+        "subtask".into(),
+        1i32.into(), // 簡化的難度
+        10i32.into(), // 簡化的經驗值
+        false.into(),
+        created_at.into(),
+        updated_at.into(),
+    ]).await?;
+    
+    Ok(())
+}
+
+/// 更新任務完成率
+async fn update_task_completion_rate(
+    rb: &RBatis,
+    task_id: &str,
+    completion_rate: f64,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let sql = r#"
+        UPDATE task 
+        SET completion_rate = ?, updated_at = ?
+        WHERE id = ?
+    "#;
+    
+    rb.exec(sql, vec![
+        completion_rate.into(),
+        Utc::now().to_rfc3339().into(),
+        task_id.into(),
+    ]).await?;
+    
     Ok(())
 }
