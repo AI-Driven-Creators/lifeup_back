@@ -130,6 +130,8 @@ async fn main() -> std::io::Result<()> {
             // 聊天相關路由
             .route("/api/chat/messages", web::get().to(get_chat_messages))
             .route("/api/chat/send", web::post().to(send_message))
+            .route("/api/chat/chatgpt", web::post().to(send_message_to_chatgpt))
+            .route("/api/chat/test", web::get().to(test_endpoint))
             // 遊戲化數據相關路由
             .route("/api/users/{id}/gamified", web::get().to(get_gamified_user_data))
             // 成就相關路由
