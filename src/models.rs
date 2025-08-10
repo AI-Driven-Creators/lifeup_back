@@ -88,6 +88,28 @@ where
     }
 }
 
+// 自定義反序列化函數處理skill_tags字段
+fn deserialize_skill_tags<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let opt: Option<serde_json::Value> = Option::deserialize(deserializer)?;
+    match opt {
+        Some(value) => {
+            match value {
+                serde_json::Value::String(s) => Ok(Some(s)),
+                serde_json::Value::Array(_) => {
+                    // 如果是陣列，轉換為JSON字符串
+                    Ok(Some(value.to_string()))
+                },
+                serde_json::Value::Null => Ok(None),
+                _ => Ok(Some(value.to_string())),
+            }
+        },
+        None => Ok(None),
+    }
+}
+
 // 使用者模型
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct User {
@@ -131,6 +153,8 @@ pub struct Task {
     pub cancel_count: Option<i32>, // 取消次數
     #[serde(default, deserialize_with = "deserialize_optional_datetime")]
     pub last_cancelled_at: Option<DateTime<Utc>>, // 最後取消時間
+    #[serde(default, deserialize_with = "deserialize_skill_tags")]
+    pub skill_tags: Option<String>, // 相關技能標籤，JSON格式儲存["Vue.js", "JavaScript"]
 }
 crud!(Task{});
 
@@ -187,6 +211,7 @@ pub struct CreateTaskRequest {
     pub experience: Option<i32>, // 經驗值獎勵
     pub due_date: Option<DateTime<Utc>>,
     pub user_id: Option<String>, // 添加 user_id 欄位
+    pub skill_tags: Option<Vec<String>>, // 技能標籤陣列
 }
 
 // 更新任務的請求
@@ -243,6 +268,13 @@ pub struct CreateSkillRequest {
     pub experience: Option<i32>,
     pub max_experience: Option<i32>,
     pub icon: Option<String>,
+}
+
+// 更新技能經驗值的請求
+#[derive(Deserialize)]
+pub struct UpdateSkillExperienceRequest {
+    pub experience_gain: i32, // 增加的經驗值
+    pub reason: Option<String>, // 獲得經驗值的原因（如：完成任務）
 }
 
 // 聊天請求

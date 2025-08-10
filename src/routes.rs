@@ -139,6 +139,7 @@ pub async fn create_task(
         task_date: None,
         cancel_count: Some(0),
         last_cancelled_at: None,
+        skill_tags: req.skill_tags.as_ref().map(|tags| serde_json::to_string(tags).unwrap_or_default()),
     };
 
     match Task::insert(rb.get_ref(), &new_task).await {
@@ -201,6 +202,91 @@ pub async fn create_skill(
             data: None,
             message: format!("技能建立失敗: {}", e),
         })),
+    }
+}
+
+// 更新技能經驗值
+pub async fn update_skill_experience(
+    rb: web::Data<RBatis>,
+    path: web::Path<String>,
+    req: web::Json<UpdateSkillExperienceRequest>,
+) -> Result<HttpResponse> {
+    let skill_id = path.into_inner();
+    
+    // 查詢技能
+    match Skill::select_by_map(rb.get_ref(), value!{"id": skill_id.clone()}).await {
+        Ok(skills) => {
+            if let Some(mut skill) = skills.into_iter().next() {
+                // 增加經驗值
+                let current_exp = skill.experience.unwrap_or(0);
+                let new_exp = current_exp + req.experience_gain;
+                skill.experience = Some(new_exp);
+                
+                // 檢查升級
+                let current_level = skill.level.unwrap_or(1);
+                let max_exp = skill.max_experience.unwrap_or(100);
+                let mut final_exp = new_exp;
+                let mut final_level = current_level;
+                
+                // 升級邏輯：如果經驗值超過最大值且等級未達上限
+                while final_exp >= max_exp && final_level < 5 {
+                    final_exp -= max_exp;
+                    final_level += 1;
+                    // 每升一級，下一級所需經驗值增加
+                    let new_max_exp = final_level * 200 + 100;
+                    skill.max_experience = Some(new_max_exp);
+                }
+                
+                skill.experience = Some(final_exp);
+                skill.level = Some(final_level);
+                skill.updated_at = Some(Utc::now());
+                
+                // 更新資料庫
+                match Skill::update_by_map(
+                    rb.get_ref(),
+                    &skill,
+                    value!{"id": skill_id}
+                ).await {
+                    Ok(_) => {
+                        let level_up = final_level > current_level;
+                        let response_message = if level_up {
+                            format!("技能經驗值更新成功！恭喜升級到 {} 級！", final_level)
+                        } else {
+                            "技能經驗值更新成功".to_string()
+                        };
+                        
+                        Ok(HttpResponse::Ok().json(ApiResponse {
+                            success: true,
+                            data: Some(json!({
+                                "skill": skill,
+                                "experience_gained": req.experience_gain,
+                                "level_up": level_up,
+                                "previous_level": current_level,
+                                "new_level": final_level,
+                                "reason": req.reason.clone().unwrap_or_default()
+                            })),
+                            message: response_message,
+                        }))
+                    },
+                    Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                        success: false,
+                        data: None,
+                        message: format!("更新技能經驗值失敗: {}", e),
+                    }))
+                }
+            } else {
+                Ok(HttpResponse::NotFound().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: "找不到該技能".to_string(),
+                }))
+            }
+        },
+        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: format!("查詢技能失敗: {}", e),
+        }))
     }
 }
 
@@ -363,18 +449,106 @@ pub async fn get_tasks_by_type(
     path: web::Path<String>,
 ) -> Result<HttpResponse> {
     let task_type = path.into_inner();
+    log::info!("獲取任務類型: {}", task_type);
     
     match Task::select_by_map(rb.get_ref(), value!{"task_type": task_type.clone()}).await {
-        Ok(tasks) => Ok(HttpResponse::Ok().json(ApiResponse {
-            success: true,
-            data: Some(tasks),
-            message: format!("獲取{}任務列表成功", task_type),
-        })),
-        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
-            success: false,
-            data: None,
-            message: format!("獲取{}任務列表失敗: {}", task_type, e),
-        })),
+        Ok(tasks) => {
+            log::info!("成功獲取{}個{}類型任務", tasks.len(), task_type);
+            
+            // 嘗試手動序列化以找出問題
+            match serde_json::to_string(&tasks) {
+                Ok(_) => {
+                    log::info!("任務數據序列化成功");
+                    Ok(HttpResponse::Ok().json(ApiResponse {
+                        success: true,
+                        data: Some(tasks),
+                        message: format!("獲取{}任務列表成功", task_type),
+                    }))
+                },
+                Err(serialize_error) => {
+                    log::error!("任務數據序列化失敗: {}", serialize_error);
+                    Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                        success: false,
+                        data: None,
+                        message: format!("任務數據序列化失敗: {}", serialize_error),
+                    }))
+                }
+            }
+        },
+        Err(e) => {
+            log::error!("獲取{}任務列表失敗: {}", task_type, e);
+            Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("獲取{}任務列表失敗: {}", task_type, e),
+            }))
+        }
+    }
+}
+
+// 根據技能名稱獲取相關任務
+pub async fn get_tasks_by_skill(
+    rb: web::Data<RBatis>,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let skill_name = path.into_inner();
+    log::info!("獲取技能相關任務: {}", skill_name);
+    
+    // 使用 SQL 查詢包含指定技能標籤的任務
+    let sql = "SELECT * FROM task WHERE skill_tags LIKE ?";
+    let skill_pattern = format!("%\"{}\"%", skill_name);
+    
+    match rb.query_decode::<Vec<Task>>(sql, vec![Value::String(skill_pattern)]).await {
+        Ok(tasks) => {
+            log::info!("成功獲取{}個「{}」相關任務", tasks.len(), skill_name);
+            
+            // 將任務狀態轉換為字串格式以供前端使用
+            let tasks_with_string_status: Vec<serde_json::Value> = tasks.iter().map(|task| {
+                let status_string = match task.status {
+                    Some(0) => "pending",
+                    Some(1) => "in_progress", 
+                    Some(2) => "completed",
+                    Some(3) => "cancelled",
+                    Some(4) => "paused",
+                    Some(5) => "daily_in_progress",
+                    Some(6) => "daily_completed", 
+                    Some(7) => "daily_not_completed",
+                    _ => "pending"
+                };
+                
+                serde_json::json!({
+                    "id": task.id,
+                    "title": task.title,
+                    "description": task.description,
+                    "status": status_string,
+                    "priority": task.priority,
+                    "task_type": task.task_type,
+                    "difficulty": task.difficulty,
+                    "experience": task.experience,
+                    "parent_task_id": task.parent_task_id,
+                    "is_parent_task": task.is_parent_task,
+                    "task_order": task.task_order,
+                    "due_date": task.due_date,
+                    "created_at": task.created_at,
+                    "updated_at": task.updated_at,
+                    "skill_tags": task.skill_tags
+                })
+            }).collect();
+            
+            Ok(HttpResponse::Ok().json(ApiResponse {
+                success: true,
+                data: Some(tasks_with_string_status),
+                message: format!("獲取「{}」相關任務成功", skill_name),
+            }))
+        },
+        Err(e) => {
+            log::error!("獲取「{}」相關任務失敗: {}", skill_name, e);
+            Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("獲取「{}」相關任務失敗: {}", skill_name, e),
+            }))
+        }
     }
 }
 
@@ -505,6 +679,7 @@ pub async fn start_task(
                                         task_date: None,
                                         cancel_count: Some(0),
                                         last_cancelled_at: None,
+                                        skill_tags: None, // 子任務繼承父任務的技能標籤或為空
                                     };
                                     
                                     if let Err(e) = Task::insert(rb.get_ref(), &subtask).await {
@@ -935,6 +1110,7 @@ pub async fn create_recurring_task(
         task_date: None,
         cancel_count: Some(0),
         last_cancelled_at: None,
+        skill_tags: None, // 重複性任務預設無技能標籤
     };
 
     // 插入父任務
@@ -1031,6 +1207,7 @@ pub async fn generate_daily_tasks(
                     task_date: Some(today.clone()),
                     cancel_count: Some(0),
                     last_cancelled_at: None,
+                    skill_tags: None, // 每日重複任務預設無技能標籤
                 };
                 
                 if let Ok(_) = Task::insert(rb.get_ref(), &daily_task).await {
