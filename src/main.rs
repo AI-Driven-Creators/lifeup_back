@@ -127,6 +127,8 @@ async fn main() -> std::io::Result<()> {
             // 技能相關路由
             .route("/api/skills", web::get().to(get_skills))
             .route("/api/skills", web::post().to(create_skill))
+            .route("/api/skills/{id}/experience", web::put().to(update_skill_experience))
+            .route("/api/tasks/skill/{skill_name}", web::get().to(get_tasks_by_skill))
             // 聊天相關路由
             .route("/api/chat/messages", web::get().to(get_chat_messages))
             .route("/api/chat/send", web::post().to(send_message))
@@ -186,6 +188,7 @@ async fn create_tables(rb: &RBatis) {
             task_date TEXT,
             cancel_count INTEGER DEFAULT 0,
             last_cancelled_at TEXT,
+            skill_tags TEXT,
             FOREIGN KEY (user_id) REFERENCES user (id),
             FOREIGN KEY (parent_task_id) REFERENCES task (id)
         )
@@ -349,6 +352,8 @@ async fn migrate_database(rb: &RBatis) {
         "ALTER TABLE task ADD COLUMN cancel_count INTEGER DEFAULT 0",
         // 檢查並添加 last_cancelled_at 欄位
         "ALTER TABLE task ADD COLUMN last_cancelled_at TEXT",
+        // 檢查並添加 skill_tags 欄位
+        "ALTER TABLE task ADD COLUMN skill_tags TEXT",
     ];
     
     for (i, migration) in migrations.iter().enumerate() {

@@ -82,6 +82,7 @@ async fn create_all_tables(rb: &RBatis) -> Result<(), Box<dyn std::error::Error>
             task_date TEXT,
             cancel_count INTEGER DEFAULT 0,
             last_cancelled_at TEXT,
+            skill_tags TEXT,
             FOREIGN KEY (user_id) REFERENCES user (id),
             FOREIGN KEY (parent_task_id) REFERENCES task (id)
         )

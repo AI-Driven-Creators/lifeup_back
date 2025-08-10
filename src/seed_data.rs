@@ -78,51 +78,57 @@ async fn insert_test_user(rb: &RBatis) -> Result<String, Box<dyn std::error::Err
 async fn insert_test_tasks(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn std::error::Error>> {
     let now = Utc::now();
     
-    // 主任務數據
+    // 主任務數據 (title, description, task_type, difficulty, experience, status, is_parent_task, skill_tags)
     let main_tasks = vec![
         (
             "學習 Vue.js 開發",
             "從基礎到進階學習 Vue.js，建立完整的知識體系",
             "main", 4, 150, 1, // in_progress
             true, // is_parent_task
+            vec!["Vue.js"], // skill_tags
         ),
         (
             "掌握 Rust 程式語言", 
             "深入學習 Rust 語言，掌握系統程式設計",
             "main", 5, 200, 0, // pending
             true,
+            vec!["Rust"],
         ),
         (
             "建立健康作息",
             "養成良好的生活習慣，提升生活品質",
             "main", 3, 100, 1, // in_progress
             true,
+            vec!["時間管理", "適應力"],
         ),
         (
             "開發個人專案",
             "完成一個完整的全端專案",
             "main", 4, 180, 1, // in_progress
             true,
+            vec!["JavaScript", "Vue.js"],
         ),
         (
             "準備證照考試",
             "準備相關技術證照考試",
             "main", 3, 120, 4, // paused (用於測試父任務暫停)
             true,
+            vec!["問題解決"],
         ),
     ];
 
     let mut main_task_ids = Vec::new();
     
-    for (i, (title, desc, task_type, difficulty, exp, status, is_parent)) in main_tasks.iter().enumerate() {
+    for (i, (title, desc, task_type, difficulty, exp, status, is_parent, skill_tags)) in main_tasks.iter().enumerate() {
         let task_id = Uuid::new_v4().to_string();
         let created_at = (now - Duration::days(30 - i as i64)).to_rfc3339();
         let updated_at = (now - Duration::days(i as i64)).to_rfc3339();
+        let skill_tags_json = serde_json::to_string(skill_tags).unwrap_or_default();
         
         let sql = r#"
             INSERT INTO task (id, user_id, title, description, status, priority, task_type, 
-                            difficulty, experience, is_parent_task, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            difficulty, experience, is_parent_task, skill_tags, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#;
         
         rb.exec(sql, vec![
@@ -136,6 +142,7 @@ async fn insert_test_tasks(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn std
             (*difficulty as i32).into(),
             (*exp as i32).into(),
             (*is_parent).into(),
+            skill_tags_json.into(),
             created_at.into(),
             updated_at.into(),
         ]).await?;
@@ -143,25 +150,26 @@ async fn insert_test_tasks(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn std
         main_task_ids.push(task_id);
     }
 
-    // 側任務
+    // 側任務 (title, description, task_type, difficulty, experience, status, skill_tags)
     let side_tasks = vec![
-        ("閱讀技術書籍", "每週閱讀技術相關書籍", "side", 2, 50, 0), // pending
-        ("學習設計軟體", "掌握 Figma 和 Photoshop", "side", 3, 80, 4), // paused
-        ("整理工作環境", "優化工作空間配置", "side", 1, 30, 2), // completed
-        ("建立個人品牌", "經營技術部落格和社群媒體", "side", 3, 90, 1), // in_progress
+        ("閱讀技術書籍", "每週閱讀技術相關書籍", "side", 2, 50, 0, vec!["智慧", "專注力"]), // pending
+        ("學習設計軟體", "掌握 Figma 和 Photoshop", "side", 3, 80, 4, vec!["UI/UX 設計", "創造力"]), // paused
+        ("整理工作環境", "優化工作空間配置", "side", 1, 30, 2, vec!["時間管理", "適應力"]), // completed
+        ("建立個人品牌", "經營技術部落格和社群媒體", "side", 3, 90, 1, vec!["溝通", "創造力"]), // in_progress
     ];
 
     let mut side_task_ids = Vec::new();
     
-    for (i, (title, desc, task_type, difficulty, exp, status)) in side_tasks.iter().enumerate() {
+    for (i, (title, desc, task_type, difficulty, exp, status, skill_tags)) in side_tasks.iter().enumerate() {
         let task_id = Uuid::new_v4().to_string();
         let created_at = (now - Duration::days(20 - i as i64)).to_rfc3339();
         let updated_at = (now - Duration::days(5 - i as i64)).to_rfc3339();
+        let skill_tags_json = serde_json::to_string(skill_tags).unwrap_or_default();
         
         let sql = r#"
             INSERT INTO task (id, user_id, title, description, status, priority, task_type, 
-                            difficulty, experience, is_parent_task, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            difficulty, experience, is_parent_task, skill_tags, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#;
         
         rb.exec(sql, vec![
@@ -175,6 +183,7 @@ async fn insert_test_tasks(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn std
             (*difficulty as i32).into(),
             (*exp as i32).into(),
             true.into(), // 修改：設定支線任務為大任務，允許生成子任務
+            skill_tags_json.into(),
             created_at.into(),
             updated_at.into(),
         ]).await?;
@@ -182,17 +191,18 @@ async fn insert_test_tasks(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn std
         side_task_ids.push(task_id);
     }
 
-    // 挑戰任務
+    // 挑戰任務 (title, description, task_type, difficulty, experience, status, cancel_count, skill_tags)
     let challenge_tasks = vec![
-        ("完成馬拉松", "完成42.195公里馬拉松賽事", "challenge", 5, 500, 0, 0), // pending
-        ("學會吉他演奏", "能夠彈奏基礎歌曲", "challenge", 4, 300, 1, 0), // in_progress
-        ("發表技術文章", "在知名平台發表技術文章", "challenge", 3, 200, 3, 2), // cancelled, 取消2次
+        ("完成馬拉松", "完成42.195公里馬拉松賽事", "challenge", 5, 500, 0, 0, vec!["毅力", "適應力"]), // pending
+        ("學會吉他演奏", "能夠彈奏基礎歌曲", "challenge", 4, 300, 1, 0, vec!["創造力", "專注力"]), // in_progress
+        ("發表技術文章", "在知名平台發表技術文章", "challenge", 3, 200, 3, 2, vec!["溝通", "智慧"]), // cancelled, 取消2次
     ];
 
-    for (title, desc, task_type, difficulty, exp, status, cancel_count) in challenge_tasks {
+    for (title, desc, task_type, difficulty, exp, status, cancel_count, skill_tags) in challenge_tasks {
         let task_id = Uuid::new_v4().to_string();
         let created_at = (now - Duration::days(15)).to_rfc3339();
         let updated_at = (now - Duration::days(2)).to_rfc3339();
+        let skill_tags_json = serde_json::to_string(&skill_tags).unwrap_or_default();
         let last_cancelled_at = if cancel_count > 0 { 
             Some((now - Duration::days(1)).to_rfc3339()) 
         } else { 
@@ -201,9 +211,9 @@ async fn insert_test_tasks(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn std
         
         let sql = r#"
             INSERT INTO task (id, user_id, title, description, status, priority, task_type, 
-                            difficulty, experience, is_parent_task, cancel_count, last_cancelled_at,
+                            difficulty, experience, is_parent_task, skill_tags, cancel_count, last_cancelled_at,
                             created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#;
         
         rb.exec(sql, vec![
@@ -217,6 +227,7 @@ async fn insert_test_tasks(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn std
             difficulty.into(),
             exp.into(),
             true.into(), // 修改：設定挑戰任務為大任務，允許生成子任務
+            skill_tags_json.into(),
             cancel_count.into(),
             last_cancelled_at.map(|s| s.into()).unwrap_or_else(|| rbs::Value::Null),
             created_at.into(),
@@ -1081,14 +1092,17 @@ async fn insert_weekday_learning_task(rb: &RBatis, user_id: &str, target_rate: f
     info!("工作日任務: 目標完成率 {:.1}%, 需要歷史天數 {}, 開始日期: {}", 
           target_rate * 100.0, actual_history_days, start_date.format("%Y-%m-%d"));
     
+    let skill_tags = vec!["時間管理", "專注力", "智慧"];
+    let skill_tags_json = serde_json::to_string(&skill_tags).unwrap_or_default();
+    
     let sql = r#"
         INSERT INTO task (
             id, user_id, title, description, status, priority, task_type, 
             difficulty, experience, is_parent_task, is_recurring, 
             recurrence_pattern, start_date, end_date, completion_target, 
-            completion_rate, created_at, updated_at
+            completion_rate, skill_tags, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     "#;
     
     rb.exec(sql, vec![
@@ -1108,6 +1122,7 @@ async fn insert_weekday_learning_task(rb: &RBatis, user_id: &str, target_rate: f
         end_date.to_rfc3339().into(),
         target_rate.into(), // completion_target
         0.0f64.into(), // completion_rate
+        skill_tags_json.into(), // skill_tags
         now.to_rfc3339().into(),
         now.to_rfc3339().into(),
     ]).await?;
@@ -1131,14 +1146,17 @@ async fn insert_daily_meditation_task(rb: &RBatis, user_id: &str, target_rate: f
     info!("每日任務: 目標完成率 {:.1}%, 需要歷史天數 {}, 開始日期: {}", 
           target_rate * 100.0, required_history_days, start_date.format("%Y-%m-%d"));
     
+    let skill_tags = vec!["專注力", "適應力"];
+    let skill_tags_json = serde_json::to_string(&skill_tags).unwrap_or_default();
+    
     let sql = r#"
         INSERT INTO task (
             id, user_id, title, description, status, priority, task_type, 
             difficulty, experience, is_parent_task, is_recurring, 
             recurrence_pattern, start_date, end_date, completion_target, 
-            completion_rate, created_at, updated_at
+            completion_rate, skill_tags, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     "#;
     
     rb.exec(sql, vec![
@@ -1158,6 +1176,7 @@ async fn insert_daily_meditation_task(rb: &RBatis, user_id: &str, target_rate: f
         end_date.to_rfc3339().into(),
         target_rate.into(), // completion_target
         0.0f64.into(), // completion_rate
+        skill_tags_json.into(), // skill_tags
         now.to_rfc3339().into(),
         now.to_rfc3339().into(),
     ]).await?;
@@ -1183,14 +1202,17 @@ async fn insert_weekend_outdoor_task(rb: &RBatis, user_id: &str, target_rate: f6
     info!("週末任務: 目標完成率 {:.1}%, 需要歷史天數 {}, 開始日期: {}", 
           target_rate * 100.0, actual_history_days, start_date.format("%Y-%m-%d"));
     
+    let skill_tags = vec!["適應力", "毅力"];
+    let skill_tags_json = serde_json::to_string(&skill_tags).unwrap_or_default();
+    
     let sql = r#"
         INSERT INTO task (
             id, user_id, title, description, status, priority, task_type, 
             difficulty, experience, is_parent_task, is_recurring, 
             recurrence_pattern, start_date, end_date, completion_target, 
-            completion_rate, created_at, updated_at
+            completion_rate, skill_tags, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     "#;
     
     rb.exec(sql, vec![
@@ -1210,6 +1232,7 @@ async fn insert_weekend_outdoor_task(rb: &RBatis, user_id: &str, target_rate: f6
         end_date.to_rfc3339().into(),
         target_rate.into(), // completion_target
         0.0f64.into(), // completion_rate
+        skill_tags_json.into(), // skill_tags
         now.to_rfc3339().into(),
         now.to_rfc3339().into(),
     ]).await?;
