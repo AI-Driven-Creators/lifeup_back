@@ -128,7 +128,7 @@ async fn main() -> std::io::Result<()> {
             .route("/api/skills", web::get().to(get_skills))
             .route("/api/skills", web::post().to(create_skill))
             .route("/api/skills/{id}/experience", web::put().to(update_skill_experience))
-            .route("/api/tasks/skill/{skill_name}", web::get().to(get_tasks_by_skill))
+            .route("/api/skills/{skill_name}/tasks", web::get().to(get_tasks_by_skill))
             // 聊天相關路由
             .route("/api/chat/messages", web::get().to(get_chat_messages))
             .route("/api/chat/send", web::post().to(send_message))
