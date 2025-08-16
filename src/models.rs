@@ -89,7 +89,7 @@ where
 }
 
 // 自定義反序列化函數處理skill_tags字段
-fn deserialize_skill_tags<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+fn deserialize_skill_tags<'de, D>(deserializer: D) -> Result<Option<Vec<String>>, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -97,13 +97,41 @@ where
     match opt {
         Some(value) => {
             match value {
-                serde_json::Value::String(s) => Ok(Some(s)),
-                serde_json::Value::Array(_) => {
-                    // 如果是陣列，轉換為JSON字符串
-                    Ok(Some(value.to_string()))
+                serde_json::Value::String(s) => {
+                    // 嘗試解析 JSON 字符串為數組
+                    if s.is_empty() {
+                        Ok(None)
+                    } else {
+                        match serde_json::from_str::<Vec<String>>(&s) {
+                            Ok(vec) => {
+                                log::info!("deserialize_skill_tags {:?}", vec);
+                                Ok(Some(vec))
+                            }
+                            Err(_) => {
+                                log::error!("deserialize_skill_tags {:?}", s);
+                                // 如果解析失敗，將字符串作為單個元素
+                                Ok(Some(vec![s]))
+                            }
+                        }
+                    }
+                },
+                serde_json::Value::Array(arr) => {
+                    // 直接處理數組
+                    let string_vec: Vec<String> = arr.into_iter()
+                        .map(|v| match v {
+                            serde_json::Value::String(s) => s,
+                            _ => v.to_string()
+                        })
+                        .collect();
+                    log::info!("deserialize_skill_tags {:?}", string_vec);
+                    Ok(Some(string_vec))
                 },
                 serde_json::Value::Null => Ok(None),
-                _ => Ok(Some(value.to_string())),
+                _ => {
+                    log::error!("deserialize_skill_tags {:?}", value);
+                    // 其他類型轉換為字符串作為單個元素
+                    Ok(Some(vec![value.to_string()]))
+                },
             }
         },
         None => Ok(None),
@@ -154,7 +182,7 @@ pub struct Task {
     #[serde(default, deserialize_with = "deserialize_optional_datetime")]
     pub last_cancelled_at: Option<DateTime<Utc>>, // 最後取消時間
     #[serde(default, deserialize_with = "deserialize_skill_tags")]
-    pub skill_tags: Option<String>, // 相關技能標籤，JSON格式儲存["Vue.js", "JavaScript"]
+    pub skill_tags: Option<Vec<String>>, // 相關技能標籤，JSON格式儲存["Vue.js", "JavaScript"]
 }
 crud!(Task{});
 
@@ -281,6 +309,13 @@ pub struct UpdateSkillExperienceRequest {
 #[derive(Deserialize)]
 pub struct ChatRequest {
     pub message: String,
+}
+
+// AI 生成任務請求
+#[derive(Deserialize)]
+pub struct GenerateTaskRequest {
+    pub description: String,
+    pub user_id: Option<String>,
 }
 
 // 建立重複性任務的請求

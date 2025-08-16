@@ -3,8 +3,10 @@ use rbatis::RBatis;
 use uuid::Uuid;
 use chrono::{Utc, Datelike};
 use crate::models::*;
+use crate::ai_service::{OpenAIService, convert_to_task_model};
 use rbs::{Value, value};
 use serde_json::json;
+use rand;
 
 // API 回應結構
 #[derive(serde::Serialize)]
@@ -139,7 +141,7 @@ pub async fn create_task(
         task_date: None,
         cancel_count: Some(0),
         last_cancelled_at: None,
-        skill_tags: req.skill_tags.as_ref().map(|tags| serde_json::to_string(tags).unwrap_or_default()),
+        skill_tags: req.skill_tags.clone(),
     };
 
     match Task::insert(rb.get_ref(), &new_task).await {
@@ -1894,6 +1896,246 @@ pub async fn get_weekly_attributes(
     }
 }
 
+// AI 生成任務
+pub async fn generate_task_with_ai(
+    rb: web::Data<RBatis>,
+    req: web::Json<GenerateTaskRequest>,
+) -> Result<HttpResponse> {
+    // 從環境變數獲取 OpenAI API Key
+    let api_key = match std::env::var("OPENAI_API_KEY") {
+        Ok(key) => key,
+        Err(_) => {
+            log::error!("未設置 OPENAI_API_KEY 環境變數");
+            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: "未配置 OpenAI API Key，請聯繫管理員".to_string(),
+            }));
+        }
+    };
+    
+    let openai_service = OpenAIService::new(api_key);
+    
+    // 生成任務
+    match openai_service.generate_task_from_text(&req.description).await {
+        Ok(ai_task) => {
+            log::info!("AI 成功生成任務: {:?}", ai_task);
+            
+            // 決定使用者 ID - 如果沒有提供，先查詢或建立預設用戶
+            let user_id = if let Some(id) = req.user_id.clone() {
+                id
+            } else {
+                // 查詢是否有預設測試用戶
+                match User::select_by_map(rb.get_ref(), value!{"email": "test@lifeup.com"}).await {
+                    Ok(users) if !users.is_empty() => {
+                        users[0].id.clone().unwrap()
+                    }
+                    _ => {
+                        // 建立預設測試用戶
+                        let test_user = User {
+                            id: Some(Uuid::new_v4().to_string()),
+                            name: Some("測試用戶".to_string()),
+                            email: Some("test@lifeup.com".to_string()),
+                            created_at: Some(Utc::now()),
+                            updated_at: Some(Utc::now()),
+                        };
+                        
+                        match User::insert(rb.get_ref(), &test_user).await {
+                            Ok(_) => {
+                                log::info!("已自動建立測試用戶");
+                                test_user.id.unwrap()
+                            }
+                            Err(e) => {
+                                log::error!("建立測試用戶失敗: {}", e);
+                                return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                                    success: false,
+                                    data: None,
+                                    message: format!("建立測試用戶失敗: {}", e),
+                                }));
+                            }
+                        }
+                    }
+                }
+            };
+            
+            // 轉換為資料庫模型
+            let task = convert_to_task_model(ai_task.clone(), user_id.clone());
+            
+            // 儲存到資料庫
+            match Task::insert(rb.get_ref(), &task).await {
+                Ok(_) => {
+                    log::info!("任務已成功儲存到資料庫");
+                    
+                    // 如果是重複性任務，自動生成所有的子任務
+                    let mut daily_tasks = Vec::new();
+                    if ai_task.is_recurring && ai_task.recurrence_pattern.is_some() {
+                        let pattern = ai_task.recurrence_pattern.as_deref().unwrap();
+                        
+                        // 解析開始和結束日期
+                        let start_date = if let Some(start_str) = &ai_task.start_date {
+                            chrono::DateTime::parse_from_rfc3339(start_str)
+                                .ok()
+                                .map(|dt| dt.with_timezone(&Utc))
+                                .unwrap_or_else(|| Utc::now())
+                        } else {
+                            Utc::now()
+                        };
+                        
+                        let end_date = if let Some(end_str) = &ai_task.end_date {
+                            chrono::DateTime::parse_from_rfc3339(end_str)
+                                .ok()
+                                .map(|dt| dt.with_timezone(&Utc))
+                        } else {
+                            // 如果沒有結束日期，預設為3個月後
+                            Some(Utc::now() + chrono::Duration::days(90))
+                        };
+                        
+                        // 計算需要生成的天數
+                        let days_to_generate = if let Some(end) = end_date {
+                            (end.date_naive() - start_date.date_naive()).num_days() + 1
+                        } else {
+                            90 // 預設生成90天
+                        };
+                        
+                        log::info!("準備生成 {} 天的重複性任務，模式: {}", days_to_generate, pattern);
+                        
+                        // 批量收集要插入的任務
+                        let mut tasks_to_insert = Vec::new();
+                        
+                        for day_offset in 0..days_to_generate {
+                            let current_date = start_date + chrono::Duration::days(day_offset);
+                            let weekday = current_date.weekday();
+                            let date_str = current_date.format("%Y-%m-%d").to_string();
+                            
+                            // 根據重複模式決定是否在這一天建立任務
+                            let should_create = match pattern {
+                                "daily" => true,
+                                "weekdays" => {
+                                    weekday != chrono::Weekday::Sat && 
+                                    weekday != chrono::Weekday::Sun
+                                },
+                                "weekends" => {
+                                    weekday == chrono::Weekday::Sat || 
+                                    weekday == chrono::Weekday::Sun
+                                },
+                                "weekly" => {
+                                    // 每週的同一天（以開始日期的星期幾為準）
+                                    weekday == start_date.weekday()
+                                },
+                                _ => false,
+                            };
+                            
+                            if should_create {
+                                let daily_task = Task {
+                                    id: Some(Uuid::new_v4().to_string()),
+                                    user_id: Some(user_id.clone()),
+                                    title: Some(format!("{} - {}", ai_task.title, date_str)),
+                                    description: ai_task.description.clone(),
+                                    status: Some(if current_date.date_naive() == Utc::now().date_naive() {
+                                        0 // 今天的任務設為待完成
+                                    } else if current_date < Utc::now() {
+                                        // 過去的任務隨機設定完成狀態
+                                        if rand::random::<f64>() < ai_task.completion_target.unwrap_or(0.8) {
+                                            TaskStatus::DailyCompleted.to_i32()
+                                        } else {
+                                            TaskStatus::DailyNotCompleted.to_i32()
+                                        }
+                                    } else {
+                                        0 // 未來的任務設為待完成
+                                    }),
+                                    priority: Some(ai_task.priority),
+                                    task_type: Some("daily_recurring".to_string()),
+                                    difficulty: Some(ai_task.difficulty),
+                                    experience: Some(ai_task.experience),
+                                    parent_task_id: task.id.clone(),
+                                    is_parent_task: Some(0),
+                                    task_order: Some(day_offset as i32 + 1),
+                                    due_date: Some(current_date.date_naive().and_hms_opt(23, 59, 59).unwrap().and_utc()),
+                                    created_at: Some(Utc::now()),
+                                    updated_at: Some(if current_date < Utc::now() {
+                                        current_date.date_naive().and_hms_opt(20, 0, 0).unwrap().and_utc()
+                                    } else {
+                                        Utc::now()
+                                    }),
+                                    is_recurring: Some(0),
+                                    recurrence_pattern: None,
+                                    start_date: None,
+                                    end_date: None,
+                                    completion_target: None,
+                                    completion_rate: None,
+                                    task_date: Some(date_str),
+                                    cancel_count: Some(0),
+                                    last_cancelled_at: None,
+                                    skill_tags: None,
+                                };
+                                
+                                tasks_to_insert.push(daily_task);
+                            }
+                        }
+                        
+                        // 批量插入所有子任務
+                        let total_tasks = tasks_to_insert.len();
+                        for task_batch in tasks_to_insert {
+                            if let Ok(_) = Task::insert(rb.get_ref(), &task_batch).await {
+                                daily_tasks.push(task_batch);
+                            }
+                        }
+                        
+                        log::info!("成功生成 {} 個子任務", daily_tasks.len());
+                        
+                        // 更新父任務的完成率
+                        if !daily_tasks.is_empty() {
+                            let completed_count = daily_tasks.iter()
+                                .filter(|t| t.status == Some(TaskStatus::DailyCompleted.to_i32()))
+                                .count();
+                            let completion_rate = completed_count as f64 / total_tasks as f64;
+                            
+                            // 更新父任務的完成率
+                            let update_sql = "UPDATE task SET completion_rate = ? WHERE id = ?";
+                            let _ = rb.exec(update_sql, vec![
+                                rbs::Value::F64(completion_rate),
+                                rbs::Value::String(task.id.clone().unwrap()),
+                            ]).await;
+                        }
+                    }
+                    
+                    Ok(HttpResponse::Created().json(ApiResponse {
+                        success: true,
+                        data: Some(serde_json::json!({
+                            "task": task,
+                            "ai_generated": ai_task,
+                            "daily_tasks": daily_tasks,
+                            "daily_tasks_created": daily_tasks.len()
+                        })),
+                        message: if daily_tasks.is_empty() {
+                            "任務生成並儲存成功".to_string()
+                        } else {
+                            format!("任務生成並儲存成功，已建立 {} 個今日任務", daily_tasks.len())
+                        },
+                    }))
+                }
+                Err(e) => {
+                    log::error!("儲存任務失敗: {}", e);
+                    Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                        success: false,
+                        data: None,
+                        message: format!("儲存任務失敗: {}", e),
+                    }))
+                }
+            }
+        }
+        Err(e) => {
+            log::error!("AI 生成任務失敗: {}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("AI 生成任務失敗: {}", e),
+            }))
+        }
+    }
+}
+
+
 // ChatGPT 聊天API端點
 #[derive(serde::Deserialize)]
 pub struct ChatGPTRequest {
@@ -2018,3 +2260,6 @@ async fn call_chatgpt_api(message: &str) -> Result<String, Box<dyn std::error::E
     log::info!("成功獲取ChatGPT回應");
     Ok(content.to_string())
 } 
+
+
+

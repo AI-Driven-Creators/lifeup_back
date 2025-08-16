@@ -3,6 +3,11 @@ name = "lifeup_back"
 version = "0.1.0"
 edition = "2021"
 
+
+# 隱藏所有編譯器警告
+[lints.rust]
+warnings = "allow"
+
 [dependencies]
 # Web 框架
 actix-web = "4.4"
@@ -14,9 +19,6 @@ rbatis = { version = "4.6" }
 
 # 数据库驱动 (选择您需要的数据库)
 rbdc-sqlite = { version = "4.6" }
-# rbdc-mysql = { version = "4.6" }
-# rbdc-pg = { version = "4.6" }
-# rbdc-mssql = { version = "4.6" }
 
 # 序列化
 serde = { version = "1.0", features = ["derive"] }
@@ -54,3 +56,6 @@ rand = "0.8"
 
 # HTTP 客戶端
 reqwest = { version = "0.11", features = ["json"] }
+
+# JSON Schema 驗證
+jsonschema = "0.17"
