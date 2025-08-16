@@ -194,25 +194,7 @@ export ENVIRONMENT="development"
 
 ## 資料庫支援
 
-預設使用 SQLite，如需使用其他資料庫，請：
-
-1. 在 `Cargo.toml` 中啟用對應的資料庫驅動
-2. 修改 `DATABASE_URL` 環境變數
-
-### MySQL
-```toml
-rbdc-mysql = { version = "4.6" }
-```
-
-### PostgreSQL
-```toml
-rbdc-pg = { version = "4.6" }
-```
-
-### SQL Server
-```toml
-rbdc-mssql = { version = "4.6" }
-```
+使用 SQLite
 
 ## 開發
 

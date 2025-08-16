@@ -3,6 +3,7 @@ mod models;
 mod routes;
 mod database_reset;
 mod seed_data;
+mod ai_service;
 
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
@@ -142,6 +143,9 @@ async fn main() -> std::io::Result<()> {
             .route("/api/users/{user_id}/achievements/{achievement_id}/unlock", web::post().to(unlock_user_achievement))
             // 週屬性相關路由
             .route("/api/users/{user_id}/attributes/weekly/{weeks_ago}", web::get().to(get_weekly_attributes))
+            
+            // AI 任務生成路由
+            .route("/api/tasks/generate", web::post().to(generate_task_with_ai))
     })
     .workers(2)
     .bind(&server_addr)?
