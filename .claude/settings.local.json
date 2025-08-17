@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sqlite3:*)",
+      "Bash(cargo run:*)",
+      "Bash(cargo check:*)",
+      "Bash(curl:*)"
+    ],
+    "deny": []
+  }
+}

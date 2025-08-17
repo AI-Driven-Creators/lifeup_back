@@ -142,6 +142,7 @@ async fn main() -> std::io::Result<()> {
             .route("/api/skills/{skill_name}/tasks", web::get().to(get_tasks_by_skill))
             // 聊天相關路由
             .route("/api/chat/messages", web::get().to(get_chat_messages))
+            .route("/api/chat/messages/all", web::get().to(get_all_chat_messages))
             .route("/api/chat/send", web::post().to(send_message))
             .route("/api/chat/chatgpt", web::post().to(send_message_to_chatgpt))
             .route("/api/chat/test", web::get().to(test_endpoint))
