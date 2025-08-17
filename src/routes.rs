@@ -295,12 +295,55 @@ pub async fn update_skill_experience(
 
 // 聊天相關路由
 pub async fn get_chat_messages(rb: web::Data<RBatis>) -> Result<HttpResponse> {
-    match ChatMessage::select_all(rb.get_ref()).await {
-        Ok(messages) => Ok(HttpResponse::Ok().json(ApiResponse {
-            success: true,
-            data: Some(messages),
-            message: "獲取聊天記錄成功".to_string(),
+    // 修改為只獲取最後 30 條記錄
+    let sql = r#"
+        SELECT * FROM chat_message 
+        ORDER BY created_at DESC, role DESC 
+        LIMIT 30
+    "#;
+    
+    match rb.query_decode::<Vec<ChatMessage>>(sql, vec![]).await {
+        Ok(mut messages) => {
+            // 反轉順序，讓最早的消息在前
+            messages.reverse();
+            Ok(HttpResponse::Ok().json(ApiResponse {
+                success: true,
+                data: Some(messages),
+                message: "獲取聊天記錄成功".to_string(),
+            }))
+        },
+        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: format!("獲取聊天記錄失敗: {}", e),
         })),
+    }
+}
+
+// 獲取所有聊天記錄（用於下載）
+pub async fn get_all_chat_messages(rb: web::Data<RBatis>) -> Result<HttpResponse> {
+    match ChatMessage::select_all(rb.get_ref()).await {
+        Ok(messages) => {
+            // 將對話記錄轉換為文本格式
+            let mut text_content = String::from("=== AI 教練對話記錄 ===\n\n");
+            
+            for msg in messages {
+                let role = msg.role.unwrap_or_else(|| "unknown".to_string());
+                let content = msg.content.unwrap_or_else(|| "".to_string());
+                let time = msg.created_at
+                    .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                    .unwrap_or_else(|| "未知時間".to_string());
+                
+                let role_display = if role == "user" { "用戶" } else { "AI教練" };
+                text_content.push_str(&format!("[{}] {} - {}\n{}\n\n", time, role_display, role, content));
+            }
+            
+            // 返回文本檔案
+            Ok(HttpResponse::Ok()
+                .content_type("text/plain; charset=utf-8")
+                .insert_header(("Content-Disposition", "attachment; filename=\"chat_history.txt\""))
+                .body(text_content))
+        },
         Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
             success: false,
             data: None,
@@ -1939,8 +1982,20 @@ pub async fn send_message_to_chatgpt(
     log::info!("收到ChatGPT API請求: {}", req.message);
     let now = Utc::now();
     
-    // 暫時跳過資料庫儲存，因為沒有實作使用者系統
-    log::info!("跳過資料庫儲存（未實作使用者系統）");
+    // 儲存使用者訊息到資料庫
+    let user_message = ChatMessage {
+        id: Some(Uuid::new_v4().to_string()),
+        user_id: Some("fccc3935-74ae-4cde-814c-3679116aaad3".to_string()), // 使用實際存在的用戶ID
+        role: Some("user".to_string()),
+        content: Some(req.message.clone()),
+        created_at: Some(now),
+    };
+    
+    if let Err(e) = ChatMessage::insert(rb.get_ref(), &user_message).await {
+        log::error!("儲存使用者訊息失敗: {}", e);
+    } else {
+        log::info!("成功儲存使用者訊息");
+    }
 
     // 呼叫ChatGPT API或使用本地回應
     let ai_response = match call_chatgpt_api(&req.message).await {
@@ -1954,8 +2009,21 @@ pub async fn send_message_to_chatgpt(
         }
     };
     
-    // 暫時跳過AI回覆的資料庫儲存
-    log::info!("準備回傳回應（跳過資料庫儲存）");
+    // 儲存AI回覆到資料庫，確保時間戳晚於用戶訊息
+    let assistant_now = Utc::now();
+    let assistant_message = ChatMessage {
+        id: Some(Uuid::new_v4().to_string()),
+        user_id: Some("fccc3935-74ae-4cde-814c-3679116aaad3".to_string()),
+        role: Some("assistant".to_string()),
+        content: Some(ai_response.clone()),
+        created_at: Some(assistant_now),
+    };
+    
+    if let Err(e) = ChatMessage::insert(rb.get_ref(), &assistant_message).await {
+        log::error!("儲存AI回覆失敗: {}", e);
+    } else {
+        log::info!("成功儲存AI回覆");
+    }
     
     let response_data = json!({
         "output": [{
