@@ -67,7 +67,14 @@ impl OpenAIService {
     }
 
     pub async fn generate_task_from_text(&self, user_input: &str) -> Result<AIGeneratedTask> {
-        let system_prompt = r#"你是一個任務規劃助手。根據用戶的自然語言描述，生成結構化的任務資料。
+        // 獲取當前時間並格式化
+        let now = Utc::now();
+        let current_time_str = now.to_rfc3339(); // e.g., "2025-08-17T12:00:00Z"
+
+        let system_prompt = format!(
+            r#"你是一個任務規劃助手。根據用戶的自然語言描述，生成結構化的任務資料。
+
+**重要：現在的時間是 {}。** 在生成任何與日期相關的欄位（如 start_date, due_date）時，請以此時間為基準進行推算。例如，如果使用者說「明天」，你應該計算出對應的日期。
 
 任務類型說明：
 - main: 主要任務（重要的長期目標）
@@ -86,7 +93,7 @@ impl OpenAIService {
 - weekly: 每週
 
 請以 JSON 格式回應，包含以下欄位：
-{
+{{ 
   "title": "任務標題",
   "description": "任務描述（選填）",
   "task_type": "main/side/challenge/daily",
@@ -99,7 +106,7 @@ impl OpenAIService {
   "start_date": null,
   "end_date": null,
   "completion_target": null
-}
+}}
 
 如果是重複性任務，請設置：
 - is_recurring: true
@@ -109,7 +116,7 @@ impl OpenAIService {
 
 範例輸入："每天早上跑步30分鐘"
 範例輸出：
-{
+{{ 
   "title": "晨跑30分鐘",
   "description": "每天早上進行30分鐘的慢跑運動",
   "task_type": "daily",
@@ -122,7 +129,9 @@ impl OpenAIService {
   "start_date": "2024-01-01T06:00:00Z",
   "end_date": null,
   "completion_target": 0.8
-}"#;
+}}"#,
+            current_time_str
+        );
 
         let user_message = format!("請根據以下描述生成任務：{}", user_input);
 
@@ -131,7 +140,7 @@ impl OpenAIService {
             messages: vec![
                 ChatMessage {
                     role: "system".to_string(),
-                    content: system_prompt.to_string(),
+                    content: system_prompt,
                 },
                 ChatMessage {
                     role: "user".to_string(),
