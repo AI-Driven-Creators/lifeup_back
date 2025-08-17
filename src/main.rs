@@ -4,6 +4,7 @@ mod routes;
 mod database_reset;
 mod seed_data;
 mod ai_service;
+mod ai_tasks;
 mod achievement_service;
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
@@ -154,7 +155,10 @@ async fn main() -> std::io::Result<()> {
             .route("/api/users/{user_id}/attributes/weekly/{weeks_ago}", web::get().to(get_weekly_attributes))
             
             // AI 任務生成路由
-            .route("/api/tasks/generate", web::post().to(generate_task_with_ai))
+            .route("/api/tasks/generate", web::post().to(crate::ai_tasks::generate_task_with_ai))
+            .route("/api/tasks/generate-json", web::post().to(crate::ai_tasks::generate_task_json))
+            .route("/api/tasks/insert-json", web::post().to(crate::ai_tasks::insert_task_from_json))
+            .route("/api/tasks/create-from-json", web::post().to(crate::ai_tasks::create_task_from_json))
     })
     .workers(2)
     .bind(&server_addr)?
