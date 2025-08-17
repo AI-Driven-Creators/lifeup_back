@@ -1705,61 +1705,71 @@ pub async fn get_achievements(rb: web::Data<RBatis>) -> Result<HttpResponse> {
     }
 }
 
-// 獲取用戶成就狀態
+// 獲取用戶已解鎖的成就
 pub async fn get_user_achievements(
     rb: web::Data<RBatis>,
     path: web::Path<String>,
 ) -> Result<HttpResponse> {
     let user_id = path.into_inner();
-    
-    // 先獲取所有成就
-    match Achievement::select_all(rb.get_ref()).await {
-        Ok(all_achievements) => {
-            // 獲取用戶已解鎖的成就
-            match UserAchievement::select_by_map(rb.get_ref(), value!{"user_id": user_id}).await {
-                Ok(user_achievements) => {
-                    // 組合數據
-                    let mut result = Vec::new();
-                    
-                    for achievement in all_achievements {
-                        // 查找是否已解鎖
-                        let user_achievement = user_achievements.iter()
-                            .find(|ua| ua.achievement_id == achievement.id);
-                        
-                        let achievement_data = serde_json::json!({
-                            "id": achievement.id,
-                            "name": achievement.name,
-                            "description": achievement.description,
-                            "icon": achievement.icon,
-                            "category": achievement.category,
-                            "requirement_type": achievement.requirement_type,
-                            "requirement_value": achievement.requirement_value,
-                            "experience_reward": achievement.experience_reward,
-                            "unlocked": user_achievement.is_some(),
-                            "progress": user_achievement.map(|ua| ua.progress.unwrap_or(0)).unwrap_or(0),
-                            "achieved_at": user_achievement.and_then(|ua| ua.achieved_at.as_ref().map(|dt| dt.to_string()))
-                        });
-                        
-                        result.push(achievement_data);
-                    }
-                    
-                    Ok(HttpResponse::Ok().json(ApiResponse {
-                        success: true,
-                        data: Some(result),
-                        message: "獲取用戶成就狀態成功".to_string(),
-                    }))
-                }
-                Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
-                    success: false,
-                    data: None,
-                    message: format!("獲取用戶成就關聯失敗: {}", e),
-                })),
-            }
+
+    // 使用 SQL JOIN 查詢直接獲取用戶已解鎖的成就及其詳細資訊
+    let sql = r#"
+        SELECT
+            a.id, a.name, a.description, a.icon, a.category,
+            a.requirement_type, a.requirement_value, a.experience_reward,
+            ua.achieved_at, ua.progress
+        FROM
+            achievement a
+        JOIN
+            user_achievement ua ON a.id = ua.achievement_id
+        WHERE
+            ua.user_id = ?
+    "#;
+
+    // 定義一個結構來接收查詢結果
+    #[derive(serde::Serialize, serde::Deserialize, Clone)]
+    struct UnlockedAchievementData {
+        id: Option<String>,
+        name: Option<String>,
+        description: Option<String>,
+        icon: Option<String>,
+        category: Option<String>,
+        requirement_type: Option<String>,
+        requirement_value: Option<i32>,
+        experience_reward: Option<i32>,
+        achieved_at: Option<chrono::DateTime<chrono::Utc>>,
+        progress: Option<i32>,
+    }
+
+    match rb.query_decode::<Vec<UnlockedAchievementData>>(sql, vec![rbs::Value::String(user_id)]).await {
+        Ok(unlocked_achievements) => {
+            // 組合數據，添加 unlocked: true 字段
+            let result: Vec<serde_json::Value> = unlocked_achievements.iter().map(|ach| {
+                serde_json::json!({
+                    "id": ach.id,
+                    "name": ach.name,
+                    "description": ach.description,
+                    "icon": ach.icon,
+                    "category": ach.category,
+                    "requirement_type": ach.requirement_type,
+                    "requirement_value": ach.requirement_value,
+                    "experience_reward": ach.experience_reward,
+                    "unlocked": true, // 因為查詢結果都是已解鎖的
+                    "progress": ach.progress,
+                    "achieved_at": ach.achieved_at.as_ref().map(|dt| dt.to_string())
+                })
+            }).collect();
+
+            Ok(HttpResponse::Ok().json(ApiResponse {
+                success: true,
+                data: Some(result),
+                message: "獲取用戶已解鎖的成就成功".to_string(),
+            }))
         }
         Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
             success: false,
             data: None,
-            message: format!("獲取成就列表失敗: {}", e),
+            message: format!("獲取用戶成就失敗: {}", e),
         })),
     }
 }
