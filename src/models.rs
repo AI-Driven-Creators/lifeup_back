@@ -104,11 +104,9 @@ where
                     } else {
                         match serde_json::from_str::<Vec<String>>(&s) {
                             Ok(vec) => {
-                                log::info!("deserialize_skill_tags {:?}", vec);
                                 Ok(Some(vec))
                             }
                             Err(_) => {
-                                log::error!("deserialize_skill_tags {:?}", s);
                                 // 如果解析失敗，將字符串作為單個元素
                                 Ok(Some(vec![s]))
                             }
@@ -123,12 +121,10 @@ where
                             _ => v.to_string()
                         })
                         .collect();
-                    log::info!("deserialize_skill_tags {:?}", string_vec);
                     Ok(Some(string_vec))
                 },
                 serde_json::Value::Null => Ok(None),
                 _ => {
-                    log::error!("deserialize_skill_tags {:?}", value);
                     // 其他類型轉換為字符串作為單個元素
                     Ok(Some(vec![value.to_string()]))
                 },
@@ -166,7 +162,9 @@ pub struct Task {
     pub task_order: Option<i32>, // 任務排序
     #[serde(default, deserialize_with = "deserialize_optional_datetime")]
     pub due_date: Option<DateTime<Utc>>,
+    #[serde(default, deserialize_with = "deserialize_optional_datetime")]
     pub created_at: Option<DateTime<Utc>>,
+    #[serde(default, deserialize_with = "deserialize_optional_datetime")]
     pub updated_at: Option<DateTime<Utc>>,
     // 重複性任務相關欄位
     pub is_recurring: Option<i32>, // 是否為重複性任務（0/1）
