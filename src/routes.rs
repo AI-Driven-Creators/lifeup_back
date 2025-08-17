@@ -418,11 +418,22 @@ pub async fn update_task(
                 ).await;
                 
                 match result {
-                    Ok(_) => Ok(HttpResponse::Ok().json(ApiResponse {
-                        success: true,
-                        data: Some(task),
-                        message: "任務更新成功".to_string(),
-                    })),
+                    Ok(_) => {
+                        // 如果這是子任務且狀態更新為已完成，檢查是否需要更新父任務狀態
+                        if let Some(parent_task_id) = &task.parent_task_id {
+                            if task.status == Some(2) { // 2 = completed
+                                if let Err(e) = check_and_update_parent_task_status(rb.get_ref(), parent_task_id).await {
+                                    log::warn!("檢查父任務狀態時發生錯誤: {}", e);
+                                }
+                            }
+                        }
+                        
+                        Ok(HttpResponse::Ok().json(ApiResponse {
+                            success: true,
+                            data: Some(task),
+                            message: "任務更新成功".to_string(),
+                        }))
+                    },
                     Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
                         success: false,
                         data: None,
@@ -2259,7 +2270,65 @@ async fn call_chatgpt_api(message: &str) -> Result<String, Box<dyn std::error::E
 
     log::info!("成功獲取ChatGPT回應");
     Ok(content.to_string())
-} 
+}
+
+// 檢查並更新父任務狀態
+async fn check_and_update_parent_task_status(rb: &RBatis, parent_task_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+    log::info!("檢查父任務 {} 的狀態", parent_task_id);
+    
+    // 查詢所有子任務
+    let subtasks = Task::select_by_map(rb, value!{"parent_task_id": parent_task_id}).await?;
+    
+    if subtasks.is_empty() {
+        log::info!("父任務 {} 沒有子任務", parent_task_id);
+        return Ok(());
+    }
+    
+    // 統計子任務狀態
+    let total_subtasks = subtasks.len();
+    let completed_subtasks = subtasks.iter()
+        .filter(|task| task.status == Some(2) || task.status == Some(6)) // completed 或 daily_completed
+        .count();
+    
+    log::info!("父任務 {} 有 {} 個子任務，其中 {} 個已完成", parent_task_id, total_subtasks, completed_subtasks);
+    
+    // 如果所有子任務都完成了，更新父任務為完成狀態
+    if completed_subtasks == total_subtasks {
+        log::info!("所有子任務已完成，更新父任務 {} 為完成狀態", parent_task_id);
+        
+        let update_sql = "UPDATE task SET status = ?, updated_at = ? WHERE id = ?";
+        rb.exec(
+            update_sql,
+            vec![
+                Value::I32(2), // completed status
+                Value::String(Utc::now().to_string()),
+                Value::String(parent_task_id.to_string()),
+            ],
+        ).await?;
+        
+        log::info!("父任務 {} 狀態更新成功", parent_task_id);
+    } else {
+        // 如果還有未完成的子任務，確保父任務保持進行中狀態
+        let parent_task = Task::select_by_map(rb, value!{"id": parent_task_id}).await?;
+        if let Some(parent) = parent_task.first() {
+            if parent.status != Some(1) { // 如果不是進行中狀態
+                log::info!("父任務 {} 有未完成子任務，更新為進行中狀態", parent_task_id);
+                
+                let update_sql = "UPDATE task SET status = ?, updated_at = ? WHERE id = ?";
+                rb.exec(
+                    update_sql,
+                    vec![
+                        Value::I32(1), // in_progress status
+                        Value::String(Utc::now().to_string()),
+                        Value::String(parent_task_id.to_string()),
+                    ],
+                ).await?;
+            }
+        }
+    }
+    
+    Ok(())
+}
 
 
 
