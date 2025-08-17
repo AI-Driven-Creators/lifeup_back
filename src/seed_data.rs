@@ -4,6 +4,7 @@ use chrono::{Utc, Duration, Datelike, NaiveDate};
 use log::{info, error};
 use rand::Rng;
 use crate::models::TaskStatus;
+use crate::achievement_service::AchievementService; // 引入成就服務
 
 /// 插入種子數據到數據庫
 pub async fn seed_database(rb: &RBatis) -> Result<(), Box<dyn std::error::Error>> {
@@ -30,8 +31,20 @@ pub async fn seed_database(rb: &RBatis) -> Result<(), Box<dyn std::error::Error>
     // 插入成就數據
     insert_achievements(rb).await?;
     
-    // 插入用戶成就關聯
-    insert_user_achievements(rb, &user_id).await?;
+    // 根據現有數據，檢查並解鎖成就
+    info!("正在根據種子數據檢查並解鎖成就...");
+    match AchievementService::check_and_unlock_achievements(rb, &user_id).await {
+        Ok(unlocked) if !unlocked.is_empty() => {
+            let names: Vec<String> = unlocked.iter().map(|a| a.name.clone().unwrap_or_default()).collect();
+            info!("成功為測試用戶解鎖了 {} 個成就: {}", unlocked.len(), names.join(", "));
+        }
+        Ok(_) => {
+            info!("根據種子數據，沒有新的成就被解鎖。");
+        }
+        Err(e) => {
+            error!("檢查種子數據成就時出錯: {}", e);
+        }
+    }
     
     // 插入每日進度數據
     insert_daily_progress(rb, &user_id).await?;
@@ -830,7 +843,7 @@ async fn insert_achievements(rb: &RBatis) -> Result<(), Box<dyn std::error::Erro
         ("社交達人", "社交力屬性達到 80", "👥", "attribute", "social_attribute", 80, 100),
         ("專注力王", "專注力屬性達到 90", "🎯", "attribute", "focus_attribute", 90, 120),
         ("創意無限", "創造力屬性達到 85", "🎨", "attribute", "creativity_attribute", 85, 110),
-        ("智慧之光", "智力屬性達到 90", "💡", "attribute", "intelligence_attribute", 90, 130),
+        ("智慧之光", "智力屬性達到 80", "💡", "attribute", "intelligence_attribute", 80, 130),
         ("堅毅如山", "毅力屬性達到 80", "⛰️", "attribute", "endurance_attribute", 80, 100),
         ("靈活應變", "適應力屬性達到 85", "🌊", "attribute", "adaptability_attribute", 85, 115),
     ];
@@ -863,40 +876,7 @@ async fn insert_achievements(rb: &RBatis) -> Result<(), Box<dyn std::error::Erro
     Ok(())
 }
 
-/// 插入用戶成就關聯 (已達成的成就)
-async fn insert_user_achievements(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn std::error::Error>> {
-    // 獲取前幾個成就作為已達成
-    let achieved_names = vec!["第一步", "學習達人", "智慧之光"];
-    
-    // 先查詢這些成就的 ID
-    for achievement_name in achieved_names {
-        let achievement_query = r#"SELECT id FROM achievement WHERE name = ?"#;
-        let achievement_result: Vec<serde_json::Value> = rb.query_decode(achievement_query, vec![achievement_name.into()]).await?;
-        
-        if let Some(achievement) = achievement_result.first() {
-            if let Some(achievement_id) = achievement.get("id").and_then(|v| v.as_str()) {
-                let user_achievement_id = Uuid::new_v4().to_string();
-                let achieved_at = (Utc::now() - Duration::days(5)).to_rfc3339();
-                
-                let sql = r#"
-                    INSERT INTO user_achievement (id, user_id, achievement_id, achieved_at, progress)
-                    VALUES (?, ?, ?, ?, ?)
-                "#;
-                
-                rb.exec(sql, vec![
-                    user_achievement_id.into(),
-                    user_id.into(),
-                    achievement_id.into(),
-                    achieved_at.into(),
-                    100i32.into(), // 完成進度
-                ]).await?;
-            }
-        }
-    }
 
-    info!("用戶成就關聯插入完成");
-    Ok(())
-}
 
 /// 插入每日進度數據
 async fn insert_daily_progress(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn std::error::Error>> {
