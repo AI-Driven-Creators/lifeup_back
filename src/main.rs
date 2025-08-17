@@ -4,6 +4,7 @@ mod routes;
 mod database_reset;
 mod seed_data;
 mod ai_service;
+mod achievement_service;
 
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
