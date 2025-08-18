@@ -4,6 +4,9 @@ use rbatis::RBatis;
 use uuid::Uuid;
 use chrono::{Utc, Duration, Datelike, NaiveDate};
 use log::{info, error};
+use rand::Rng;
+use crate::models::TaskStatus;
+use crate::achievement_service::AchievementService;
 
 /// 插入種子數據到數據庫
 pub async fn seed_database(rb: &RBatis) -> Result<(), Box<dyn std::error::Error>> {

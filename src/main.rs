@@ -25,7 +25,8 @@ async fn main() -> std::io::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let reset_db = args.contains(&"--reset-db".to_string());
     let seed_only = args.contains(&"--seed".to_string());
-    // 載入配置    let config = Config::from_env();
+    // 載入配置
+    let config = Config::from_env();
     
     // 初始化日誌 - 根據配置設置日誌級別
     let log_level = match config.app.log_level.to_lowercase().as_str() {
