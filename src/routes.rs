@@ -500,6 +500,33 @@ pub async fn update_task(
     }
 }
 
+// 根據ID獲取單個任務
+pub async fn get_task(rb: web::Data<RBatis>, path: web::Path<String>) -> Result<HttpResponse> {
+    let task_id = path.into_inner();
+    match Task::select_by_map(rb.get_ref(), value!{"id": task_id.clone()}).await {
+        Ok(tasks) => {
+            if let Some(task) = tasks.first() {
+                Ok(HttpResponse::Ok().json(ApiResponse {
+                    success: true,
+                    data: Some(task.clone()),
+                    message: "獲取任務成功".to_string(),
+                }))
+            } else {
+                Ok(HttpResponse::NotFound().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: "任務不存在".to_string(),
+                }))
+            }
+        }
+        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: format!("獲取任務失敗: {}", e),
+        })),
+    }
+}
+
 // 根據任務類型獲取任務
 pub async fn get_tasks_by_type(
     rb: web::Data<RBatis>,

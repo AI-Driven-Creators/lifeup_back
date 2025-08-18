@@ -124,6 +124,7 @@ async fn main() -> std::io::Result<()> {
             // 任務相關路由
             .route("/api/tasks", web::get().to(get_tasks))
             .route("/api/tasks", web::post().to(create_task))
+            .route("/api/tasks/{id}", web::get().to(get_task))
             .route("/api/tasks/{id}", web::put().to(update_task))
             .route("/api/tasks/type/{task_type}", web::get().to(get_tasks_by_type))
             .route("/api/tasks/homepage", web::get().to(get_homepage_tasks))
