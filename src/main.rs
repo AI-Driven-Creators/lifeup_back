@@ -129,7 +129,7 @@ async fn main() -> std::io::Result<()> {
             // 技能相關路由
             .route("/api/skills", web::get().to(get_skills))
             .route("/api/skills", web::post().to(create_skill))
-            .route("/api/skills/{id}/experience", web::put().to(update_skill_experience))
+            .route("/api/skills/{id}/experience", web::post().to(update_skill_experience))
             .route("/api/skills/{skill_name}/tasks", web::get().to(get_tasks_by_skill))
             // 聊天相關路由
             .route("/api/chat/messages", web::get().to(get_chat_messages))
@@ -373,6 +373,30 @@ async fn migrate_database(rb: &RBatis) {
                 }
             }
         }
+    }
+    
+    // 修復現有子任務的技能標籤問題 (SQLite語法)
+    let fix_subtask_skill_tags_sql = r#"
+        UPDATE task 
+        SET skill_tags = (
+            SELECT parent.skill_tags 
+            FROM task AS parent 
+            WHERE parent.id = task.parent_task_id
+        )
+        WHERE parent_task_id IS NOT NULL 
+        AND task_type = 'subtask'
+        AND (skill_tags IS NULL OR skill_tags = '')
+        AND EXISTS (
+            SELECT 1 FROM task AS parent 
+            WHERE parent.id = task.parent_task_id 
+            AND parent.skill_tags IS NOT NULL 
+            AND parent.skill_tags != ''
+        )
+    "#;
+    
+    match rb.exec(fix_subtask_skill_tags_sql, vec![]).await {
+        Ok(result) => log::info!("修復子任務技能標籤：影響 {} 行", result.rows_affected),
+        Err(e) => log::warn!("修復子任務技能標籤失敗: {}", e),
     }
     
     log::info!("資料庫遷移完成");

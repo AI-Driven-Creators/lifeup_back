@@ -507,8 +507,8 @@ pub async fn get_tasks_by_skill(
     let skill_name = path.into_inner();
     log::info!("獲取技能相關任務: {}", skill_name);
     
-    // 使用 SQL 查詢包含指定技能標籤的任務
-    let sql = "SELECT * FROM task WHERE skill_tags LIKE ?";
+    // 查詢包含指定技能標籤的任務，但排除子任務
+    let sql = "SELECT * FROM task WHERE skill_tags LIKE ? AND (task_type != 'subtask' OR task_type IS NULL)";
     let skill_pattern = format!("%\"{}\"%", skill_name);
     
     match rb.query_decode::<Vec<Task>>(sql, vec![Value::String(skill_pattern)]).await {
@@ -692,7 +692,7 @@ pub async fn start_task(
                                         task_date: None,
                                         cancel_count: Some(0),
                                         last_cancelled_at: None,
-                                        skill_tags: None, // 子任務繼承父任務的技能標籤或為空
+                                        skill_tags: parent_task.skill_tags.clone(), // 子任務繼承父任務的技能標籤
                                     };
                                     
                                     if let Err(e) = Task::insert(rb.get_ref(), &subtask).await {
