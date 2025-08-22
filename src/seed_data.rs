@@ -315,6 +315,7 @@ async fn insert_test_tasks(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn std
 
 /// 為 Vue.js 學習任務插入子任務
 async fn insert_subtasks_for_vuejs(rb: &RBatis, user_id: &str, parent_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+    info!("開始插入 Vue.js 子任務，父任務 ID: {}", parent_id);
     let subtasks = vec![
         ("環境設置", "安裝 Node.js 和 Vue CLI", 1, 20, 2, 1), // completed
         ("基礎概念學習", "學習 Vue.js 基本概念", 2, 30, 2, 2), // completed  
@@ -326,6 +327,7 @@ async fn insert_subtasks_for_vuejs(rb: &RBatis, user_id: &str, parent_id: &str) 
     let now = Utc::now();
     
     for (title, desc, difficulty, exp, status, order) in subtasks {
+        info!("插入 Vue.js 子任務: {} (狀態: {}, 父任務: {})", title, status, parent_id);
         let task_id = Uuid::new_v4().to_string();
         let created_at = (now - Duration::days(25 - order)).to_rfc3339();
         let updated_at = (now - Duration::days(order)).to_rfc3339();
