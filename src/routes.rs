@@ -1099,7 +1099,7 @@ pub async fn get_homepage_tasks(rb: web::Data<RBatis>) -> Result<HttpResponse> {
         LEFT JOIN task p ON t.parent_task_id = p.id
         WHERE t.parent_task_id IS NOT NULL 
             AND (t.task_date >= date('now', '-2 days') OR t.task_date IS NULL)
-            AND t.status IN (0, 1, 4, 5, 6, 7)  -- 只顯示進行中、每日進行中、每日已完成、每日未完成等狀態
+            AND t.status IN (0, 1, 2, 4, 5, 6, 7)  -- 顯示待處理、進行中、已完成、暫停、每日進行中、每日已完成、每日未完成等狀態
         ORDER BY t.task_date DESC, t.task_order, t.created_at
     "#;
     
