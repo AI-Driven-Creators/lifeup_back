@@ -3,7 +3,7 @@ use rbatis::RBatis;
 use uuid::Uuid;
 use chrono::{Utc, Datelike};
 use crate::models::*;
-use crate::ai_service::OpenAIService;
+use crate::ai_service::{OpenAIService, convert_to_achievement_model};
 use rbs::{Value, value};
 
 
@@ -1984,6 +1984,62 @@ pub async fn get_weekly_attributes(
 
 // AI 生成任務功能已移至 ai_tasks.rs 模組
 
+// AI 成就生成相關
+
+#[derive(serde::Deserialize)]
+pub struct GenerateAchievementRequest {
+    pub user_input: String, // 包含已有成就和任務完成狀態的描述
+}
+
+pub async fn generate_achievement_with_ai(
+    rb: web::Data<RBatis>,
+    req: web::Json<GenerateAchievementRequest>,
+) -> Result<HttpResponse> {
+    // 檢查 OpenAI API Key 是否存在
+    let api_key = match std::env::var("OPENAI_API_KEY") {
+        Ok(key) => key,
+        Err(_) => {
+            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: "OPENAI_API_KEY 環境變數未設置".to_string(),
+            }));
+        }
+    };
+
+    // 創建 OpenAI 服務
+    let openai_service = OpenAIService::new(api_key);
+
+    // 生成成就
+    match openai_service.generate_achievement_from_text(&req.user_input).await {
+        Ok(ai_achievement) => {
+            // 轉換為資料庫模型
+            let achievement_model = convert_to_achievement_model(ai_achievement.clone());
+            
+            // 插入到資料庫
+            match Achievement::insert(rb.get_ref(), &achievement_model).await {
+                Ok(_) => Ok(HttpResponse::Created().json(ApiResponse {
+                    success: true,
+                    data: Some(serde_json::json!({
+                        "ai_generated": ai_achievement,
+                        "database_record": achievement_model
+                    })),
+                    message: format!("成功生成並儲存成就：{}", ai_achievement.name),
+                })),
+                Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: format!("儲存成就到資料庫失敗: {}", e),
+                })),
+            }
+        },
+        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: format!("生成成就失敗: {}", e),
+        })),
+    }
+}
 
 // ChatGPT 聊天API端點
 #[derive(serde::Deserialize)]
