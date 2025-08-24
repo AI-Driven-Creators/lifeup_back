@@ -1839,6 +1839,86 @@ pub async fn get_user_achievements(
     }
 }
 
+// 獲取用戶的完整成就狀態（包含已解鎖和待完成）
+pub async fn get_user_achievements_status(
+    rb: web::Data<RBatis>,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let user_id = path.into_inner();
+
+    // 獲取所有成就
+    let all_achievements = match Achievement::select_all(rb.get_ref()).await {
+        Ok(achievements) => achievements,
+        Err(e) => {
+            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("獲取成就列表失敗: {}", e),
+            }));
+        }
+    };
+
+    // 獲取用戶已解鎖的成就
+    let user_achievements = match UserAchievement::select_by_map(
+        rb.get_ref(), 
+        value!{"user_id": user_id.clone()}
+    ).await {
+        Ok(achievements) => achievements,
+        Err(e) => {
+            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("獲取用戶成就記錄失敗: {}", e),
+            }));
+        }
+    };
+
+    // 創建已解鎖成就的 HashMap 用於快速查找
+    let mut unlocked_map: std::collections::HashMap<String, &UserAchievement> = std::collections::HashMap::new();
+    for ua in &user_achievements {
+        if let Some(achievement_id) = &ua.achievement_id {
+            unlocked_map.insert(achievement_id.clone(), ua);
+        }
+    }
+
+    // 合併數據，為每個成就添加狀態信息
+    let default_id = String::new();
+    let result: Vec<serde_json::Value> = all_achievements.iter().map(|achievement| {
+        let achievement_id = achievement.id.as_ref().unwrap_or(&default_id);
+        let is_unlocked = unlocked_map.contains_key(achievement_id);
+        
+        let mut achievement_data = serde_json::json!({
+            "id": achievement.id,
+            "name": achievement.name,
+            "description": achievement.description,
+            "icon": achievement.icon,
+            "category": achievement.category,
+            "requirement_type": achievement.requirement_type,
+            "requirement_value": achievement.requirement_value,
+            "experience_reward": achievement.experience_reward,
+            "unlocked": is_unlocked,
+            "progress": 0,
+            "achieved_at": null
+        });
+
+        // 如果已解鎖，添加解鎖信息
+        if let Some(user_achievement) = unlocked_map.get(achievement_id) {
+            achievement_data["progress"] = serde_json::json!(user_achievement.progress.unwrap_or(0));
+            achievement_data["achieved_at"] = serde_json::json!(
+                user_achievement.achieved_at.as_ref().map(|dt| dt.to_string())
+            );
+        }
+
+        achievement_data
+    }).collect();
+
+    Ok(HttpResponse::Ok().json(ApiResponse {
+        success: true,
+        data: Some(result),
+        message: "獲取用戶完整成就狀態成功".to_string(),
+    }))
+}
+
 // 解鎖用戶成就
 pub async fn unlock_user_achievement(
     rb: web::Data<RBatis>,

@@ -153,6 +153,7 @@ async fn main() -> std::io::Result<()> {
             // 成就相關路由
             .route("/api/achievements", web::get().to(get_achievements))
             .route("/api/users/{user_id}/achievements", web::get().to(get_user_achievements))
+            .route("/api/users/{user_id}/achievements/status", web::get().to(get_user_achievements_status))
             .route("/api/users/{user_id}/achievements/{achievement_id}/unlock", web::post().to(unlock_user_achievement))
             // 週屬性相關路由
             .route("/api/users/{user_id}/attributes/weekly/{weeks_ago}", web::get().to(get_weekly_attributes))
