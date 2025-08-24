@@ -2,6 +2,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use chrono::Utc;
+use crate::models::AchievementRequirementType;
 
 // OpenAI API 請求結構
 #[derive(Serialize)]
@@ -53,6 +54,18 @@ pub struct AIGeneratedTask {
     pub completion_target: Option<f64>,
 }
 
+// AI 生成的成就結構
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AIGeneratedAchievement {
+    pub name: String,
+    pub description: Option<String>,
+    pub icon: Option<String>,
+    pub category: String,
+    pub requirement_type: String,
+    pub requirement_value: i32,
+    pub experience_reward: i32,
+}
+
 pub struct OpenAIService {
     api_key: String,
     client: reqwest::Client,
@@ -63,6 +76,117 @@ impl OpenAIService {
         Self {
             api_key,
             client: reqwest::Client::new(),
+        }
+    }
+
+    pub async fn generate_achievement_from_text(&self, user_input: &str) -> Result<AIGeneratedAchievement> {
+        let system_prompt = r#"你是一個成就設計助手。根據用戶的行為數據分析，生成個性化且具有激勵性的成就。
+
+請仔細分析用戶的：
+1. 已有成就列表
+2. 任務完成狀況
+3. 任務取消/失敗狀況
+4. 待完成任務
+
+**設計原則：**
+- 成就名稱要幽默且具體，如「成為英語字典」「跑火入魔」
+- 基於用戶實際行為模式生成，不要憑空想像
+- 如果用戶在某領域已有基礎成就且表現優秀，可考慮升級版成就
+- 避免與現有成就重複
+
+**成就分類：**
+- task_mastery: 任務精通類
+- consistency: 持續性類  
+- challenge_overcome: 克服挑戰類
+- skill_development: 技能發展類
+
+**達成條件類型：**
+- consecutive_days: 連續天數
+- total_completions: 總完成次數  
+- task_complete: 完成任務總數
+- streak_recovery: 從失敗中恢復
+- skill_level: 技能等級
+- learning_task_complete: 學習任務完成
+- intelligence_attribute: 智力屬性達成
+- endurance_attribute: 毅力屬性達成  
+- creativity_attribute: 創造力屬性達成
+- social_attribute: 社交力屬性達成
+- focus_attribute: 專注力屬性達成
+- adaptability_attribute: 適應力屬性達成
+
+**經驗值獎勵計算：**
+- 基於難度：簡單成就 50-100，中等 100-200，困難 200-500
+
+請以 JSON 格式回應：
+{
+  "name": "成就名稱（幽默且具體）",
+  "description": "成就描述（選填）", 
+  "icon": "圖標名稱（選填）",
+  "category": "成就分類",
+  "requirement_type": "達成條件類型",
+  "requirement_value": 數值,
+  "experience_reward": 經驗值獎勵
+}
+
+範例：
+輸入：使用者連續完成「背英語單字」30天，但經常取消「運動」任務
+輸出：
+{
+  "name": "成為英語字典",
+  "description": "連續30天完成背英語單字，詞彙量已經超越一般字典",
+  "icon": "📖",
+  "category": "task_mastery",
+  "requirement_type": "consecutive_days", 
+  "requirement_value": 30,
+  "experience_reward": 300
+}"#;
+
+        let user_message = format!("請根據以下用戶行為數據生成合適的成就：{}", user_input);
+
+        let request = OpenAIRequest {
+            model: "gpt-4o-mini".to_string(),
+            messages: vec![
+                ChatMessage {
+                    role: "system".to_string(),
+                    content: system_prompt.to_string(),
+                },
+                ChatMessage {
+                    role: "user".to_string(),
+                    content: user_message,
+                },
+            ],
+            temperature: 0.8,
+            max_tokens: 400,
+            response_format: ResponseFormat {
+                format_type: "json_object".to_string(),
+            },
+        };
+
+        let response = self.client
+            .post("https://api.openai.com/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&request)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await?;
+            return Err(anyhow::anyhow!("OpenAI API 錯誤: {}", error_text));
+        }
+
+        let openai_response: OpenAIResponse = response.json().await?;
+        
+        if let Some(choice) = openai_response.choices.first() {
+            let achievement_json = &choice.message.content;
+            let generated_achievement: AIGeneratedAchievement = serde_json::from_str(achievement_json)?;
+            
+            // 驗證生成的成就
+            validate_generated_achievement(&generated_achievement)?;
+            
+            Ok(generated_achievement)
+        } else {
+            Err(anyhow::anyhow!("OpenAI 未返回有效回應"))
         }
     }
 
@@ -230,6 +354,40 @@ fn validate_generated_task(task: &AIGeneratedTask) -> Result<()> {
     Ok(())
 }
 
+fn validate_generated_achievement(achievement: &AIGeneratedAchievement) -> Result<()> {
+    // 驗證成就分類
+    if !["task_mastery", "consistency", "challenge_overcome", "skill_development"].contains(&achievement.category.as_str()) {
+        return Err(anyhow::anyhow!("無效的成就分類: {}", achievement.category));
+    }
+
+    // 驗證達成條件類型 - 使用枚舉的有效字符串列表
+    let valid_requirement_types = AchievementRequirementType::all_valid_strings();
+    if !valid_requirement_types.contains(&achievement.requirement_type.as_str()) {
+        return Err(anyhow::anyhow!(
+            "無效的達成條件類型: {}. 有效類型: {:?}", 
+            achievement.requirement_type,
+            valid_requirement_types
+        ));
+    }
+
+    // 驗證條件數值
+    if achievement.requirement_value <= 0 {
+        return Err(anyhow::anyhow!("達成條件數值必須大於0"));
+    }
+
+    // 驗證經驗值獎勵
+    if achievement.experience_reward < 50 || achievement.experience_reward > 500 {
+        return Err(anyhow::anyhow!("經驗值獎勵必須在 50-500 之間"));
+    }
+
+    // 驗證成就名稱長度
+    if achievement.name.len() < 2 || achievement.name.len() > 50 {
+        return Err(anyhow::anyhow!("成就名稱長度必須在 2-50 字之間"));
+    }
+
+    Ok(())
+}
+
 // 將 AI 生成的任務轉換為資料庫模型
 pub fn convert_to_task_model(
     ai_task: AIGeneratedTask,
@@ -265,5 +423,29 @@ pub fn convert_to_task_model(
         cancel_count: Some(0),
         last_cancelled_at: None,
         skill_tags: None,
+    }
+}
+
+// 將 AI 生成的成就轉換為資料庫模型
+pub fn convert_to_achievement_model(
+    ai_achievement: AIGeneratedAchievement,
+) -> crate::models::Achievement {
+    use uuid::Uuid;
+    
+    let now = Utc::now();
+    
+    // 將字符串轉換為枚舉
+    let requirement_type = AchievementRequirementType::from_string(&ai_achievement.requirement_type);
+    
+    crate::models::Achievement {
+        id: Some(Uuid::new_v4().to_string()),
+        name: Some(ai_achievement.name),
+        description: ai_achievement.description,
+        icon: ai_achievement.icon,
+        category: Some(ai_achievement.category),
+        requirement_type,
+        requirement_value: Some(ai_achievement.requirement_value),
+        experience_reward: Some(ai_achievement.experience_reward),
+        created_at: Some(now),
     }
 }
