@@ -2,6 +2,92 @@ use rbatis::crud;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize, Deserializer};
 
+// 成就達成條件類型枚舉
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum AchievementRequirementType {
+    #[serde(rename = "task_complete")]
+    TaskComplete,           // 完成任務總數
+    #[serde(rename = "consecutive_days")]
+    ConsecutiveDays,        // 連續天數
+    #[serde(rename = "skill_level")]
+    SkillLevel,             // 技能等級達成
+    #[serde(rename = "total_completions")]
+    TotalCompletions,       // 總完成次數
+    #[serde(rename = "streak_recovery")]
+    StreakRecovery,         // 從失敗中恢復
+    #[serde(rename = "learning_task_complete")]
+    LearningTaskComplete,   // 學習任務完成
+    #[serde(rename = "intelligence_attribute")]
+    IntelligenceAttribute,  // 智力屬性達成
+    #[serde(rename = "endurance_attribute")]
+    EnduranceAttribute,     // 毅力屬性達成
+    #[serde(rename = "creativity_attribute")]
+    CreativityAttribute,    // 創造力屬性達成
+    #[serde(rename = "social_attribute")]
+    SocialAttribute,        // 社交力屬性達成
+    #[serde(rename = "focus_attribute")]
+    FocusAttribute,         // 專注力屬性達成
+    #[serde(rename = "adaptability_attribute")]
+    AdaptabilityAttribute,  // 適應力屬性達成
+}
+
+impl AchievementRequirementType {
+    // 從字符串轉換為枚舉
+    pub fn from_string(value: &str) -> Option<AchievementRequirementType> {
+        match value {
+            "task_complete" => Some(AchievementRequirementType::TaskComplete),
+            "consecutive_days" => Some(AchievementRequirementType::ConsecutiveDays),
+            "skill_level" => Some(AchievementRequirementType::SkillLevel),
+            "total_completions" => Some(AchievementRequirementType::TotalCompletions),
+            "streak_recovery" => Some(AchievementRequirementType::StreakRecovery),
+            "learning_task_complete" => Some(AchievementRequirementType::LearningTaskComplete),
+            "intelligence_attribute" => Some(AchievementRequirementType::IntelligenceAttribute),
+            "endurance_attribute" => Some(AchievementRequirementType::EnduranceAttribute),
+            "creativity_attribute" => Some(AchievementRequirementType::CreativityAttribute),
+            "social_attribute" => Some(AchievementRequirementType::SocialAttribute),
+            "focus_attribute" => Some(AchievementRequirementType::FocusAttribute),
+            "adaptability_attribute" => Some(AchievementRequirementType::AdaptabilityAttribute),
+            _ => None,
+        }
+    }
+
+    // 轉換為字符串
+    pub fn to_string(&self) -> &'static str {
+        match self {
+            AchievementRequirementType::TaskComplete => "task_complete",
+            AchievementRequirementType::ConsecutiveDays => "consecutive_days",
+            AchievementRequirementType::SkillLevel => "skill_level",
+            AchievementRequirementType::TotalCompletions => "total_completions",
+            AchievementRequirementType::StreakRecovery => "streak_recovery",
+            AchievementRequirementType::LearningTaskComplete => "learning_task_complete",
+            AchievementRequirementType::IntelligenceAttribute => "intelligence_attribute",
+            AchievementRequirementType::EnduranceAttribute => "endurance_attribute",
+            AchievementRequirementType::CreativityAttribute => "creativity_attribute",
+            AchievementRequirementType::SocialAttribute => "social_attribute",
+            AchievementRequirementType::FocusAttribute => "focus_attribute",
+            AchievementRequirementType::AdaptabilityAttribute => "adaptability_attribute",
+        }
+    }
+
+    // 獲取所有有效的字符串值
+    pub fn all_valid_strings() -> Vec<&'static str> {
+        vec![
+            "task_complete",
+            "consecutive_days", 
+            "skill_level",
+            "total_completions",
+            "streak_recovery",
+            "learning_task_complete",
+            "intelligence_attribute",
+            "endurance_attribute",
+            "creativity_attribute",
+            "social_attribute",
+            "focus_attribute",
+            "adaptability_attribute",
+        ]
+    }
+}
+
 // 任務狀態枚舉
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum TaskStatus {
@@ -85,6 +171,33 @@ where
         Some(s) if s.is_empty() => Ok(None),
         Some(s) => s.parse::<DateTime<Utc>>().map(Some).map_err(serde::de::Error::custom),
         None => Ok(None),
+    }
+}
+
+// 自定義反序列化函數處理 requirement_type 字段
+fn deserialize_requirement_type<'de, D>(deserializer: D) -> Result<Option<AchievementRequirementType>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let opt: Option<String> = Option::deserialize(deserializer)?;
+    match opt {
+        Some(s) if s.is_empty() => Ok(None),
+        Some(s) => match AchievementRequirementType::from_string(&s) {
+            Some(req_type) => Ok(Some(req_type)),
+            None => Err(serde::de::Error::custom(format!("Unknown requirement type: {}", s))),
+        },
+        None => Ok(None),
+    }
+}
+
+// 自定義序列化函數處理 requirement_type 字段
+fn serialize_requirement_type<S>(req_type: &Option<AchievementRequirementType>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match req_type {
+        Some(req_type) => serializer.serialize_str(req_type.to_string()),
+        None => serializer.serialize_none(),
     }
 }
 
@@ -401,7 +514,8 @@ pub struct Achievement {
     pub description: Option<String>,
     pub icon: Option<String>,
     pub category: Option<String>, // 成就分類
-    pub requirement_type: Option<String>, // 達成條件類型
+    #[serde(serialize_with = "serialize_requirement_type", deserialize_with = "deserialize_requirement_type")]
+    pub requirement_type: Option<AchievementRequirementType>, // 達成條件類型
     pub requirement_value: Option<i32>, // 達成條件數值
     pub experience_reward: Option<i32>, // 經驗值獎勵
     pub created_at: Option<DateTime<Utc>>,

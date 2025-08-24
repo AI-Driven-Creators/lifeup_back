@@ -1,5 +1,5 @@
 use rbatis::RBatis;
-use crate::models::{Achievement, UserAchievement, Task, Skill, UserProfile, UserAttributes, TaskStatus};
+use crate::models::{Achievement, UserAchievement, Task, Skill, UserProfile, UserAttributes, TaskStatus, AchievementRequirementType};
 use rbs::value;
 use uuid::Uuid;
 use chrono::Utc;
@@ -25,45 +25,65 @@ impl AchievementService {
 
             let requirement_value = achievement.requirement_value.unwrap_or(0);
 
-            let should_unlock = match achievement.requirement_type.as_deref() {
-                Some("task_complete") => {
+            let should_unlock = match &achievement.requirement_type {
+                Some(AchievementRequirementType::TaskComplete) => {
                     let sql = "SELECT COUNT(*) FROM task WHERE user_id = ? AND status = ?";
                     let args = vec![user_id.into(), TaskStatus::Completed.to_i32().into()];
                     let count: u64 = rb.query_decode(sql, args).await?;
                     count >= requirement_value as u64
                 },
-                Some("learning_task_complete") => {
+                Some(AchievementRequirementType::TotalCompletions) => {
+                    // 與 TaskComplete 類似，但可以有不同的邏輯
+                    let sql = "SELECT COUNT(*) FROM task WHERE user_id = ? AND status = ?";
+                    let args = vec![user_id.into(), TaskStatus::Completed.to_i32().into()];
+                    let count: u64 = rb.query_decode(sql, args).await?;
+                    count >= requirement_value as u64
+                },
+                Some(AchievementRequirementType::LearningTaskComplete) => {
                     let sql = "SELECT COUNT(*) FROM task WHERE user_id = ? AND status = ? AND skill_tags LIKE ?";
                     let args = vec![user_id.into(), TaskStatus::Completed.to_i32().into(), rbs::Value::String("%智慧%".to_string())];
                     let count: u64 = rb.query_decode(sql, args).await?;
                     count >= requirement_value as u64
                 },
-                Some("skill_level") => {
+                Some(AchievementRequirementType::SkillLevel) => {
                     // 檢查是否有任何一個技能達到等級
                     let skills = Skill::select_by_map(rb, value!{"user_id": user_id}).await?;
                     skills.iter().any(|s| s.level.unwrap_or(0) >= requirement_value)
                 },
-                Some("consecutive_days") => {
+                Some(AchievementRequirementType::ConsecutiveDays) => {
                     if let Some(profile) = UserProfile::select_by_map(rb, value!{"user_id": user_id}).await?.first() {
                         profile.consecutive_login_days.unwrap_or(0) >= requirement_value
                     } else { false }
                 },
-                Some(attr_type) if attr_type.ends_with("_attribute") => {
-                    // 處理所有屬性相關的成就
-                    if let Some(attributes) = UserAttributes::select_by_map(rb, value!{"user_id": user_id}).await?.first() {
-                        let current_value = match attr_type {
-                            "social_attribute" => attributes.social,
-                            "focus_attribute" => attributes.focus,
-                            "creativity_attribute" => attributes.creativity,
-                            "intelligence_attribute" => attributes.intelligence,
-                            "endurance_attribute" => attributes.endurance,
-                            "adaptability_attribute" => attributes.adaptability,
-                            _ => None,
-                        };
-                        current_value.unwrap_or(0) >= requirement_value
-                    } else { false }
+                Some(AchievementRequirementType::StreakRecovery) => {
+                    // 檢查用戶是否從連續失敗中恢復
+                    // 這裡可以實現檢查用戶取消任務後重新開始的邏輯
+                    // 暫時返回 false，需要更複雜的邏輯
+                    false
                 },
-                _ => false, // 未知的 requirement_type
+                // 屬性相關成就
+                Some(AchievementRequirementType::IntelligenceAttribute) => {
+                    Self::check_attribute_requirement(rb, user_id, "intelligence", requirement_value).await?
+                },
+                Some(AchievementRequirementType::EnduranceAttribute) => {
+                    Self::check_attribute_requirement(rb, user_id, "endurance", requirement_value).await?
+                },
+                Some(AchievementRequirementType::CreativityAttribute) => {
+                    Self::check_attribute_requirement(rb, user_id, "creativity", requirement_value).await?
+                },
+                Some(AchievementRequirementType::SocialAttribute) => {
+                    Self::check_attribute_requirement(rb, user_id, "social", requirement_value).await?
+                },
+                Some(AchievementRequirementType::FocusAttribute) => {
+                    Self::check_attribute_requirement(rb, user_id, "focus", requirement_value).await?
+                },
+                Some(AchievementRequirementType::AdaptabilityAttribute) => {
+                    Self::check_attribute_requirement(rb, user_id, "adaptability", requirement_value).await?
+                },
+                None => {
+                    error!("成就 {} 沒有設置達成條件類型", achievement.name.as_deref().unwrap_or("未知"));
+                    false
+                },
             };
 
             // 3. 如果條件滿足，解鎖成就
@@ -86,5 +106,31 @@ impl AchievementService {
         }
 
         Ok(newly_unlocked)
+    }
+
+    /// 檢查用戶屬性是否達到要求
+    async fn check_attribute_requirement(
+        rb: &RBatis, 
+        user_id: &str, 
+        attribute_name: &str, 
+        requirement_value: i32
+    ) -> Result<bool, anyhow::Error> {
+        if let Some(attributes) = UserAttributes::select_by_map(rb, value!{"user_id": user_id}).await?.first() {
+            let current_value = match attribute_name {
+                "intelligence" => attributes.intelligence,
+                "endurance" => attributes.endurance,
+                "creativity" => attributes.creativity,
+                "social" => attributes.social,
+                "focus" => attributes.focus,
+                "adaptability" => attributes.adaptability,
+                _ => {
+                    error!("未知的屬性類型: {}", attribute_name);
+                    return Ok(false);
+                }
+            };
+            Ok(current_value.unwrap_or(0) >= requirement_value)
+        } else {
+            Ok(false)
+        }
     }
 }
