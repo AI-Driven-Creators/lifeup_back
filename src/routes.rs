@@ -929,13 +929,27 @@ pub async fn get_subtasks(
             },
         }
     } else {
-        // 暫時返回空列表以避免序列化問題，直到修復數據庫中的損壞記錄
-        log::warn!("暫時跳過子任務查詢以避免序列化錯誤，任務ID: {}", parent_task_id);
-        Ok(HttpResponse::Ok().json(ApiResponse {
-            success: true,
-            data: Some(Vec::<Task>::new()),
-            message: "獲取子任務列表成功（暫時無子任務）".to_string(),
-        }))
+        // 對於非每日任務（主任務、支線任務等），使用正常的子任務查詢
+        let sql = "SELECT * FROM task WHERE parent_task_id = ? ORDER BY task_order ASC";
+        match rb.query_decode::<Vec<Task>>(sql, vec![
+            Value::String(parent_task_id.clone())
+        ]).await {
+            Ok(subtasks) => {
+                Ok(HttpResponse::Ok().json(ApiResponse {
+                    success: true,
+                    data: Some(subtasks),
+                    message: "獲取子任務列表成功".to_string(),
+                }))
+            },
+            Err(e) => {
+                log::error!("查詢子任務失敗，父任務ID: {}, 錯誤: {}", parent_task_id, e);
+                Ok(HttpResponse::InternalServerError().json(ApiResponse::<Vec<Task>> {
+                    success: false,
+                    data: None,
+                    message: format!("查詢子任務失敗: {}", e),
+                }))
+            }
+        }
     }
 }
 
