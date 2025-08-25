@@ -317,20 +317,21 @@ async fn insert_test_tasks(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn std
 async fn insert_subtasks_for_vuejs(rb: &RBatis, user_id: &str, parent_id: &str) -> Result<(), Box<dyn std::error::Error>> {
     info!("開始插入 Vue.js 子任務，父任務 ID: {}", parent_id);
     let subtasks = vec![
-        ("環境設置", "安裝 Node.js 和 Vue CLI", 1, 20, 2, 1), // completed
-        ("基礎概念學習", "學習 Vue.js 基本概念", 2, 30, 2, 2), // completed  
-        ("組件開發", "掌握組件化開發", 3, 50, 1, 3), // in_progress
-        ("狀態管理", "學習 Vuex/Pinia", 4, 60, 0, 4), // pending
-        ("專案實作", "完成實際專案開發", 4, 80, 0, 5), // pending
+        ("環境設置", "安裝 Node.js 和 Vue CLI", 1, 20, 2, 1, vec!["Vue.js"]), // completed
+        ("基礎概念學習", "學習 Vue.js 基本概念", 2, 30, 2, 2, vec!["Vue.js"]), // completed  
+        ("組件開發", "掌握組件化開發", 3, 50, 1, 3, vec!["Vue.js"]), // in_progress
+        ("狀態管理", "學習 Vuex/Pinia", 4, 60, 0, 4, vec!["Vue.js"]), // pending
+        ("專案實作", "完成實際專案開發", 4, 80, 0, 5, vec!["Vue.js"]), // pending
     ];
 
     let now = Utc::now();
     
-    for (title, desc, difficulty, exp, status, order) in subtasks {
+    for (title, desc, difficulty, exp, status, order, skill_tags) in subtasks {
         info!("插入 Vue.js 子任務: {} (狀態: {}, 父任務: {})", title, status, parent_id);
         let task_id = Uuid::new_v4().to_string();
         let created_at = (now - Duration::days(25 - order)).to_rfc3339();
         let updated_at = (now - Duration::days(order)).to_rfc3339();
+        let skill_tags_json = serde_json::to_string(&skill_tags).unwrap_or_default();
         
         let sql = r#"
             INSERT INTO task (id, user_id, title, description, status, priority, task_type, 
@@ -352,7 +353,7 @@ async fn insert_subtasks_for_vuejs(rb: &RBatis, user_id: &str, parent_id: &str) 
             parent_id.into(),
             false.into(),
             order.into(),
-            "[]".into(), // 空的技能標籤數組
+            skill_tags_json.into(),
             created_at.into(),
             updated_at.into(),
         ]).await?;
@@ -364,15 +365,16 @@ async fn insert_subtasks_for_vuejs(rb: &RBatis, user_id: &str, parent_id: &str) 
 /// 為暫停的主任務插入暫停的子任務
 async fn insert_paused_subtasks(rb: &RBatis, user_id: &str, parent_id: &str) -> Result<(), Box<dyn std::error::Error>> {
     let subtasks = vec![
-        ("準備階段", "收集考試資料和教材", 1, 20, 4, 1), // paused
-        ("基礎學習", "掌握基本概念", 2, 30, 4, 2), // paused
-        ("深入研讀", "深入學習進階內容", 3, 40, 4, 3), // paused
-        ("模擬考試", "進行模擬測試", 3, 30, 4, 4), // paused
+        ("準備階段", "收集考試資料和教材", 1, 20, 4, 1, vec!["問題解決"]), // paused
+        ("基礎學習", "掌握基本概念", 2, 30, 4, 2, vec!["問題解決"]), // paused
+        ("深入研讀", "深入學習進階內容", 3, 40, 4, 3, vec!["問題解決"]), // paused
+        ("模擬考試", "進行模擬測試", 3, 30, 4, 4, vec!["問題解決"]), // paused
     ];
 
     let now = Utc::now();
     
-    for (title, desc, difficulty, exp, status, order) in subtasks {
+    for (title, desc, difficulty, exp, status, order, skill_tags) in subtasks {
+        let skill_tags_json = serde_json::to_string(&skill_tags).unwrap_or_default();
         let task_id = Uuid::new_v4().to_string();
         let created_at = (now - Duration::days(20)).to_rfc3339();
         let updated_at = (now - Duration::days(5)).to_rfc3339();
@@ -397,7 +399,7 @@ async fn insert_paused_subtasks(rb: &RBatis, user_id: &str, parent_id: &str) -> 
             parent_id.into(),
             false.into(),
             order.into(),
-            "[]".into(),
+            skill_tags_json.into(),
             created_at.into(),
             updated_at.into(),
         ]).await?;
@@ -409,17 +411,18 @@ async fn insert_paused_subtasks(rb: &RBatis, user_id: &str, parent_id: &str) -> 
 /// 為 Rust 程式語言任務插入子任務
 async fn insert_subtasks_for_rust(rb: &RBatis, user_id: &str, parent_id: &str) -> Result<(), Box<dyn std::error::Error>> {
     let subtasks = vec![
-        ("安裝 Rust 環境", "安裝 Rust 工具鏈和 IDE", 1, 15, 0, 1), // pending
-        ("學習語法基礎", "掌握變量、函數、控制流程", 2, 25, 0, 2), // pending
-        ("所有權系統", "理解所有權、借用和生命週期", 4, 40, 0, 3), // pending
+        ("安裝 Rust 環境", "安裝 Rust 工具鏈和 IDE", 1, 15, 0, 1, vec!["Rust"]), // pending
+        ("學習語法基礎", "掌握變量、函數、控制流程", 2, 25, 0, 2, vec!["Rust"]), // pending
+        ("所有權系統", "理解所有權、借用和生命週期", 4, 40, 0, 3, vec!["Rust"]), // pending
     ];
 
     let now = Utc::now();
     
-    for (title, desc, difficulty, exp, status, order) in subtasks {
+    for (title, desc, difficulty, exp, status, order, skill_tags) in subtasks {
         let task_id = Uuid::new_v4().to_string();
         let created_at = (now - Duration::days(25 - order)).to_rfc3339();
         let updated_at = (now - Duration::days(order)).to_rfc3339();
+        let skill_tags_json = serde_json::to_string(&skill_tags).unwrap_or_default();
         
         let sql = r#"
             INSERT INTO task (id, user_id, title, description, status, priority, task_type, 
@@ -441,7 +444,7 @@ async fn insert_subtasks_for_rust(rb: &RBatis, user_id: &str, parent_id: &str) -
             parent_id.into(),
             false.into(),
             order.into(),
-            "[]".into(),
+            skill_tags_json.into(),
             created_at.into(),
             updated_at.into(),
         ]).await?;
@@ -453,17 +456,18 @@ async fn insert_subtasks_for_rust(rb: &RBatis, user_id: &str, parent_id: &str) -
 /// 為建立健康作息任務插入子任務
 async fn insert_subtasks_for_health(rb: &RBatis, user_id: &str, parent_id: &str) -> Result<(), Box<dyn std::error::Error>> {
     let subtasks = vec![
-        ("制定睡眠計劃", "建立固定的作息時間", 1, 20, 1, 1), // in_progress
-        ("規律運動", "建立每日運動習慣", 2, 30, 0, 2), // pending
-        ("健康飲食", "規劃營養均衡的飲食", 2, 25, 0, 3), // pending
+        ("制定睡眠計劃", "建立固定的作息時間", 1, 20, 1, 1, vec!["時間管理", "適應力"]), // in_progress
+        ("規律運動", "建立每日運動習慣", 2, 30, 0, 2, vec!["適應力"]), // pending
+        ("健康飲食", "規劃營養均衡的飲食", 2, 25, 0, 3, vec!["時間管理"]), // pending
     ];
 
     let now = Utc::now();
     
-    for (title, desc, difficulty, exp, status, order) in subtasks {
+    for (title, desc, difficulty, exp, status, order, skill_tags) in subtasks {
         let task_id = Uuid::new_v4().to_string();
         let created_at = (now - Duration::days(25 - order)).to_rfc3339();
         let updated_at = (now - Duration::days(order)).to_rfc3339();
+        let skill_tags_json = serde_json::to_string(&skill_tags).unwrap_or_default();
         
         let sql = r#"
             INSERT INTO task (id, user_id, title, description, status, priority, task_type, 
@@ -485,7 +489,7 @@ async fn insert_subtasks_for_health(rb: &RBatis, user_id: &str, parent_id: &str)
             parent_id.into(),
             false.into(),
             order.into(),
-            "[]".into(),
+            skill_tags_json.into(),
             created_at.into(),
             updated_at.into(),
         ]).await?;
@@ -497,15 +501,16 @@ async fn insert_subtasks_for_health(rb: &RBatis, user_id: &str, parent_id: &str)
 /// 為開發個人專案任務插入子任務
 async fn insert_subtasks_for_project(rb: &RBatis, user_id: &str, parent_id: &str) -> Result<(), Box<dyn std::error::Error>> {
     let subtasks = vec![
-        ("專案規劃", "確定專案需求和技術架構", 3, 35, 1, 1), // in_progress
-        ("前端開發", "開發使用者介面", 4, 50, 0, 2), // pending
-        ("後端開發", "開發 API 和資料庫", 4, 45, 0, 3), // pending
-        ("部署上線", "將專案部署到生產環境", 3, 30, 0, 4), // pending
+        ("專案規劃", "確定專案需求和技術架構", 3, 35, 1, 1, vec!["問題解決"]), // in_progress
+        ("前端開發", "開發使用者介面", 4, 50, 0, 2, vec!["JavaScript", "Vue.js"]), // pending
+        ("後端開發", "開發 API 和資料庫", 4, 45, 0, 3, vec!["Rust"]), // pending
+        ("部署上線", "將專案部署到生產環境", 3, 30, 0, 4, vec!["問題解決"]), // pending
     ];
 
     let now = Utc::now();
     
-    for (title, desc, difficulty, exp, status, order) in subtasks {
+    for (title, desc, difficulty, exp, status, order, skill_tags) in subtasks {
+        let skill_tags_json = serde_json::to_string(&skill_tags).unwrap_or_default();
         let task_id = Uuid::new_v4().to_string();
         let created_at = (now - Duration::days(25 - order)).to_rfc3339();
         let updated_at = (now - Duration::days(order)).to_rfc3339();
@@ -530,7 +535,7 @@ async fn insert_subtasks_for_project(rb: &RBatis, user_id: &str, parent_id: &str
             parent_id.into(),
             false.into(),
             order.into(),
-            "[]".into(),
+            skill_tags_json.into(),
             created_at.into(),
             updated_at.into(),
         ]).await?;
@@ -542,14 +547,15 @@ async fn insert_subtasks_for_project(rb: &RBatis, user_id: &str, parent_id: &str
 /// 為閱讀技術書籍任務插入子任務
 async fn insert_subtasks_for_reading(rb: &RBatis, user_id: &str, parent_id: &str) -> Result<(), Box<dyn std::error::Error>> {
     let subtasks = vec![
-        ("選擇書籍", "挑選合適的技術書籍", 1, 10, 0, 1), // pending
-        ("制定閱讀計劃", "規劃每週閱讀進度", 2, 15, 0, 2), // pending
-        ("撰寫筆記", "整理讀書心得", 2, 20, 0, 3), // pending
+        ("選擇書籍", "挑選合適的技術書籍", 1, 10, 0, 1, vec!["時間管理"]), // pending
+        ("制定閱讀計劃", "規劃每週閱讀進度", 2, 15, 0, 2, vec!["時間管理"]), // pending
+        ("撰寫筆記", "整理讀書心得", 2, 20, 0, 3, vec!["溝通"]), // pending
     ];
 
     let now = Utc::now();
     
-    for (title, desc, difficulty, exp, status, order) in subtasks {
+    for (title, desc, difficulty, exp, status, order, skill_tags) in subtasks {
+        let skill_tags_json = serde_json::to_string(&skill_tags).unwrap_or_default();
         let task_id = Uuid::new_v4().to_string();
         let created_at = (now - Duration::days(25 - order)).to_rfc3339();
         let updated_at = (now - Duration::days(order)).to_rfc3339();
@@ -574,7 +580,7 @@ async fn insert_subtasks_for_reading(rb: &RBatis, user_id: &str, parent_id: &str
             parent_id.into(),
             false.into(),
             order.into(),
-            "[]".into(),
+            skill_tags_json.into(),
             created_at.into(),
             updated_at.into(),
         ]).await?;
@@ -586,14 +592,15 @@ async fn insert_subtasks_for_reading(rb: &RBatis, user_id: &str, parent_id: &str
 /// 為學習設計軟體任務插入子任務
 async fn insert_subtasks_for_design(rb: &RBatis, user_id: &str, parent_id: &str) -> Result<(), Box<dyn std::error::Error>> {
     let subtasks = vec![
-        ("學習 Figma 基礎", "掌握 Figma 基本操作", 2, 25, 4, 1), // paused
-        ("學習 Photoshop", "掌握圖像處理技巧", 3, 30, 4, 2), // paused
-        ("實作設計項目", "完成實際設計作品", 3, 25, 4, 3), // paused
+        ("學習 Figma 基礎", "掌握 Figma 基本操作", 2, 25, 4, 1, vec!["UI/UX 設計"]), // paused
+        ("學習 Photoshop", "掌握圖像處理技巧", 3, 30, 4, 2, vec!["UI/UX 設計"]), // paused
+        ("實作設計項目", "完成實際設計作品", 3, 25, 4, 3, vec!["UI/UX 設計"]), // paused
     ];
 
     let now = Utc::now();
     
-    for (title, desc, difficulty, exp, status, order) in subtasks {
+    for (title, desc, difficulty, exp, status, order, skill_tags) in subtasks {
+        let skill_tags_json = serde_json::to_string(&skill_tags).unwrap_or_default();
         let task_id = Uuid::new_v4().to_string();
         let created_at = (now - Duration::days(25 - order)).to_rfc3339();
         let updated_at = (now - Duration::days(order)).to_rfc3339();
@@ -618,7 +625,7 @@ async fn insert_subtasks_for_design(rb: &RBatis, user_id: &str, parent_id: &str)
             parent_id.into(),
             false.into(),
             order.into(),
-            "[]".into(),
+            skill_tags_json.into(),
             created_at.into(),
             updated_at.into(),
         ]).await?;
@@ -630,14 +637,15 @@ async fn insert_subtasks_for_design(rb: &RBatis, user_id: &str, parent_id: &str)
 /// 為整理工作環境任務插入子任務
 async fn insert_subtasks_for_workspace(rb: &RBatis, user_id: &str, parent_id: &str) -> Result<(), Box<dyn std::error::Error>> {
     let subtasks = vec![
-        ("桌面整理", "清理和整理桌面空間", 1, 10, 2, 1), // completed
-        ("軟體優化", "整理電腦軟體和檔案", 2, 15, 2, 2), // completed
-        ("環境佈置", "優化工作氛圍", 1, 5, 2, 3), // completed
+        ("桌面整理", "清理和整理桌面空間", 1, 10, 2, 1, vec!["時間管理"]), // completed
+        ("軟體優化", "整理電腦軟體和檔案", 2, 15, 2, 2, vec!["問題解決"]), // completed
+        ("環境佈置", "優化工作氛圍", 1, 5, 2, 3, vec!["適應力"]), // completed
     ];
 
     let now = Utc::now();
     
-    for (title, desc, difficulty, exp, status, order) in subtasks {
+    for (title, desc, difficulty, exp, status, order, skill_tags) in subtasks {
+        let skill_tags_json = serde_json::to_string(&skill_tags).unwrap_or_default();
         let task_id = Uuid::new_v4().to_string();
         let created_at = (now - Duration::days(25 - order)).to_rfc3339();
         let updated_at = (now - Duration::days(order)).to_rfc3339();
@@ -662,7 +670,7 @@ async fn insert_subtasks_for_workspace(rb: &RBatis, user_id: &str, parent_id: &s
             parent_id.into(),
             false.into(),
             order.into(),
-            "[]".into(),
+            skill_tags_json.into(),
             created_at.into(),
             updated_at.into(),
         ]).await?;
@@ -674,14 +682,15 @@ async fn insert_subtasks_for_workspace(rb: &RBatis, user_id: &str, parent_id: &s
 /// 為建立個人品牌任務插入子任務
 async fn insert_subtasks_for_branding(rb: &RBatis, user_id: &str, parent_id: &str) -> Result<(), Box<dyn std::error::Error>> {
     let subtasks = vec![
-        ("建立部落格", "創建技術分享部落格", 3, 35, 1, 1), // in_progress
-        ("經營社群媒體", "在各平台分享技術內容", 2, 25, 0, 2), // pending
-        ("參與技術社群", "加入開發者社群並互動", 2, 30, 0, 3), // pending
+        ("建立部落格", "創建技術分享部落格", 3, 35, 1, 1, vec!["溝通"]), // in_progress
+        ("經營社群媒體", "在各平台分享技術內容", 2, 25, 0, 2, vec!["溝通"]), // pending
+        ("參與技術社群", "加入開發者社群並互動", 2, 30, 0, 3, vec!["溝通", "團隊合作"]), // pending
     ];
 
     let now = Utc::now();
     
-    for (title, desc, difficulty, exp, status, order) in subtasks {
+    for (title, desc, difficulty, exp, status, order, skill_tags) in subtasks {
+        let skill_tags_json = serde_json::to_string(&skill_tags).unwrap_or_default();
         let task_id = Uuid::new_v4().to_string();
         let created_at = (now - Duration::days(25 - order)).to_rfc3339();
         let updated_at = (now - Duration::days(order)).to_rfc3339();
@@ -706,7 +715,7 @@ async fn insert_subtasks_for_branding(rb: &RBatis, user_id: &str, parent_id: &st
             parent_id.into(),
             false.into(),
             order.into(),
-            "[]".into(),
+            skill_tags_json.into(),
             created_at.into(),
             updated_at.into(),
         ]).await?;
