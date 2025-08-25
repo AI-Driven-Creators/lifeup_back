@@ -1,0 +1,44 @@
+### 測試 AI 成就生成 API
+### 範例1: 連續學習類型
+POST http://localhost:8080/api/achievements/generate
+Content-Type: application/json
+
+{
+  "user_input": "使用者連續完成「背英語單字」30天，完成「閱讀技術文章」15天，但經常取消「運動」和「早起」任務。目前已有「學習愛好者」、「知識探索者」成就。待完成任務包括「寫程式專案」、「學習新框架」、「準備證照考試」。智力屬性已達到85分。"
+}
+
+###
+### 範例2: 技能發展類型
+POST http://localhost:8080/api/achievements/generate
+Content-Type: application/json
+
+{
+  "user_input": "使用者已完成「程式設計基礎」成就，連續7天完成程式練習，Python技能等級達到3級，JavaScript技能等級達到2級。經常完成學習相關任務但偶爾取消社交活動。目前有12個學習任務已完成，創造力屬性達到70分。"
+}
+
+###
+### 範例3: 克服挑戰類型
+POST http://localhost:8080/api/achievements/generate
+Content-Type: application/json
+
+{
+  "user_input": "使用者之前經常取消「健身」任務（取消次數8次），但最近連續5天都有完成，顯示出改善的跡象。已有「堅持不懈」相關成就。毅力屬性從45分提升到62分。同時完成了「早睡早起」任務連續3天。"
+}
+
+###
+### 範例4: 任務精通類型
+POST http://localhost:8080/api/achievements/generate
+Content-Type: application/json
+
+{
+  "user_input": "使用者總共完成了150個任務，其中主要任務45個、副線任務80個、挑戰任務25個。在「寫作」相關任務表現優異，連續21天完成「每日寫作」。已有「寫作新手」、「文字工匠」成就。專注力屬性達到90分，創造力屬性達到88分。"
+}
+
+###
+### 範例5: 持續性類型
+POST http://localhost:8080/api/achievements/generate
+Content-Type: application/json
+
+{
+  "user_input": "使用者連續60天登入系統，完成每日任務完成率達85%。在「運動健身」類別任務連續14天達成，「學習成長」類別連續45天達成。偶爾會取消「社交」類任務。已獲得「每日達人」、「運動健將」成就。適應力屬性75分。"
+}
