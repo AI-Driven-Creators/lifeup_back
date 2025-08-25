@@ -335,8 +335,8 @@ async fn insert_subtasks_for_vuejs(rb: &RBatis, user_id: &str, parent_id: &str) 
         let sql = r#"
             INSERT INTO task (id, user_id, title, description, status, priority, task_type, 
                             difficulty, experience, parent_task_id, is_parent_task, task_order,
-                            created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            skill_tags, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#;
         
         rb.exec(sql, vec![
@@ -352,6 +352,7 @@ async fn insert_subtasks_for_vuejs(rb: &RBatis, user_id: &str, parent_id: &str) 
             parent_id.into(),
             false.into(),
             order.into(),
+            "[]".into(), // 空的技能標籤數組
             created_at.into(),
             updated_at.into(),
         ]).await?;
@@ -379,8 +380,8 @@ async fn insert_paused_subtasks(rb: &RBatis, user_id: &str, parent_id: &str) -> 
         let sql = r#"
             INSERT INTO task (id, user_id, title, description, status, priority, task_type, 
                             difficulty, experience, parent_task_id, is_parent_task, task_order,
-                            created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            skill_tags, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#;
         
         rb.exec(sql, vec![
@@ -396,6 +397,7 @@ async fn insert_paused_subtasks(rb: &RBatis, user_id: &str, parent_id: &str) -> 
             parent_id.into(),
             false.into(),
             order.into(),
+            "[]".into(),
             created_at.into(),
             updated_at.into(),
         ]).await?;
@@ -422,8 +424,8 @@ async fn insert_subtasks_for_rust(rb: &RBatis, user_id: &str, parent_id: &str) -
         let sql = r#"
             INSERT INTO task (id, user_id, title, description, status, priority, task_type, 
                             difficulty, experience, parent_task_id, is_parent_task, task_order,
-                            created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            skill_tags, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#;
         
         rb.exec(sql, vec![
@@ -439,6 +441,7 @@ async fn insert_subtasks_for_rust(rb: &RBatis, user_id: &str, parent_id: &str) -
             parent_id.into(),
             false.into(),
             order.into(),
+            "[]".into(),
             created_at.into(),
             updated_at.into(),
         ]).await?;
@@ -465,8 +468,8 @@ async fn insert_subtasks_for_health(rb: &RBatis, user_id: &str, parent_id: &str)
         let sql = r#"
             INSERT INTO task (id, user_id, title, description, status, priority, task_type, 
                             difficulty, experience, parent_task_id, is_parent_task, task_order,
-                            created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            skill_tags, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#;
         
         rb.exec(sql, vec![
@@ -482,6 +485,7 @@ async fn insert_subtasks_for_health(rb: &RBatis, user_id: &str, parent_id: &str)
             parent_id.into(),
             false.into(),
             order.into(),
+            "[]".into(),
             created_at.into(),
             updated_at.into(),
         ]).await?;
@@ -509,8 +513,8 @@ async fn insert_subtasks_for_project(rb: &RBatis, user_id: &str, parent_id: &str
         let sql = r#"
             INSERT INTO task (id, user_id, title, description, status, priority, task_type, 
                             difficulty, experience, parent_task_id, is_parent_task, task_order,
-                            created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            skill_tags, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#;
         
         rb.exec(sql, vec![
@@ -526,6 +530,7 @@ async fn insert_subtasks_for_project(rb: &RBatis, user_id: &str, parent_id: &str
             parent_id.into(),
             false.into(),
             order.into(),
+            "[]".into(),
             created_at.into(),
             updated_at.into(),
         ]).await?;
@@ -552,8 +557,8 @@ async fn insert_subtasks_for_reading(rb: &RBatis, user_id: &str, parent_id: &str
         let sql = r#"
             INSERT INTO task (id, user_id, title, description, status, priority, task_type, 
                             difficulty, experience, parent_task_id, is_parent_task, task_order,
-                            created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            skill_tags, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#;
         
         rb.exec(sql, vec![
@@ -569,6 +574,7 @@ async fn insert_subtasks_for_reading(rb: &RBatis, user_id: &str, parent_id: &str
             parent_id.into(),
             false.into(),
             order.into(),
+            "[]".into(),
             created_at.into(),
             updated_at.into(),
         ]).await?;
@@ -595,8 +601,8 @@ async fn insert_subtasks_for_design(rb: &RBatis, user_id: &str, parent_id: &str)
         let sql = r#"
             INSERT INTO task (id, user_id, title, description, status, priority, task_type, 
                             difficulty, experience, parent_task_id, is_parent_task, task_order,
-                            created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            skill_tags, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#;
         
         rb.exec(sql, vec![
@@ -612,6 +618,7 @@ async fn insert_subtasks_for_design(rb: &RBatis, user_id: &str, parent_id: &str)
             parent_id.into(),
             false.into(),
             order.into(),
+            "[]".into(),
             created_at.into(),
             updated_at.into(),
         ]).await?;
@@ -638,8 +645,8 @@ async fn insert_subtasks_for_workspace(rb: &RBatis, user_id: &str, parent_id: &s
         let sql = r#"
             INSERT INTO task (id, user_id, title, description, status, priority, task_type, 
                             difficulty, experience, parent_task_id, is_parent_task, task_order,
-                            created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            skill_tags, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#;
         
         rb.exec(sql, vec![
@@ -655,6 +662,7 @@ async fn insert_subtasks_for_workspace(rb: &RBatis, user_id: &str, parent_id: &s
             parent_id.into(),
             false.into(),
             order.into(),
+            "[]".into(),
             created_at.into(),
             updated_at.into(),
         ]).await?;
@@ -681,8 +689,8 @@ async fn insert_subtasks_for_branding(rb: &RBatis, user_id: &str, parent_id: &st
         let sql = r#"
             INSERT INTO task (id, user_id, title, description, status, priority, task_type, 
                             difficulty, experience, parent_task_id, is_parent_task, task_order,
-                            created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            skill_tags, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#;
         
         rb.exec(sql, vec![
@@ -698,6 +706,7 @@ async fn insert_subtasks_for_branding(rb: &RBatis, user_id: &str, parent_id: &st
             parent_id.into(),
             false.into(),
             order.into(),
+            "[]".into(),
             created_at.into(),
             updated_at.into(),
         ]).await?;
