@@ -4,3 +4,10 @@
 *.db-shm
 *.db-wal
 backend.log
+
+*.db-shm
+*.db-wal
+*.db
+
+lifeup.db-shm
+lifeup.db-wal
