@@ -2343,4 +2343,543 @@ async fn check_and_update_parent_task_status(rb: &RBatis, parent_task_id: &str) 
     Ok(())
 }
 
+// ============= 教練個性系統 API =============
+
+use crate::models::{
+    CoachPersonalityType, UserCoachPreference, 
+    SetCoachPersonalityRequest, CoachPersonalityResponse,
+    AvailablePersonalitiesResponse, CoachPersonalityInfo,
+    ChatWithPersonalityRequest, DirectPersonalityChatRequest
+};
+
+// 獲取所有可用的教練個性
+pub async fn get_available_personalities(
+    rb: web::Data<RBatis>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    let user_id = query.get("user_id").map(|s| s.clone());
+
+    // 獲取用戶當前選擇的個性
+    let current_personality = if let Some(uid) = &user_id {
+        match UserCoachPreference::select_by_map(rb.get_ref(), value!{"user_id": uid}).await {
+            Ok(preferences) => {
+                if let Some(pref) = preferences.first() {
+                    pref.personality_type.clone()
+                } else {
+                    None
+                }
+            }
+            Err(_) => None
+        }
+    } else {
+        None
+    };
+
+    // 定義所有可用的教練個性
+    let personalities = vec![
+        CoachPersonalityInfo {
+            personality_type: "harsh_critic".to_string(),
+            display_name: "嚴厲導師".to_string(),
+            description: "直言不諱，用嚴厲的話語督促你成長".to_string(),
+            emoji: "😤".to_string(),
+        },
+        CoachPersonalityInfo {
+            personality_type: "emotional_support".to_string(),
+            display_name: "暖心陪伴".to_string(),
+            description: "溫暖體貼，提供情感支持和正向鼓勵".to_string(),
+            emoji: "🤗".to_string(),
+        },
+        CoachPersonalityInfo {
+            personality_type: "analytical".to_string(),
+            display_name: "數據分析師".to_string(),
+            description: "理性客觀，用數據和邏輯幫你分析問題".to_string(),
+            emoji: "📊".to_string(),
+        },
+    ];
+
+    let response = AvailablePersonalitiesResponse {
+        personalities,
+        current_personality,
+    };
+
+    Ok(HttpResponse::Ok().json(ApiResponse {
+        success: true,
+        data: Some(response),
+        message: "成功獲取可用教練個性".to_string(),
+    }))
+}
+
+// 設定教練個性
+pub async fn set_coach_personality(
+    rb: web::Data<RBatis>,
+    req: web::Json<SetCoachPersonalityRequest>,
+) -> Result<HttpResponse> {
+    // 驗證個性類型是否有效
+    let personality_type = match CoachPersonalityType::from_string(&req.personality_type) {
+        Some(p) => p,
+        None => {
+            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("無效的教練個性類型: {}", req.personality_type),
+            }));
+        }
+    };
+
+    // 決定用戶ID（如果沒有提供，使用預設測試用戶）
+    let user_id = if let Some(id) = req.user_id.clone() {
+        id
+    } else {
+        // 查詢或建立預設測試用戶
+        match User::select_by_map(rb.get_ref(), value!{"email": "test@lifeup.com"}).await {
+            Ok(users) if !users.is_empty() => {
+                users[0].id.clone().unwrap()
+            }
+            _ => {
+                return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: "找不到用戶，請先創建用戶".to_string(),
+                }));
+            }
+        }
+    };
+
+    // 檢查是否已存在該用戶的個性設定
+    match UserCoachPreference::select_by_map(rb.get_ref(), value!{"user_id": user_id.clone()}).await {
+        Ok(existing_preferences) => {
+            if let Some(mut existing) = existing_preferences.into_iter().next() {
+                // 更新現有設定
+                existing.personality_type = Some(req.personality_type.clone());
+                existing.updated_at = Some(Utc::now());
+                
+                let update_sql = "UPDATE user_coach_preference SET personality_type = ?, updated_at = ? WHERE id = ?";
+                match rb.exec(update_sql, vec![
+                    rbs::Value::String(req.personality_type.clone()),
+                    rbs::Value::String(Utc::now().to_string()),
+                    rbs::Value::String(existing.id.clone().unwrap())
+                ]).await {
+                    Ok(_) => {
+                        log::info!("已更新用戶 {} 的教練個性為 {}", user_id, req.personality_type);
+                    }
+                    Err(e) => {
+                        log::error!("更新教練個性失敗: {}", e);
+                        return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                            success: false,
+                            data: None,
+                            message: format!("更新失敗: {}", e),
+                        }));
+                    }
+                }
+            } else {
+                // 創建新設定
+                let new_preference = UserCoachPreference {
+                    id: Some(uuid::Uuid::new_v4().to_string()),
+                    user_id: Some(user_id.clone()),
+                    personality_type: Some(req.personality_type.clone()),
+                    created_at: Some(Utc::now()),
+                    updated_at: Some(Utc::now()),
+                };
+
+                match UserCoachPreference::insert(rb.get_ref(), &new_preference).await {
+                    Ok(_) => {
+                        log::info!("已為用戶 {} 創建教練個性設定: {}", user_id, req.personality_type);
+                    }
+                    Err(e) => {
+                        log::error!("創建教練個性設定失敗: {}", e);
+                        return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                            success: false,
+                            data: None,
+                            message: format!("創建失敗: {}", e),
+                        }));
+                    }
+                }
+            }
+        }
+        Err(_) => {
+            // 創建新設定
+            let new_preference = UserCoachPreference {
+                id: Some(uuid::Uuid::new_v4().to_string()),
+                user_id: Some(user_id.clone()),
+                personality_type: Some(req.personality_type.clone()),
+                created_at: Some(Utc::now()),
+                updated_at: Some(Utc::now()),
+            };
+
+            match UserCoachPreference::insert(rb.get_ref(), &new_preference).await {
+                Ok(_) => {
+                    log::info!("已為用戶 {} 創建教練個性設定: {}", user_id, req.personality_type);
+                }
+                Err(e) => {
+                    log::error!("創建教練個性設定失敗: {}", e);
+                    return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                        success: false,
+                        data: None,
+                        message: format!("創建失敗: {}", e),
+                    }));
+                }
+            }
+        }
+    }
+
+    let response = CoachPersonalityResponse {
+        personality_type: req.personality_type.clone(),
+        display_name: personality_type.display_name().to_string(),
+        description: personality_type.description().to_string(),
+        is_active: true,
+    };
+
+    Ok(HttpResponse::Ok().json(ApiResponse {
+        success: true,
+        data: Some(response),
+        message: format!("已成功設定教練個性為：{}", personality_type.display_name()),
+    }))
+}
+
+// 獲取當前教練個性
+pub async fn get_current_personality(
+    rb: web::Data<RBatis>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    let user_id = match query.get("user_id") {
+        Some(id) => id.clone(),
+        None => {
+            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: "缺少 user_id 參數".to_string(),
+            }));
+        }
+    };
+
+    match UserCoachPreference::select_by_map(rb.get_ref(), value!{"user_id": user_id}).await {
+        Ok(preferences) => {
+            if let Some(pref) = preferences.first() {
+                if let Some(personality_str) = &pref.personality_type {
+                    if let Some(personality_type) = CoachPersonalityType::from_string(personality_str) {
+                        let response = CoachPersonalityResponse {
+                            personality_type: personality_str.clone(),
+                            display_name: personality_type.display_name().to_string(),
+                            description: personality_type.description().to_string(),
+                            is_active: true,
+                        };
+
+                        return Ok(HttpResponse::Ok().json(ApiResponse {
+                            success: true,
+                            data: Some(response),
+                            message: "成功獲取當前教練個性".to_string(),
+                        }));
+                    }
+                }
+            }
+
+            // 如果沒有設定，返回預設個性（情緒支持型）
+            let default_personality = CoachPersonalityType::EmotionalSupport;
+            let response = CoachPersonalityResponse {
+                personality_type: "emotional_support".to_string(),
+                display_name: default_personality.display_name().to_string(),
+                description: default_personality.description().to_string(),
+                is_active: false,
+            };
+
+            Ok(HttpResponse::Ok().json(ApiResponse {
+                success: true,
+                data: Some(response),
+                message: "使用預設教練個性".to_string(),
+            }))
+        }
+        Err(e) => {
+            log::error!("查詢教練個性失敗: {}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("查詢失敗: {}", e),
+            }))
+        }
+    }
+}
+
+// 獲取用戶的教練個性類型
+async fn get_user_personality_type(rb: &RBatis, user_id: Option<String>) -> Result<CoachPersonalityType, Box<dyn std::error::Error>> {
+    if let Some(uid) = user_id {
+        match UserCoachPreference::select_by_map(rb, value!{"user_id": uid}).await {
+            Ok(preferences) => {
+                if let Some(pref) = preferences.first() {
+                    if let Some(personality_str) = &pref.personality_type {
+                        if let Some(personality_type) = CoachPersonalityType::from_string(personality_str) {
+                            return Ok(personality_type);
+                        }
+                    }
+                }
+            }
+            Err(_) => {}
+        }
+    }
+    
+    // 預設返回情緒支持型
+    Ok(CoachPersonalityType::EmotionalSupport)
+}
+
+// 帶個性的ChatGPT API呼叫
+async fn call_chatgpt_api_with_personality(rb: &RBatis, message: &str, user_id: Option<String>) -> Result<String, Box<dyn std::error::Error>> {
+    log::info!("開始呼叫個性化ChatGPT API");
+    
+    let api_key = match std::env::var("OPENAI_API_KEY") {
+        Ok(key) => {
+            log::info!("找到OPENAI_API_KEY環境變數");
+            key
+        },
+        Err(_) => {
+            log::warn!("OPENAI_API_KEY 環境變數未設置");
+            return Err("OPENAI_API_KEY 環境變數未設置".into());
+        }
+    };
+    
+    // 獲取用戶的教練個性
+    let personality_type = get_user_personality_type(rb, user_id).await?;
+    let system_prompt = personality_type.system_prompt();
+    
+    log::info!("使用教練個性: {:?}", personality_type);
+    
+    let client = reqwest::Client::new();
+    
+    let request_body = json!({
+        "model": "gpt-4o-mini",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": message}
+        ]
+    });
+
+    log::info!("準備發送個性化請求到OpenAI API");
+    
+    let response = client
+        .post("https://api.openai.com/v1/chat/completions")
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await
+        .map_err(|e| {
+            log::error!("發送個性化請求到OpenAI API失敗: {}", e);
+            format!("網路請求失敗: {}", e)
+        })?;
+
+    let status = response.status();
+    log::info!("收到個性化OpenAI API回應，狀態碼: {}", status);
+    if !status.is_success() {
+        let error_text = response.text().await.unwrap_or_default();
+        log::error!("個性化OpenAI API 錯誤回應: {}", error_text);
+        return Err(format!("ChatGPT API 錯誤 ({}): {}", status, error_text).into());
+    }
+
+    let response_json: serde_json::Value = response.json().await
+        .map_err(|e| {
+            log::error!("解析個性化OpenAI API回應JSON失敗: {}", e);
+            format!("解析回應失敗: {}", e)
+        })?;
+    
+    log::debug!("個性化OpenAI API回應JSON: {}", response_json);
+    
+    let content = response_json
+        .get("choices")
+        .and_then(|choices| choices.get(0))
+        .and_then(|choice| choice.get("message"))
+        .and_then(|message| message.get("content"))
+        .and_then(|content| content.as_str())
+        .ok_or_else(|| {
+            log::error!("無法從個性化OpenAI API回應中提取內容");
+            "無法解析ChatGPT回應"
+        })?;
+
+    log::info!("成功獲取個性化ChatGPT回應");
+    Ok(content.to_string())
+}
+
+// 新增：帶個性的聊天API
+pub async fn send_message_with_personality(
+    rb: web::Data<RBatis>,
+    req: web::Json<ChatWithPersonalityRequest>,
+) -> Result<HttpResponse> {
+    log::info!("收到帶個性的ChatGPT API請求: {}", req.message);
+    let now = Utc::now();
+
+    // 儲存用戶訊息到資料庫
+    let user_message = ChatMessage {
+        id: Some(Uuid::new_v4().to_string()),
+        user_id: req.user_id.clone().or(Some("fccc3935-74ae-4cde-814c-3679116aaad3".to_string())),
+        role: Some("user".to_string()),
+        content: Some(req.message.clone()),
+        created_at: Some(now),
+    };
+
+    if let Err(e) = ChatMessage::insert(rb.get_ref(), &user_message).await {
+        log::error!("儲存用戶訊息失敗: {}", e);
+    }
+
+    // 呼叫帶個性的ChatGPT API
+    let ai_response = match call_chatgpt_api_with_personality(rb.get_ref(), &req.message, req.user_id.clone()).await {
+        Ok(response) => {
+            log::info!("成功獲取個性化ChatGPT回應");
+            response
+        }
+        Err(e) => {
+            log::warn!("個性化ChatGPT API呼叫失敗，使用本地回應: {}", e);
+            // 根據用戶個性提供不同的備援回應
+            let personality_type = get_user_personality_type(rb.get_ref(), req.user_id.clone()).await
+                .unwrap_or(CoachPersonalityType::EmotionalSupport);
+            
+            match personality_type {
+                CoachPersonalityType::HarshCritic => {
+                    format!("系統暫時有問題，但這不是你偷懶的藉口！先想想你的問題：「{}」，我一會兒就來好好「指導」你！", req.message)
+                }
+                CoachPersonalityType::EmotionalSupport => {
+                    format!("收到你的訊息了～雖然系統暫時不太穩定，但我會努力幫助你的💕 關於「{}」這個問題，等等再來詳細聊聊好嗎？", req.message)
+                }
+                CoachPersonalityType::Analytical => {
+                    format!("系統錯誤代碼：AI服務暫時不可用。你的查詢「{}」已記錄，待服務恢復後將基於數據模型提供專業分析。", req.message)
+                }
+            }
+        }
+    };
+
+    // 儲存AI回應到資料庫
+    let assistant_now = Utc::now();
+    let assistant_message = ChatMessage {
+        id: Some(Uuid::new_v4().to_string()),
+        user_id: req.user_id.clone().or(Some("fccc3935-74ae-4cde-814c-3679116aaad3".to_string())),
+        role: Some("assistant".to_string()),
+        content: Some(ai_response.clone()),
+        created_at: Some(assistant_now),
+    };
+
+    if let Err(e) = ChatMessage::insert(rb.get_ref(), &assistant_message).await {
+        log::error!("儲存AI回應失敗: {}", e);
+    }
+
+    // 返回回應
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "text": ai_response
+    })))
+}
+
+// 直接指定個性的聊天API（用於測試）
+pub async fn send_message_with_direct_personality(
+    rb: web::Data<RBatis>,
+    req: web::Json<DirectPersonalityChatRequest>,
+) -> Result<HttpResponse> {
+    log::info!("收到直接指定個性的ChatGPT API請求: {} (個性: {})", req.message, req.personality_type);
+    
+    // 解析個性類型
+    let personality_type = match CoachPersonalityType::from_string(&req.personality_type) {
+        Some(pt) => pt,
+        None => {
+            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("無效的個性類型: {}", req.personality_type),
+            }));
+        }
+    };
+
+    // 直接使用指定的個性呼叫AI服務
+    let ai_response = match call_chatgpt_api_with_direct_personality(&req.message, personality_type.clone()).await {
+        Ok(response) => {
+            log::info!("成功獲取指定個性的ChatGPT回應");
+            response
+        }
+        Err(e) => {
+            log::warn!("指定個性的ChatGPT API呼叫失敗，使用備援回應: {}", e);
+            // 根據指定個性提供備援回應
+            match personality_type {
+                CoachPersonalityType::HarshCritic => {
+                    format!("系統有問題？這不是你逃避問題的理由！關於「{}」，等系統修好了我會好好「指導」你的！", req.message)
+                }
+                CoachPersonalityType::EmotionalSupport => {
+                    format!("哎呀，系統暫時不穩定呢～但是沒關係，關於「{}」這個問題，我們等等再一起討論吧💕", req.message)
+                }
+                CoachPersonalityType::Analytical => {
+                    format!("錯誤分析：AI服務暫時不可用。查詢主題：「{}」。預計修復時間：未知。建議：稍後重試。", req.message)
+                }
+            }
+        }
+    };
+
+    // 返回回應
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "text": ai_response,
+        "personality_type": req.personality_type,
+        "personality_display_name": personality_type.display_name()
+    })))
+}
+
+// 直接使用指定個性呼叫ChatGPT API
+async fn call_chatgpt_api_with_direct_personality(message: &str, personality_type: CoachPersonalityType) -> Result<String, Box<dyn std::error::Error>> {
+    log::info!("開始呼叫指定個性的ChatGPT API: {:?}", personality_type);
+    
+    let api_key = match std::env::var("OPENAI_API_KEY") {
+        Ok(key) => {
+            log::info!("找到OPENAI_API_KEY環境變數");
+            key
+        },
+        Err(_) => {
+            log::warn!("OPENAI_API_KEY 環境變數未設置");
+            return Err("OPENAI_API_KEY 環境變數未設置".into());
+        }
+    };
+    
+    let system_prompt = personality_type.system_prompt();
+    log::info!("使用系統提示詞: {}", system_prompt);
+    
+    let client = reqwest::Client::new();
+    
+    let request_body = json!({
+        "model": "gpt-4o-mini",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": message}
+        ]
+    });
+
+    log::info!("準備發送指定個性請求到OpenAI API");
+    
+    let response = client
+        .post("https://api.openai.com/v1/chat/completions")
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await
+        .map_err(|e| {
+            log::error!("發送指定個性請求到OpenAI API失敗: {}", e);
+            format!("網路請求失敗: {}", e)
+        })?;
+
+    let status = response.status();
+    log::info!("收到指定個性OpenAI API回應，狀態碼: {}", status);
+    
+    if !status.is_success() {
+        let error_text = response.text().await.unwrap_or_default();
+        log::error!("指定個性OpenAI API 錯誤回應: {}", error_text);
+        return Err(format!("ChatGPT API 錯誤 ({}): {}", status, error_text).into());
+    }
+
+    let response_json: serde_json::Value = response.json().await
+        .map_err(|e| {
+            log::error!("解析指定個性OpenAI API回應JSON失敗: {}", e);
+            format!("解析JSON回應失敗: {}", e)
+        })?;
+
+    log::info!("成功解析指定個性OpenAI API回應JSON");
+
+    if let Some(content) = response_json["choices"][0]["message"]["content"].as_str() {
+        log::info!("成功提取指定個性ChatGPT回應內容");
+        Ok(content.to_string())
+    } else {
+        log::error!("無法從指定個性OpenAI API回應中提取內容");
+        log::debug!("回應JSON: {}", serde_json::to_string_pretty(&response_json).unwrap_or_default());
+        Err("無法提取AI回應內容".into())
+    }
+}
+
 

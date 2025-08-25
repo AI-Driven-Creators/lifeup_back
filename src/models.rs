@@ -581,4 +581,151 @@ pub struct WeeklyAttributeSnapshot {
     pub adaptability: Option<i32>,
     pub created_at: Option<DateTime<Utc>>,
 }
-crud!(WeeklyAttributeSnapshot{}); 
+crud!(WeeklyAttributeSnapshot{});
+
+// ============= 教練個性系統 =============
+
+// 教練個性類型枚舉
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum CoachPersonalityType {
+    #[serde(rename = "harsh_critic")]
+    HarshCritic,        // 嚴厲愛嗆人
+    #[serde(rename = "emotional_support")]
+    EmotionalSupport,   // 提供情緒價值
+    #[serde(rename = "analytical")]
+    Analytical,         // 擅長邏輯與數據分析
+}
+
+impl CoachPersonalityType {
+    pub fn from_string(value: &str) -> Option<CoachPersonalityType> {
+        match value {
+            "harsh_critic" => Some(CoachPersonalityType::HarshCritic),
+            "emotional_support" => Some(CoachPersonalityType::EmotionalSupport),
+            "analytical" => Some(CoachPersonalityType::Analytical),
+            _ => None,
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            CoachPersonalityType::HarshCritic => "harsh_critic".to_string(),
+            CoachPersonalityType::EmotionalSupport => "emotional_support".to_string(),
+            CoachPersonalityType::Analytical => "analytical".to_string(),
+        }
+    }
+
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            CoachPersonalityType::HarshCritic => "嚴厲導師",
+            CoachPersonalityType::EmotionalSupport => "暖心陪伴",
+            CoachPersonalityType::Analytical => "數據分析師",
+        }
+    }
+
+    pub fn description(&self) -> &'static str {
+        match self {
+            CoachPersonalityType::HarshCritic => "直言不諱，用嚴厲的話語督促你成長",
+            CoachPersonalityType::EmotionalSupport => "溫暖體貼，提供情感支持和正向鼓勵",
+            CoachPersonalityType::Analytical => "理性客觀，用數據和邏輯幫你分析問題",
+        }
+    }
+
+    pub fn system_prompt(&self) -> String {
+        match self {
+            CoachPersonalityType::HarshCritic => {
+                r#"你是一位嚴厲但有效的人生導師，風格直接犀利。你會：
+- 直接指出用戶的問題和藉口，不留情面
+- 用嚴厲但建設性的方式督促用戶成長
+- 偶爾會「嗆」用戶，但目的是激發他們的鬥志
+- 強調責任感和紀律的重要性
+- 語氣直率，有時會用「你到底在幹嘛？」、「別找藉口了」這類表達
+- 用繁體中文回答，語氣強烈但不失專業
+- 會用數據和事實來「打臉」用戶的錯誤觀念
+
+例如：用戶說拖延 → 你會回：「又在拖延？你這樣下去什麼時候能成功？停止自欺欺人，立刻行動才是王道！」"#.to_string()
+            },
+            CoachPersonalityType::EmotionalSupport => {
+                r#"你是一位溫暖貼心的人生教練，專門提供情緒價值。你會：
+- 理解和同理用戶的感受，給予情感支持
+- 用溫柔鼓勵的方式引導用戶
+- 經常使用正向的詞彙和表情符號
+- 關心用戶的心理狀態，優先處理情緒問題
+- 給予充分的認可和讚美
+- 用繁體中文回答，語氣親切溫暖
+- 會說「你很棒」、「我相信你」這類鼓勵的話
+
+例如：用戶說拖延 → 你會回：「我理解拖延帶來的焦慮感受💕 每個人都會有這樣的時候，不要太苛責自己。我們一起找出適合你的節奏，慢慢來沒關係～」"#.to_string()
+            },
+            CoachPersonalityType::Analytical => {
+                r#"你是一位擅長數據分析的理性教練，凡事講究邏輯和科學方法。你會：
+- 用數據和統計來分析問題
+- 提供基於研究和理論的建議
+- 將問題拆解成邏輯清晰的步驟
+- 引用相關的心理學、管理學理論
+- 提供量化的目標和追蹤方法
+- 用繁體中文回答，語氣理性客觀
+- 經常使用「根據研究顯示」、「數據表明」等表達
+
+例如：用戶說拖延 → 你會回：「根據行為心理學研究，拖延症影響20%的成年人。建議採用番茄工作法，將任務分解為25分鐘單位，可提升執行效率23%。我們來制定一個量化的改善計劃。」"#.to_string()
+            }
+        }
+    }
+}
+
+// 用戶教練偏好設定
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UserCoachPreference {
+    pub id: Option<String>,
+    pub user_id: Option<String>,
+    pub personality_type: Option<String>, // 存儲字符串，映射到 CoachPersonalityType
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+}
+crud!(UserCoachPreference{});
+
+// ============= API 請求/回應結構 =============
+
+// 設定教練個性請求
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SetCoachPersonalityRequest {
+    pub user_id: Option<String>,
+    pub personality_type: String, // "harsh_critic", "emotional_support", "analytical"
+}
+
+// 獲取教練個性回應
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CoachPersonalityResponse {
+    pub personality_type: String,
+    pub display_name: String,
+    pub description: String,
+    pub is_active: bool,
+}
+
+// 所有可用教練個性回應
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AvailablePersonalitiesResponse {
+    pub personalities: Vec<CoachPersonalityInfo>,
+    pub current_personality: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CoachPersonalityInfo {
+    pub personality_type: String,
+    pub display_name: String,
+    pub description: String,
+    pub emoji: String,
+}
+
+// 帶個性的聊天請求
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ChatWithPersonalityRequest {
+    pub message: String,
+    pub user_id: Option<String>,
+}
+
+// 直接指定個性的聊天請求
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DirectPersonalityChatRequest {
+    pub message: String,
+    pub personality_type: String,
+} 

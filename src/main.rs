@@ -147,7 +147,14 @@ async fn main() -> std::io::Result<()> {
             .route("/api/chat/messages/all", web::get().to(get_all_chat_messages))
             .route("/api/chat/send", web::post().to(send_message))
             .route("/api/chat/chatgpt", web::post().to(send_message_to_chatgpt))
+            .route("/api/chat/personality", web::post().to(send_message_with_personality))
+            .route("/api/chat/test-personality", web::post().to(send_message_with_direct_personality))
             .route("/api/chat/test", web::get().to(test_endpoint))
+            
+            // 教練個性相關路由
+            .route("/api/coach/personalities", web::get().to(get_available_personalities))
+            .route("/api/coach/personality", web::post().to(set_coach_personality))
+            .route("/api/coach/personality/current", web::get().to(get_current_personality))
             // 遊戲化數據相關路由
             .route("/api/users/{id}/gamified", web::get().to(get_gamified_user_data))
             // 成就相關路由
@@ -352,6 +359,17 @@ async fn create_tables(rb: &RBatis) {
             adaptability INTEGER DEFAULT 50,
             created_at TEXT,
             UNIQUE(user_id, year, week_number),
+            FOREIGN KEY (user_id) REFERENCES user (id)
+        )
+        "#,
+        r#"
+        CREATE TABLE IF NOT EXISTS user_coach_preference (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            personality_type TEXT NOT NULL,
+            created_at TEXT,
+            updated_at TEXT,
+            UNIQUE(user_id),
             FOREIGN KEY (user_id) REFERENCES user (id)
         )
         "#,
