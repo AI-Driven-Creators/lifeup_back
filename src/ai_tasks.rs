@@ -481,6 +481,258 @@ pub async fn generate_task_with_ai(
     }
 }
 
+// ============= 新增：任務驗證和預覽 API =============
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ValidateTaskRequest {
+    pub task_json: CreateTaskInput,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TaskPreviewResponse {
+    pub is_valid: bool,
+    pub validation_errors: Vec<String>,
+    pub task_preview: Option<String>,
+    pub task_json: Option<CreateTaskInput>,
+}
+
+// 驗證任務 JSON 格式的函數
+fn validate_task_json(task_input: &CreateTaskInput) -> (bool, Vec<String>) {
+    let mut errors = Vec::new();
+    
+    // 驗證標題
+    if task_input.title.trim().is_empty() {
+        errors.push("任務標題不能為空".to_string());
+    }
+    
+    // 驗證優先級
+    if let Some(priority) = task_input.priority {
+        if priority < 1 || priority > 5 {
+            errors.push("優先級必須在 1-5 之間".to_string());
+        }
+    }
+    
+    // 驗證難度
+    if let Some(difficulty) = task_input.difficulty {
+        if difficulty < 1 || difficulty > 5 {
+            errors.push("難度必須在 1-5 之間".to_string());
+        }
+    }
+    
+    // 驗證經驗值
+    if let Some(experience) = task_input.experience {
+        if experience < 0 {
+            errors.push("經驗值不能為負數".to_string());
+        }
+    }
+    
+    // 驗證日期格式
+    if let Some(due_date) = &task_input.due_date {
+        if chrono::DateTime::parse_from_rfc3339(due_date).is_err() {
+            errors.push("截止日期格式不正確".to_string());
+        }
+    }
+    
+    if let Some(start_date) = &task_input.start_date {
+        if chrono::DateTime::parse_from_rfc3339(start_date).is_err() {
+            errors.push("開始日期格式不正確".to_string());
+        }
+    }
+    
+    if let Some(end_date) = &task_input.end_date {
+        if chrono::DateTime::parse_from_rfc3339(end_date).is_err() {
+            errors.push("結束日期格式不正確".to_string());
+        }
+    }
+    
+    // 驗證重複模式
+    if task_input.is_recurring.unwrap_or(false) {
+        if let Some(pattern) = &task_input.recurrence_pattern {
+            let valid_patterns = vec!["daily", "weekdays", "weekends", "weekly"];
+            if !valid_patterns.contains(&pattern.as_str()) {
+                errors.push(format!("無效的重複模式: {}。有效模式為: daily, weekdays, weekends, weekly", pattern));
+            }
+        } else {
+            errors.push("重複性任務必須指定重複模式".to_string());
+        }
+    }
+    
+    // 驗證完成目標
+    if let Some(target) = task_input.completion_target {
+        if target < 0.0 || target > 100.0 {
+            errors.push("完成目標必須在 0-100 之間".to_string());
+        }
+    }
+    
+    (errors.is_empty(), errors)
+}
+
+// API: 驗證並預覽任務
+pub async fn validate_and_preview_task(
+    req: web::Json<ValidateTaskRequest>,
+) -> Result<HttpResponse> {
+    let task_input = &req.task_json;
+    
+    // 驗證任務 JSON
+    let (is_valid, validation_errors) = validate_task_json(task_input);
+    
+    // 如果驗證通過，生成任務預覽
+    let task_preview = if is_valid {
+        // 先生成簡單的預覽
+        let mut simple_preview = format!("📋 任務名稱：{}\n", task_input.title);
+        
+        if let Some(desc) = &task_input.description {
+            simple_preview.push_str(&format!("📝 描述：{}\n", desc));
+        }
+        
+        simple_preview.push_str(&format!("🎯 類型：{}\n", task_input.task_type.as_deref().unwrap_or("一般任務")));
+        simple_preview.push_str(&format!("⭐ 優先級：{}/5\n", task_input.priority.unwrap_or(3)));
+        simple_preview.push_str(&format!("🔥 難度：{}/5\n", task_input.difficulty.unwrap_or(3)));
+        simple_preview.push_str(&format!("💎 經驗值：{}\n", task_input.experience.unwrap_or(10)));
+        
+        if let Some(due_date) = &task_input.due_date {
+            if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(due_date) {
+                simple_preview.push_str(&format!("📅 截止日期：{}\n", dt.format("%Y-%m-%d %H:%M")));
+            }
+        }
+        
+        if task_input.is_recurring.unwrap_or(false) {
+            simple_preview.push_str(&format!("🔄 重複模式：{}\n", task_input.recurrence_pattern.as_deref().unwrap_or("無")));
+            
+            if let Some(start_date) = &task_input.start_date {
+                if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(start_date) {
+                    simple_preview.push_str(&format!("🚀 開始日期：{}\n", dt.format("%Y-%m-%d")));
+                }
+            }
+            
+            if let Some(end_date) = &task_input.end_date {
+                if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(end_date) {
+                    simple_preview.push_str(&format!("🏁 結束日期：{}\n", dt.format("%Y-%m-%d")));
+                }
+            }
+        }
+        
+        // 如果有 OpenAI API Key，嘗試使用 AI 生成更豐富的預覽
+        if let Ok(api_key) = std::env::var("OPENAI_API_KEY") {
+            let openai_service = OpenAIService::new(api_key);
+            
+            // 建構提示詞
+            let prompt = format!(
+                "請為以下任務生成一個簡潔有趣的介紹（限制在100字以內）：\n\
+                任務名稱：{}\n\
+                描述：{}\n\
+                類型：{}\n\
+                優先級：{}/5\n\
+                難度：{}/5\n\
+                經驗值：{}\n\
+                請用鼓勵和積極的語氣，讓用戶想要完成這個任務。",
+                task_input.title,
+                task_input.description.as_deref().unwrap_or("無"),
+                task_input.task_type.as_deref().unwrap_or("一般任務"),
+                task_input.priority.unwrap_or(3),
+                task_input.difficulty.unwrap_or(3),
+                task_input.experience.unwrap_or(10)
+            );
+            
+            // 使用 AI 生成預覽
+            match openai_service.generate_task_preview(&prompt).await {
+                Ok(ai_preview) => Some(ai_preview),
+                Err(_) => Some(simple_preview), // 如果 AI 生成失敗，使用簡單預覽
+            }
+        } else {
+            Some(simple_preview)
+        }
+    } else {
+        None
+    };
+    
+    Ok(HttpResponse::Ok().json(ApiResponse {
+        success: is_valid,
+        data: Some(TaskPreviewResponse {
+            is_valid,
+            validation_errors,
+            task_preview,
+            task_json: if is_valid { Some(task_input.clone()) } else { None },
+        }),
+        message: if is_valid {
+            "任務驗證成功".to_string()
+        } else {
+            "任務驗證失敗，請檢查錯誤".to_string()
+        },
+    }))
+}
+
+// API: 從聊天記錄生成任務 JSON
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GenerateTaskFromChatRequest {
+    pub chat_history: Vec<String>,  // 最近的幾條聊天記錄
+}
+
+pub async fn generate_task_from_chat(
+    req: web::Json<GenerateTaskFromChatRequest>,
+) -> Result<HttpResponse> {
+    // 從環境變數獲取 OpenAI API Key
+    let api_key = match std::env::var("OPENAI_API_KEY") {
+        Ok(key) => key,
+        Err(_) => {
+            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: "未配置 OpenAI API Key".to_string(),
+            }));
+        }
+    };
+    
+    let openai_service = OpenAIService::new(api_key);
+    
+    // 將聊天記錄組合成描述
+    let description = req.chat_history.join("\n");
+    
+    // 使用 AI 生成任務
+    match openai_service.generate_task_from_text(&description).await {
+        Ok(ai_task) => {
+            let task_json = CreateTaskInput {
+                title: ai_task.title,
+                description: ai_task.description,
+                task_type: Some(ai_task.task_type),
+                priority: Some(ai_task.priority),
+                difficulty: Some(ai_task.difficulty),
+                experience: Some(ai_task.experience),
+                due_date: ai_task.due_date,
+                is_recurring: Some(ai_task.is_recurring),
+                recurrence_pattern: ai_task.recurrence_pattern,
+                start_date: ai_task.start_date,
+                end_date: ai_task.end_date,
+                completion_target: ai_task.completion_target,
+            };
+            
+            // 驗證生成的任務
+            let (is_valid, validation_errors) = validate_task_json(&task_json);
+            
+            if is_valid {
+                Ok(HttpResponse::Ok().json(ApiResponse {
+                    success: true,
+                    data: Some(task_json),
+                    message: "成功從對話生成任務".to_string(),
+                }))
+            } else {
+                Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: format!("生成的任務格式有誤: {}", validation_errors.join(", ")),
+                }))
+            }
+        }
+        Err(e) => {
+            Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("生成任務失敗: {}", e),
+            }))
+        }
+    }
+}
+
 // ============= 新增：簡化的任務創建 API =============
 
 // API 3: 直接從 JSON 創建任務（用戶友好版本）
