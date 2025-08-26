@@ -2153,10 +2153,29 @@ pub async fn send_message_to_chatgpt(
     log::info!("收到ChatGPT API請求: {}", req.message);
     let now = Utc::now();
     
+    // 獲取第一個使用者的 ID（或者您可以從請求中傳入使用者 ID）
+    let users = match User::select_all(rb.get_ref()).await {
+        Ok(users) => users,
+        Err(e) => {
+            log::error!("獲取使用者失敗: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(json!({
+                "error": format!("獲取使用者失敗: {}", e)
+            })));
+        }
+    };
+    
+    if users.is_empty() {
+        return Ok(HttpResponse::InternalServerError().json(json!({
+            "error": "沒有找到使用者，請先創建使用者"
+        })));
+    }
+    
+    let user_id = users[0].id.clone().unwrap_or_else(|| "unknown".to_string());
+    
     // 儲存使用者訊息到資料庫
     let user_message = ChatMessage {
         id: Some(Uuid::new_v4().to_string()),
-        user_id: Some("fccc3935-74ae-4cde-814c-3679116aaad3".to_string()), // 使用實際存在的用戶ID
+        user_id: Some(user_id.clone()),
         role: Some("user".to_string()),
         content: Some(req.message.clone()),
         created_at: Some(now),
@@ -2184,7 +2203,7 @@ pub async fn send_message_to_chatgpt(
     let assistant_now = Utc::now();
     let assistant_message = ChatMessage {
         id: Some(Uuid::new_v4().to_string()),
-        user_id: Some("fccc3935-74ae-4cde-814c-3679116aaad3".to_string()),
+        user_id: Some(user_id),
         role: Some("assistant".to_string()),
         content: Some(ai_response.clone()),
         created_at: Some(assistant_now),

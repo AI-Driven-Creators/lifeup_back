@@ -190,6 +190,46 @@ impl OpenAIService {
         }
     }
 
+    pub async fn generate_task_preview(&self, prompt: &str) -> Result<String> {
+        // 使用不同的請求結構，因為我們不需要 JSON 格式
+        let request = serde_json::json!({
+            "model": "gpt-4o-mini",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "你是一個充滿活力和鼓勵的任務助手。用積極正面的語氣為用戶介紹任務，讓他們感到興奮和有動力去完成。"
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            "temperature": 0.8,
+            "max_tokens": 150
+        });
+
+        let response = self.client
+            .post("https://api.openai.com/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&request)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await?;
+            return Err(anyhow::anyhow!("OpenAI API 錯誤: {}", error_text));
+        }
+
+        let openai_response: OpenAIResponse = response.json().await?;
+        
+        if let Some(choice) = openai_response.choices.first() {
+            Ok(choice.message.content.clone())
+        } else {
+            Err(anyhow::anyhow!("OpenAI 未返回有效回應"))
+        }
+    }
+
     pub async fn generate_task_from_text(&self, user_input: &str) -> Result<AIGeneratedTask> {
         // 獲取當前時間並格式化
         let now = Utc::now();
