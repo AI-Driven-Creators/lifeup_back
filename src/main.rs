@@ -175,6 +175,7 @@ async fn main() -> std::io::Result<()> {
             
             // AI 成就生成路由
             .route("/api/achievements/generate", web::post().to(generate_achievement_with_ai))
+            .route("/api/achievements/generate-from-tasks/{user_id}", web::post().to(crate::ai_tasks::generate_achievement_from_tasks))
     })
     .workers(2)
     .bind(&server_addr)?
