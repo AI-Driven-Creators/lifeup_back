@@ -56,10 +56,29 @@ impl AchievementService {
                     } else { false }
                 },
                 Some(AchievementRequirementType::StreakRecovery) => {
-                    // 檢查用戶是否從連續失敗中恢復
-                    // 這裡可以實現檢查用戶取消任務後重新開始的邏輯
-                    // 暫時返回 false，需要更複雜的邏輯
-                    false
+                    // 定義：自上次取消任務(last_cancelled_at 最大值)之後，
+                    // 用戶完成的任務數量達到 requirement_value 視為從低潮中恢復
+                    // 1) 找出用戶最近一次取消時間
+                    let tasks_with_cancel = Task::select_by_map(rb, value!{"user_id": user_id}).await?;
+                    let latest_cancel_time = tasks_with_cancel
+                        .iter()
+                        .filter_map(|t| t.last_cancelled_at)
+                        .max();
+
+                    if let Some(latest_cancel_time) = latest_cancel_time {
+                        // 2) 統計在該時間點之後完成(updated_at)的任務數量
+                        let completed_tasks_after = tasks_with_cancel
+                            .iter()
+                            .filter(|t| t.status == Some(TaskStatus::Completed.to_i32()))
+                            .filter_map(|t| t.updated_at)
+                            .filter(|updated| *updated > latest_cancel_time)
+                            .count() as i32;
+
+                        completed_tasks_after >= requirement_value
+                    } else {
+                        // 沒有取消紀錄則不符合「恢復」定義
+                        false
+                    }
                 },
                 // 屬性相關成就
                 Some(AchievementRequirementType::IntelligenceAttribute) => {
