@@ -2398,19 +2398,19 @@ pub async fn get_available_personalities(
     let personalities = vec![
         CoachPersonalityInfo {
             personality_type: "harsh_critic".to_string(),
-            display_name: "嚴厲導師".to_string(),
+            display_name: "森氣氣".to_string(),
             description: "直言不諱，用嚴厲的話語督促你成長".to_string(),
             emoji: "😤".to_string(),
         },
         CoachPersonalityInfo {
             personality_type: "emotional_support".to_string(),
-            display_name: "暖心陪伴".to_string(),
+            display_name: "小太陽".to_string(),
             description: "溫暖體貼，提供情感支持和正向鼓勵".to_string(),
             emoji: "🤗".to_string(),
         },
         CoachPersonalityInfo {
             personality_type: "analytical".to_string(),
-            display_name: "數據分析師".to_string(),
+            display_name: "小書蟲".to_string(),
             description: "理性客觀，用數據和邏輯幫你分析問題".to_string(),
             emoji: "📊".to_string(),
         },
@@ -2433,10 +2433,13 @@ pub async fn set_coach_personality(
     rb: web::Data<RBatis>,
     req: web::Json<SetCoachPersonalityRequest>,
 ) -> Result<HttpResponse> {
+    log::info!("收到設定教練個性請求: {:?}", req);
+    
     // 驗證個性類型是否有效
     let personality_type = match CoachPersonalityType::from_string(&req.personality_type) {
         Some(p) => p,
         None => {
+            log::error!("無效的教練個性類型: {}", req.personality_type);
             return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
                 success: false,
                 data: None,
@@ -2446,8 +2449,31 @@ pub async fn set_coach_personality(
     };
 
     // 決定用戶ID（如果沒有提供，使用預設測試用戶）
-    let user_id = if let Some(id) = req.user_id.clone() {
-        id
+    let user_id = if let Some(id) = req.user_id.clone().filter(|s| !s.trim().is_empty()) {
+        log::info!("驗證用戶ID: {}", id);
+        // 驗證提供的用戶ID是否存在
+        match User::select_by_map(rb.get_ref(), value!{"id": id.clone()}).await {
+            Ok(users) if !users.is_empty() => {
+                log::info!("用戶ID驗證成功: {}", id);
+                id
+            },
+            Ok(_) => {
+                log::error!("找不到用戶ID: {}", id);
+                return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: format!("找不到用戶ID: {}", id),
+                }));
+            },
+            Err(e) => {
+                log::error!("查詢用戶失敗: {}", e);
+                return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: format!("查詢用戶失敗: {}", e),
+                }));
+            }
+        }
     } else {
         // 查詢或建立預設測試用戶
         match User::select_by_map(rb.get_ref(), value!{"email": "test@lifeup.com"}).await {
@@ -2455,88 +2481,78 @@ pub async fn set_coach_personality(
                 users[0].id.clone().unwrap()
             }
             _ => {
-                return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
-                    success: false,
-                    data: None,
-                    message: "找不到用戶，請先創建用戶".to_string(),
-                }));
+                // 如果沒有測試用戶，創建一個
+                let test_user = User {
+                    id: Some(uuid::Uuid::new_v4().to_string()),
+                    name: Some("測試用戶".to_string()),
+                    email: Some("test@lifeup.com".to_string()),
+                    created_at: Some(Utc::now()),
+                    updated_at: Some(Utc::now()),
+                };
+                
+                match User::insert(rb.get_ref(), &test_user).await {
+                    Ok(_) => {
+                        log::info!("已創建預設測試用戶");
+                        test_user.id.unwrap()
+                    }
+                    Err(e) => {
+                        log::error!("創建測試用戶失敗: {}", e);
+                        return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                            success: false,
+                            data: None,
+                            message: "創建測試用戶失敗".to_string(),
+                        }));
+                    }
+                }
             }
         }
     };
 
     // 檢查是否已存在該用戶的個性設定
-    match UserCoachPreference::select_by_map(rb.get_ref(), value!{"user_id": user_id.clone()}).await {
-        Ok(existing_preferences) => {
-            if let Some(mut existing) = existing_preferences.into_iter().next() {
-                // 更新現有設定
-                existing.personality_type = Some(req.personality_type.clone());
-                existing.updated_at = Some(Utc::now());
-                
-                let update_sql = "UPDATE user_coach_preference SET personality_type = ?, updated_at = ? WHERE id = ?";
-                match rb.exec(update_sql, vec![
-                    rbs::Value::String(req.personality_type.clone()),
-                    rbs::Value::String(Utc::now().to_string()),
-                    rbs::Value::String(existing.id.clone().unwrap())
-                ]).await {
-                    Ok(_) => {
-                        log::info!("已更新用戶 {} 的教練個性為 {}", user_id, req.personality_type);
-                    }
-                    Err(e) => {
-                        log::error!("更新教練個性失敗: {}", e);
-                        return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
-                            success: false,
-                            data: None,
-                            message: format!("更新失敗: {}", e),
-                        }));
-                    }
-                }
-            } else {
-                // 創建新設定
-                let new_preference = UserCoachPreference {
-                    id: Some(uuid::Uuid::new_v4().to_string()),
-                    user_id: Some(user_id.clone()),
-                    personality_type: Some(req.personality_type.clone()),
-                    created_at: Some(Utc::now()),
-                    updated_at: Some(Utc::now()),
-                };
+    let existing_preferences = UserCoachPreference::select_by_map(rb.get_ref(), value!{"user_id": user_id.clone()}).await
+        .unwrap_or_else(|_| vec![]);
 
-                match UserCoachPreference::insert(rb.get_ref(), &new_preference).await {
-                    Ok(_) => {
-                        log::info!("已為用戶 {} 創建教練個性設定: {}", user_id, req.personality_type);
-                    }
-                    Err(e) => {
-                        log::error!("創建教練個性設定失敗: {}", e);
-                        return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
-                            success: false,
-                            data: None,
-                            message: format!("創建失敗: {}", e),
-                        }));
-                    }
-                }
+    if let Some(existing) = existing_preferences.into_iter().next() {
+        // 更新現有設定
+        let update_sql = "UPDATE user_coach_preference SET personality_type = ?, updated_at = ? WHERE id = ?";
+        match rb.exec(update_sql, vec![
+            rbs::Value::String(req.personality_type.clone()),
+            rbs::Value::String(Utc::now().to_string()),
+            rbs::Value::String(existing.id.clone().unwrap())
+        ]).await {
+            Ok(_) => {
+                log::info!("已更新用戶 {} 的教練個性為 {}", user_id, req.personality_type);
+            }
+            Err(e) => {
+                log::error!("更新教練個性失敗: {}", e);
+                return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: format!("更新失敗: {}", e),
+                }));
             }
         }
-        Err(_) => {
-            // 創建新設定
-            let new_preference = UserCoachPreference {
-                id: Some(uuid::Uuid::new_v4().to_string()),
-                user_id: Some(user_id.clone()),
-                personality_type: Some(req.personality_type.clone()),
-                created_at: Some(Utc::now()),
-                updated_at: Some(Utc::now()),
-            };
+    } else {
+        // 創建新設定
+        let new_preference = UserCoachPreference {
+            id: Some(uuid::Uuid::new_v4().to_string()),
+            user_id: Some(user_id.clone()),
+            personality_type: Some(req.personality_type.clone()),
+            created_at: Some(Utc::now()),
+            updated_at: Some(Utc::now()),
+        };
 
-            match UserCoachPreference::insert(rb.get_ref(), &new_preference).await {
-                Ok(_) => {
-                    log::info!("已為用戶 {} 創建教練個性設定: {}", user_id, req.personality_type);
-                }
-                Err(e) => {
-                    log::error!("創建教練個性設定失敗: {}", e);
-                    return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
-                        success: false,
-                        data: None,
-                        message: format!("創建失敗: {}", e),
-                    }));
-                }
+        match UserCoachPreference::insert(rb.get_ref(), &new_preference).await {
+            Ok(_) => {
+                log::info!("已為用戶 {} 創建教練個性設定: {}", user_id, req.personality_type);
+            }
+            Err(e) => {
+                log::error!("創建教練個性設定失敗: {}", e);
+                return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: format!("創建失敗: {}", e),
+                }));
             }
         }
     }
@@ -2560,14 +2576,34 @@ pub async fn get_current_personality(
     rb: web::Data<RBatis>,
     query: web::Query<std::collections::HashMap<String, String>>,
 ) -> Result<HttpResponse> {
-    let user_id = match query.get("user_id") {
-        Some(id) => id.clone(),
+    let user_id = match query.get("user_id").filter(|s| !s.trim().is_empty()) {
+        Some(id) => {
+            // 驗證用戶ID是否存在
+            match User::select_by_map(rb.get_ref(), value!{"id": id.clone()}).await {
+                Ok(users) if !users.is_empty() => id.clone(),
+                _ => {
+                    return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                        success: false,
+                        data: None,
+                        message: format!("找不到用戶ID: {}", id),
+                    }));
+                }
+            }
+        },
         None => {
-            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
-                success: false,
-                data: None,
-                message: "缺少 user_id 參數".to_string(),
-            }));
+            // 使用預設測試用戶
+            match User::select_by_map(rb.get_ref(), value!{"email": "test@lifeup.com"}).await {
+                Ok(users) if !users.is_empty() => {
+                    users[0].id.clone().unwrap()
+                }
+                _ => {
+                    return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                        success: false,
+                        data: None,
+                        message: "找不到預設測試用戶".to_string(),
+                    }));
+                }
+            }
         }
     };
 
@@ -2723,10 +2759,43 @@ pub async fn send_message_with_personality(
     log::info!("收到帶個性的ChatGPT API請求: {}", req.message);
     let now = Utc::now();
 
+    // 決定用戶ID（使用與個性設定相同的邏輯）
+    let user_id = if let Some(id) = req.user_id.clone().filter(|s| !s.trim().is_empty()) {
+        // 驗證提供的用戶ID是否存在
+        match User::select_by_map(rb.get_ref(), value!{"id": id.clone()}).await {
+            Ok(users) if !users.is_empty() => id,
+            _ => {
+                // 使用預設測試用戶
+                match User::select_by_map(rb.get_ref(), value!{"email": "test@lifeup.com"}).await {
+                    Ok(users) if !users.is_empty() => users[0].id.clone().unwrap(),
+                    _ => {
+                        return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                            success: false,
+                            data: None,
+                            message: "找不到有效的用戶".to_string(),
+                        }));
+                    }
+                }
+            }
+        }
+    } else {
+        // 使用預設測試用戶
+        match User::select_by_map(rb.get_ref(), value!{"email": "test@lifeup.com"}).await {
+            Ok(users) if !users.is_empty() => users[0].id.clone().unwrap(),
+            _ => {
+                return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: "找不到預設測試用戶".to_string(),
+                }));
+            }
+        }
+    };
+
     // 儲存用戶訊息到資料庫
     let user_message = ChatMessage {
         id: Some(Uuid::new_v4().to_string()),
-        user_id: req.user_id.clone().or(Some("fccc3935-74ae-4cde-814c-3679116aaad3".to_string())),
+        user_id: Some(user_id.clone()),
         role: Some("user".to_string()),
         content: Some(req.message.clone()),
         created_at: Some(now),
@@ -2737,7 +2806,7 @@ pub async fn send_message_with_personality(
     }
 
     // 呼叫帶個性的ChatGPT API
-    let ai_response = match call_chatgpt_api_with_personality(rb.get_ref(), &req.message, req.user_id.clone()).await {
+    let ai_response = match call_chatgpt_api_with_personality(rb.get_ref(), &req.message, Some(user_id.clone())).await {
         Ok(response) => {
             log::info!("成功獲取個性化ChatGPT回應");
             response
@@ -2745,7 +2814,7 @@ pub async fn send_message_with_personality(
         Err(e) => {
             log::warn!("個性化ChatGPT API呼叫失敗，使用本地回應: {}", e);
             // 根據用戶個性提供不同的備援回應
-            let personality_type = get_user_personality_type(rb.get_ref(), req.user_id.clone()).await
+            let personality_type = get_user_personality_type(rb.get_ref(), Some(user_id.clone())).await
                 .unwrap_or(CoachPersonalityType::EmotionalSupport);
             
             match personality_type {
@@ -2766,7 +2835,7 @@ pub async fn send_message_with_personality(
     let assistant_now = Utc::now();
     let assistant_message = ChatMessage {
         id: Some(Uuid::new_v4().to_string()),
-        user_id: req.user_id.clone().or(Some("fccc3935-74ae-4cde-814c-3679116aaad3".to_string())),
+        user_id: Some(user_id.clone()),
         role: Some("assistant".to_string()),
         content: Some(ai_response.clone()),
         created_at: Some(assistant_now),

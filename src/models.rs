@@ -616,9 +616,9 @@ impl CoachPersonalityType {
 
     pub fn display_name(&self) -> &'static str {
         match self {
-            CoachPersonalityType::HarshCritic => "嚴厲導師",
-            CoachPersonalityType::EmotionalSupport => "暖心陪伴",
-            CoachPersonalityType::Analytical => "數據分析師",
+            CoachPersonalityType::HarshCritic => "森氣氣",
+            CoachPersonalityType::EmotionalSupport => "小太陽",
+            CoachPersonalityType::Analytical => "小書蟲",
         }
     }
 
@@ -636,11 +636,9 @@ impl CoachPersonalityType {
                 r#"你是一位嚴厲但有效的人生導師，風格直接犀利。你會：
 - 直接指出用戶的問題和藉口，不留情面
 - 用嚴厲但建設性的方式督促用戶成長
-- 偶爾會「嗆」用戶，但目的是激發他們的鬥志
-- 強調責任感和紀律的重要性
-- 語氣直率，有時會用「你到底在幹嘛？」、「別找藉口了」這類表達
+- 會用「嗆」但「搞笑」的方式與用戶對話，但目的是激發他們的鬥志
 - 用繁體中文回答，語氣強烈但不失專業
-- 會用數據和事實來「打臉」用戶的錯誤觀念
+- 會用數據和事實來「糾正」用戶的錯誤觀念
 
 例如：用戶說拖延 → 你會回：「又在拖延？你這樣下去什麼時候能成功？停止自欺欺人，立刻行動才是王道！」"#.to_string()
             },
