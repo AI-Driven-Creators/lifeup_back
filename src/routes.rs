@@ -126,9 +126,9 @@ pub async fn create_task(
         task_type: req.task_type.clone().or(Some("daily".to_string())),
         difficulty: req.difficulty.or(Some(1)),
         experience: req.experience.or(Some(10)),
-        parent_task_id: None,
-        is_parent_task: Some(if req.task_type.as_ref().map_or(false, |t| t == "main" || t == "side" || t == "challenge") { 1 } else { 0 }), // 主任務、支線任務、挑戰任務默認為大任務
-        task_order: Some(0),
+        parent_task_id: req.parent_task_id.clone(),
+        is_parent_task: Some(if req.parent_task_id.is_some() { 0 } else if req.task_type.as_ref().map_or(false, |t| t == "main" || t == "side" || t == "challenge") { 1 } else { 0 }), // 有父任務的是子任務(0)，否則按類型判斷
+        task_order: req.task_order.or(Some(0)),
         due_date: req.due_date,
         created_at: Some(now),
         updated_at: Some(now),
@@ -437,10 +437,13 @@ pub async fn update_task(
                 if let Some(due_date) = req.due_date {
                     task.due_date = Some(due_date);
                 }
+                if let Some(task_order) = req.task_order {
+                    task.task_order = Some(task_order);
+                }
                 task.updated_at = Some(Utc::now());
                 
                 // 執行更新
-                let update_sql = "UPDATE task SET title = ?, description = ?, status = ?, priority = ?, task_type = ?, difficulty = ?, experience = ?, due_date = ?, updated_at = ? WHERE id = ?";
+                let update_sql = "UPDATE task SET title = ?, description = ?, status = ?, priority = ?, task_type = ?, difficulty = ?, experience = ?, due_date = ?, task_order = ?, updated_at = ? WHERE id = ?";
                 let due_date_value = match task.due_date {
                     Some(date) => Value::String(date.to_string()),
                     None => Value::Null,
@@ -456,6 +459,7 @@ pub async fn update_task(
                         Value::I32(task.difficulty.unwrap_or(1)),
                         Value::I32(task.experience.unwrap_or(10)),
                         due_date_value,
+                        Value::I32(task.task_order.unwrap_or(0)),
                         Value::String(task.updated_at.unwrap().to_string()),
                         Value::String(task_id.clone()),
                     ],
@@ -497,6 +501,91 @@ pub async fn update_task(
             data: None,
             message: format!("查詢任務失敗: {}", e),
         })),
+    }
+}
+
+// 刪除任務
+pub async fn delete_task(
+    rb: web::Data<RBatis>,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let task_id = path.into_inner();
+
+    log::info!("刪除任務: {}", task_id);
+
+    // 先查詢任務是否存在
+    match Task::select_by_map(rb.get_ref(), value!{"id": task_id.clone()}).await {
+        Ok(tasks) => {
+            if let Some(task) = tasks.into_iter().next() {
+                // 檢查是否為父任務
+                if task.is_parent_task.unwrap_or(0) == 1 {
+                    // 如果是父任務，先刪除所有子任務
+                    match Task::select_by_map(rb.get_ref(), value!{"parent_task_id": task_id.clone()}).await {
+                        Ok(subtasks) => {
+                            let subtasks_count = subtasks.len();
+                            for subtask in &subtasks {
+                                if let Some(subtask_id) = &subtask.id {
+                                    if let Err(e) = Task::delete_by_map(rb.get_ref(), value!{"id": subtask_id.clone()}).await {
+                                        log::error!("刪除子任務 {} 失敗: {}", subtask_id, e);
+                                        return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                                            success: false,
+                                            data: None,
+                                            message: format!("刪除子任務失敗: {}", e),
+                                        }));
+                                    }
+                                }
+                            }
+                            log::info!("成功刪除 {} 個子任務", subtasks_count);
+                        }
+                        Err(e) => {
+                            log::error!("查詢子任務失敗: {}", e);
+                            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                                success: false,
+                                data: None,
+                                message: format!("查詢子任務失敗: {}", e),
+                            }));
+                        }
+                    }
+                }
+
+                // 刪除任務本身
+                match Task::delete_by_map(rb.get_ref(), value!{"id": task_id}).await {
+                    Ok(_) => {
+                        log::info!("任務 {} 刪除成功", task.title.unwrap_or_default());
+                        Ok(HttpResponse::Ok().json(ApiResponse {
+                            success: true,
+                            data: Some(serde_json::json!({
+                                "deleted_task_id": task.id,
+                                "message": "任務刪除成功"
+                            })),
+                            message: "任務刪除成功".to_string(),
+                        }))
+                    }
+                    Err(e) => {
+                        log::error!("刪除任務失敗: {}", e);
+                        Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                            success: false,
+                            data: None,
+                            message: format!("刪除任務失敗: {}", e),
+                        }))
+                    }
+                }
+            } else {
+                Ok(HttpResponse::NotFound().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: "任務不存在".to_string(),
+                }))
+            }
+        }
+        Err(e) => {
+            log::error!("查詢任務失敗: {}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("查詢任務失敗: {}", e),
+            }))
+        }
     }
 }
 

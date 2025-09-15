@@ -351,6 +351,8 @@ pub struct CreateTaskRequest {
     pub due_date: Option<DateTime<Utc>>,
     pub user_id: Option<String>, // 添加 user_id 欄位
     pub skill_tags: Option<Vec<String>>, // 技能標籤陣列
+    pub parent_task_id: Option<String>, // 父任務ID（用於創建子任務）
+    pub task_order: Option<i32>, // 任務順序
 }
 
 // 更新任務的請求
@@ -364,6 +366,7 @@ pub struct UpdateTaskRequest {
     pub difficulty: Option<i32>, // 1-5 難度等級
     pub experience: Option<i32>, // 經驗值獎勵
     pub due_date: Option<DateTime<Utc>>,
+    pub task_order: Option<i32>, // 任務順序
 }
 
 // 子任務模板
