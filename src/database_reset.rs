@@ -32,16 +32,16 @@ pub async fn reset_database(rb: &RBatis) -> Result<(), Box<dyn std::error::Error
 
     // 刪除所有表（按依賴順序）
     let drop_tables = vec![
+        "DROP TABLE IF EXISTS career_mainlines",
+        "DROP TABLE IF EXISTS quiz_results",
         "DROP TABLE IF EXISTS chat_message",
-        "DROP TABLE IF EXISTS recurring_task_template", 
+        "DROP TABLE IF EXISTS recurring_task_template",
         "DROP TABLE IF EXISTS weekly_attribute_snapshot",
         "DROP TABLE IF EXISTS user_achievement",
         "DROP TABLE IF EXISTS daily_progress",
         "DROP TABLE IF EXISTS achievement",
         "DROP TABLE IF EXISTS user_attributes",
         "DROP TABLE IF EXISTS user_profile",
-        "DROP TABLE IF EXISTS chat_message",
-        "DROP TABLE IF EXISTS recurring_task_template", 
         "DROP TABLE IF EXISTS task",
         "DROP TABLE IF EXISTS skill",
         "DROP TABLE IF EXISTS user",
@@ -102,6 +102,8 @@ async fn create_all_tables(rb: &RBatis) -> Result<(), Box<dyn std::error::Error>
             cancel_count INTEGER DEFAULT 0,
             last_cancelled_at TEXT,
             skill_tags TEXT,
+            career_mainline_id TEXT,
+            task_category TEXT,
             FOREIGN KEY (user_id) REFERENCES user (id),
             FOREIGN KEY (parent_task_id) REFERENCES task (id)
         )
@@ -242,6 +244,39 @@ async fn create_all_tables(rb: &RBatis) -> Result<(), Box<dyn std::error::Error>
             created_at TEXT,
             UNIQUE(user_id, year, week_number),
             FOREIGN KEY (user_id) REFERENCES user (id)
+        )
+        "#,
+        // 測驗結果表
+        r#"
+        CREATE TABLE IF NOT EXISTS quiz_results (
+            id TEXT PRIMARY KEY,
+            user_id TEXT,
+            values_results TEXT,
+            interests_results TEXT,
+            talents_results TEXT,
+            workstyle_results TEXT,
+            completed_at TEXT,
+            is_active INTEGER DEFAULT 1,
+            created_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES user (id)
+        )
+        "#,
+        // 職業主線表
+        r#"
+        CREATE TABLE IF NOT EXISTS career_mainlines (
+            id TEXT PRIMARY KEY,
+            user_id TEXT,
+            quiz_result_id TEXT,
+            selected_career TEXT,
+            survey_answers TEXT,
+            total_tasks_generated INTEGER DEFAULT 0,
+            estimated_completion_months INTEGER,
+            status TEXT DEFAULT 'active',
+            progress_percentage REAL DEFAULT 0.0,
+            created_at TEXT,
+            updated_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES user (id),
+            FOREIGN KEY (quiz_result_id) REFERENCES quiz_results (id)
         )
         "#,
     ];
