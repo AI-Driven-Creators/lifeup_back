@@ -95,18 +95,21 @@ pub async fn create_user(
     }
 }
 
-// 任務相關路由
+// 任務相關路由 - 只返回父任務（非子任務）
 pub async fn get_tasks(rb: web::Data<RBatis>) -> Result<HttpResponse> {
-    match Task::select_all(rb.get_ref()).await {
+    // 只獲取父任務：parent_task_id 為 NULL 的任務
+    let sql = "SELECT * FROM task WHERE parent_task_id IS NULL ORDER BY created_at DESC";
+
+    match rb.query_decode::<Vec<Task>>(sql, vec![]).await {
         Ok(tasks) => Ok(HttpResponse::Ok().json(ApiResponse {
             success: true,
             data: Some(tasks),
-            message: "獲取任務列表成功".to_string(),
+            message: "獲取父任務列表成功".to_string(),
         })),
         Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
             success: false,
             data: None,
-            message: format!("獲取任務列表失敗: {}", e),
+            message: format!("獲取父任務列表失敗: {}", e),
         })),
     }
 }
@@ -467,12 +470,10 @@ pub async fn update_task(
                 
                 match result {
                     Ok(_) => {
-                        // 如果這是子任務且狀態更新為已完成，檢查是否需要更新父任務狀態
+                        // 如果這是子任務，任何狀態變化都要檢查父任務狀態
                         if let Some(parent_task_id) = &task.parent_task_id {
-                            if task.status == Some(2) { // 2 = completed
-                                if let Err(e) = check_and_update_parent_task_status(rb.get_ref(), parent_task_id).await {
-                                    log::warn!("檢查父任務狀態時發生錯誤: {}", e);
-                                }
+                            if let Err(e) = check_and_update_parent_task_status(rb.get_ref(), parent_task_id).await {
+                                log::warn!("檢查父任務狀態時發生錯誤: {}", e);
                             }
                         }
                         
@@ -616,15 +617,18 @@ pub async fn get_task(rb: web::Data<RBatis>, path: web::Path<String>) -> Result<
     }
 }
 
-// 根據任務類型獲取任務
+// 根據任務類型獲取任務 - 只返回父任務（非子任務）
 pub async fn get_tasks_by_type(
     rb: web::Data<RBatis>,
     path: web::Path<String>,
 ) -> Result<HttpResponse> {
     let task_type = path.into_inner();
     log::info!("獲取任務類型: {}", task_type);
-    
-    match Task::select_by_map(rb.get_ref(), value!{"task_type": task_type.clone()}).await {
+
+    // 只獲取指定類型的父任務：parent_task_id 為 NULL 且 task_type 匹配
+    let sql = "SELECT * FROM task WHERE task_type = ? AND parent_task_id IS NULL ORDER BY created_at DESC";
+
+    match rb.query_decode::<Vec<Task>>(sql, vec![rbs::Value::String(task_type.clone())]).await {
         Ok(tasks) => {
             log::info!("成功獲取{}個{}類型任務", tasks.len(), task_type);
             
@@ -2396,58 +2400,129 @@ async fn call_chatgpt_api(message: &str) -> Result<String, Box<dyn std::error::E
 // 檢查並更新父任務狀態
 async fn check_and_update_parent_task_status(rb: &RBatis, parent_task_id: &str) -> Result<(), Box<dyn std::error::Error>> {
     log::info!("檢查父任務 {} 的狀態", parent_task_id);
-    
-    // 查詢所有子任務
-    let subtasks = Task::select_by_map(rb, value!{"parent_task_id": parent_task_id}).await?;
-    
-    if subtasks.is_empty() {
+
+    // 先獲取父任務資訊
+    let parent_tasks = Task::select_by_map(rb, value!{"id": parent_task_id}).await?;
+    let parent_task = match parent_tasks.first() {
+        Some(task) => task,
+        None => {
+            log::warn!("找不到父任務: {}", parent_task_id);
+            return Ok(());
+        }
+    };
+
+    // 判斷是否為重複性任務
+    let is_recurring = parent_task.is_recurring.unwrap_or(0) == 1;
+
+    // 查詢子任務
+    let all_subtasks = Task::select_by_map(rb, value!{"parent_task_id": parent_task_id}).await?;
+
+    if all_subtasks.is_empty() {
         log::info!("父任務 {} 沒有子任務", parent_task_id);
         return Ok(());
     }
-    
-    // 統計子任務狀態
-    let total_subtasks = subtasks.len();
-    let completed_subtasks = subtasks.iter()
-        .filter(|task| task.status == Some(2) || task.status == Some(6)) // completed 或 daily_completed
-        .count();
-    
-    log::info!("父任務 {} 有 {} 個子任務，其中 {} 個已完成", parent_task_id, total_subtasks, completed_subtasks);
-    
-    // 如果所有子任務都完成了，更新父任務為完成狀態
-    if completed_subtasks == total_subtasks {
-        log::info!("所有子任務已完成，更新父任務 {} 為完成狀態", parent_task_id);
-        
-        let update_sql = "UPDATE task SET status = ?, updated_at = ? WHERE id = ?";
-        rb.exec(
-            update_sql,
-            vec![
-                Value::I32(2), // completed status
-                Value::String(Utc::now().to_string()),
-                Value::String(parent_task_id.to_string()),
-            ],
-        ).await?;
-        
-        log::info!("父任務 {} 狀態更新成功", parent_task_id);
+
+    // 根據任務類型過濾相關子任務
+    let relevant_subtasks: Vec<&Task> = if is_recurring {
+        // 重複性任務：只看今日的子任務
+        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        all_subtasks.iter()
+            .filter(|task| {
+                task.task_date.as_ref().map(|d| d == &today).unwrap_or(false)
+            })
+            .collect()
     } else {
-        // 如果還有未完成的子任務，確保父任務保持進行中狀態
-        let parent_task = Task::select_by_map(rb, value!{"id": parent_task_id}).await?;
-        if let Some(parent) = parent_task.first() {
-            if parent.status != Some(1) { // 如果不是進行中狀態
-                log::info!("父任務 {} 有未完成子任務，更新為進行中狀態", parent_task_id);
-                
-                let update_sql = "UPDATE task SET status = ?, updated_at = ? WHERE id = ?";
-                rb.exec(
-                    update_sql,
-                    vec![
-                        Value::I32(1), // in_progress status
-                        Value::String(Utc::now().to_string()),
-                        Value::String(parent_task_id.to_string()),
-                    ],
-                ).await?;
-            }
-        }
+        // 普通任務：看所有子任務
+        all_subtasks.iter().collect()
+    };
+
+    if relevant_subtasks.is_empty() {
+        log::info!("父任務 {} 沒有相關的子任務（今日：{}）", parent_task_id, is_recurring);
+        // 如果沒有相關子任務，父任務應該是 pending 狀態
+        update_parent_task_status(rb, parent_task_id, 0).await?;
+        return Ok(());
     }
-    
+
+    // 統計子任務狀態
+    let total_subtasks = relevant_subtasks.len();
+    let completed_subtasks = relevant_subtasks.iter()
+        .filter(|task| {
+            if is_recurring {
+                // 重複性任務：daily_completed 或 completed 都算完成
+                task.status == Some(6) || task.status == Some(2)
+            } else {
+                // 普通任務：只有 completed 算完成
+                task.status == Some(2)
+            }
+        })
+        .count();
+
+    let in_progress_subtasks = relevant_subtasks.iter()
+        .filter(|task| {
+            if is_recurring {
+                // 重複性任務：daily_in_progress 或 in_progress 都算進行中
+                task.status == Some(5) || task.status == Some(1)
+            } else {
+                // 普通任務：只有 in_progress 算進行中
+                task.status == Some(1)
+            }
+        })
+        .count();
+
+    // 統計 pending 狀態的子任務
+    let pending_subtasks = relevant_subtasks.iter()
+        .filter(|task| task.status == Some(0)) // pending
+        .count();
+
+    log::info!("父任務 {} (重複性: {}) 有 {} 個相關子任務，其中 {} 個已完成，{} 個進行中，{} 個待處理",
+               parent_task_id, is_recurring, total_subtasks, completed_subtasks, in_progress_subtasks, pending_subtasks);
+
+    // 根據子任務狀態推導父任務狀態
+    let new_parent_status = if completed_subtasks == total_subtasks {
+        // 所有子任務完成 → 父任務完成
+        2 // completed
+    } else if pending_subtasks == total_subtasks {
+        // 所有子任務都是 pending → 父任務 pending
+        0 // pending
+    } else {
+        // 其他情況（有任何子任務非 pending 狀態）→ 父任務進行中
+        // 包括：有 in_progress、有 completed 但未全部完成、混合狀態等
+        1 // in_progress
+    };
+
+    // 檢查是否需要更新父任務狀態
+    if parent_task.status != Some(new_parent_status) {
+        log::info!("父任務 {} 狀態需要更新: {} → {}",
+                   parent_task_id,
+                   parent_task.status.unwrap_or(-1),
+                   new_parent_status);
+        update_parent_task_status(rb, parent_task_id, new_parent_status).await?;
+    } else {
+        log::info!("父任務 {} 狀態無需更新，保持: {}", parent_task_id, new_parent_status);
+    }
+
+    Ok(())
+}
+
+// 輔助函數：更新父任務狀態
+async fn update_parent_task_status(rb: &RBatis, parent_task_id: &str, new_status: i32) -> Result<(), Box<dyn std::error::Error>> {
+    let update_sql = "UPDATE task SET status = ?, updated_at = ? WHERE id = ?";
+    rb.exec(
+        update_sql,
+        vec![
+            Value::I32(new_status),
+            Value::String(chrono::Utc::now().to_string()),
+            Value::String(parent_task_id.to_string()),
+        ],
+    ).await?;
+
+    let status_name = match new_status {
+        0 => "pending",
+        1 => "in_progress",
+        2 => "completed",
+        _ => "unknown",
+    };
+    log::info!("父任務 {} 狀態更新為: {}", parent_task_id, status_name);
     Ok(())
 }
 
