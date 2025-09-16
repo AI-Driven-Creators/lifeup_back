@@ -38,7 +38,6 @@ pub struct CreateTaskInput {
     pub start_date: Option<String>,
     pub end_date: Option<String>,
     pub completion_target: Option<f64>,
-    pub parent_task_id: Option<String>,  // 添加父任務ID欄位
 }
 
 // 簡化的任務創建請求（直接接受 AI 生成的 JSON 格式）
@@ -57,7 +56,6 @@ pub struct CreateTaskFromJsonRequest {
     pub end_date: Option<String>,
     pub completion_target: Option<f64>,
     pub user_id: Option<String>,  // 可選的用戶 ID
-    pub parent_task_id: Option<String>,  // 添加父任務ID欄位
 }
 
 // API 1: AI 生成符合 task_schema.md 的 JSON
@@ -98,7 +96,6 @@ pub async fn generate_task_json(
                 start_date: ai_task.start_date,
                 end_date: ai_task.end_date,
                 completion_target: ai_task.completion_target,
-                parent_task_id: None,  // AI 生成的任務暫時設為獨立主任務
             };
             
             Ok(HttpResponse::Ok().json(ApiResponse {
@@ -180,14 +177,8 @@ pub async fn insert_task_from_json(
         task_type: task_input.task_type.clone(),
         difficulty: task_input.difficulty,
         experience: task_input.experience,
-        parent_task_id: task_input.parent_task_id.clone(),
-        is_parent_task: if task_input.is_recurring.unwrap_or(false) {
-            Some(1)
-        } else if task_input.parent_task_id.is_some() {
-            Some(0)  // 有父任務的為子任務
-        } else {
-            Some(1)  // 沒有父任務的設為獨立主任務
-        },
+        parent_task_id: None,
+        is_parent_task: if task_input.is_recurring.unwrap_or(false) { Some(1) } else { Some(0) },
         task_order: Some(0),
         due_date: task_input.due_date.as_ref().and_then(|d| {
             chrono::DateTime::parse_from_rfc3339(d)
@@ -214,8 +205,6 @@ pub async fn insert_task_from_json(
         cancel_count: Some(0),
         last_cancelled_at: None,
         skill_tags: None,
-        career_mainline_id: None,
-        task_category: None,
     };
     
     // 儲存主任務到資料庫
@@ -307,8 +296,6 @@ pub async fn insert_task_from_json(
                             cancel_count: Some(0),
                             last_cancelled_at: None,
                             skill_tags: None,
-                            career_mainline_id: None,
-                            task_category: None,
                         };
                         
                         tasks_to_insert.push(daily_task);
@@ -474,7 +461,6 @@ pub async fn generate_task_with_ai(
                 start_date: ai_task.start_date,
                 end_date: ai_task.end_date,
                 completion_target: ai_task.completion_target,
-                parent_task_id: None,  // AI 生成的任務暫時設為獨立主任務
             };
             
             // 再插入資料庫
@@ -719,7 +705,6 @@ pub async fn generate_task_from_chat(
                 start_date: ai_task.start_date,
                 end_date: ai_task.end_date,
                 completion_target: ai_task.completion_target,
-                parent_task_id: None,  // AI 生成的任務暫時設為獨立主任務
             };
             
             // 驗證生成的任務
@@ -770,7 +755,6 @@ pub async fn create_task_from_json(
         start_date: req.start_date.clone(),
         end_date: req.end_date.clone(),
         completion_target: req.completion_target,
-        parent_task_id: req.parent_task_id.clone(),  // 添加父任務ID
     };
     
     // 再包裝為 InsertTaskRequest 格式

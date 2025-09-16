@@ -6,7 +6,6 @@ mod seed_data;
 mod ai_service;
 mod ai_tasks;
 mod achievement_service;
-mod career_routes;
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
 use rbatis::RBatis;
@@ -178,10 +177,6 @@ async fn main() -> std::io::Result<()> {
             // AI 成就生成路由
             .route("/api/achievements/generate", web::post().to(generate_achievement_with_ai))
             .route("/api/achievements/generate-from-tasks/{user_id}", web::post().to(crate::ai_tasks::generate_achievement_from_tasks))
-            
-            // 職業主線任務系統路由
-            .route("/api/quiz/save-results", web::post().to(crate::career_routes::save_quiz_results))
-            .route("/api/career/generate-tasks", web::post().to(crate::career_routes::generate_career_tasks))
     })
     .workers(2)
     .bind(&server_addr)?
@@ -190,19 +185,6 @@ async fn main() -> std::io::Result<()> {
 }
 
 async fn create_tables(rb: &RBatis) {
-    // 先修改現有的 task 表，添加缺失的欄位
-    let alter_table_queries = vec![
-        "ALTER TABLE task ADD COLUMN career_mainline_id TEXT",
-        "ALTER TABLE task ADD COLUMN task_category TEXT",
-    ];
-    
-    for query in alter_table_queries {
-        match rb.exec(query, vec![]).await {
-            Ok(_) => log::info!("成功添加欄位: {}", query),
-            Err(e) => log::debug!("添加欄位失敗（可能已存在）: {} - {}", query, e),
-        }
-    }
-    
     let tables = vec![
         // 使用者表
         r#"
@@ -242,11 +224,8 @@ async fn create_tables(rb: &RBatis) {
             cancel_count INTEGER DEFAULT 0,
             last_cancelled_at TEXT,
             skill_tags TEXT,
-            career_mainline_id TEXT,
-            task_category TEXT,
             FOREIGN KEY (user_id) REFERENCES user (id),
-            FOREIGN KEY (parent_task_id) REFERENCES task (id),
-            FOREIGN KEY (career_mainline_id) REFERENCES career_mainlines (id)
+            FOREIGN KEY (parent_task_id) REFERENCES task (id)
         )
         "#,
         // 技能表
@@ -396,39 +375,6 @@ async fn create_tables(rb: &RBatis) {
             updated_at TEXT,
             UNIQUE(user_id),
             FOREIGN KEY (user_id) REFERENCES user (id)
-        )
-        "#,
-        // 測驗結果表
-        r#"
-        CREATE TABLE IF NOT EXISTS quiz_results (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            values_results TEXT NOT NULL,
-            interests_results TEXT NOT NULL,
-            talents_results TEXT NOT NULL,
-            workstyle_results TEXT NOT NULL,
-            completed_at TEXT NOT NULL,
-            is_active BOOLEAN DEFAULT TRUE,
-            created_at TEXT DEFAULT (datetime('now')),
-            FOREIGN KEY (user_id) REFERENCES user (id)
-        )
-        "#,
-        // 職業主線任務表
-        r#"
-        CREATE TABLE IF NOT EXISTS career_mainlines (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            quiz_result_id TEXT NOT NULL,
-            selected_career TEXT NOT NULL,
-            survey_answers TEXT,
-            total_tasks_generated INTEGER DEFAULT 0,
-            estimated_completion_months INTEGER,
-            status TEXT DEFAULT 'active',
-            progress_percentage REAL DEFAULT 0.0,
-            created_at TEXT DEFAULT (datetime('now')),
-            updated_at TEXT DEFAULT (datetime('now')),
-            FOREIGN KEY (user_id) REFERENCES user (id),
-            FOREIGN KEY (quiz_result_id) REFERENCES quiz_results (id)
         )
         "#,
     ];
