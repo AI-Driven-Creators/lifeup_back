@@ -205,7 +205,7 @@ impl OpenAIService {
                 }
             ],
             "temperature": 0.8,
-            "max_tokens": 4000
+            "max_tokens": 150
         });
 
         let response = self.client
@@ -448,7 +448,7 @@ pub fn convert_to_task_model(
         difficulty: Some(ai_task.difficulty),
         experience: Some(ai_task.experience),
         parent_task_id: None,
-        is_parent_task: Some(1), // 修正：獨立的AI生成任務應該是主任務，而不是孤立的子任務
+        is_parent_task: Some(0),
         task_order: Some(0),
         due_date: ai_task.due_date.and_then(|d| d.parse().ok()),
         created_at: Some(now),
@@ -463,8 +463,6 @@ pub fn convert_to_task_model(
         cancel_count: Some(0),
         last_cancelled_at: None,
         skill_tags: None,
-        career_mainline_id: None,
-        task_category: None,
     }
 }
 
