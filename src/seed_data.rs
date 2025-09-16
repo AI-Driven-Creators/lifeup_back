@@ -280,7 +280,7 @@ async fn insert_test_tasks(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn std
             task_type.into(),
             difficulty.into(),
             exp.into(),
-            false.into(),
+            true.into(), // 修正：每日任務應該是獨立的父任務
             created_at.into(),
             updated_at.into(),
         ]).await?;

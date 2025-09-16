@@ -95,21 +95,20 @@ pub async fn create_user(
     }
 }
 
-// 任務相關路由 - 只返回父任務（非子任務）
+// 任務相關路由 - 只返回主任務（父任務），不包含子任務
 pub async fn get_tasks(rb: web::Data<RBatis>) -> Result<HttpResponse> {
-    // 只獲取父任務：parent_task_id 為 NULL 的任務
-    let sql = "SELECT * FROM task WHERE parent_task_id IS NULL ORDER BY created_at DESC";
-
+    // 只查詢主任務（is_parent_task = 1）
+    let sql = "SELECT * FROM task WHERE is_parent_task = 1 ORDER BY created_at DESC";
     match rb.query_decode::<Vec<Task>>(sql, vec![]).await {
         Ok(tasks) => Ok(HttpResponse::Ok().json(ApiResponse {
             success: true,
             data: Some(tasks),
-            message: "獲取父任務列表成功".to_string(),
+            message: "獲取主任務列表成功".to_string(),
         })),
         Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
             success: false,
             data: None,
-            message: format!("獲取父任務列表失敗: {}", e),
+            message: format!("獲取主任務列表失敗: {}", e),
         })),
     }
 }
@@ -146,6 +145,8 @@ pub async fn create_task(
         cancel_count: Some(0),
         last_cancelled_at: None,
         skill_tags: req.skill_tags.clone(),
+        career_mainline_id: None,
+        task_category: None,
     };
 
     match Task::insert(rb.get_ref(), &new_task).await {
@@ -857,6 +858,8 @@ pub async fn start_task(
                                         cancel_count: Some(0),
                                         last_cancelled_at: None,
                                         skill_tags: parent_task.skill_tags.clone(), // 子任務繼承父任務的技能標籤
+                                        career_mainline_id: None,
+                                        task_category: None,
                                     };
                                     
                                     if let Err(e) = Task::insert(rb.get_ref(), &subtask).await {
@@ -1296,6 +1299,8 @@ pub async fn create_recurring_task(
         cancel_count: Some(0),
         last_cancelled_at: None,
         skill_tags: None, // 重複性任務預設無技能標籤
+        career_mainline_id: None,
+        task_category: None,
     };
 
     // 插入父任務
@@ -1393,6 +1398,8 @@ pub async fn generate_daily_tasks(
                     cancel_count: Some(0),
                     last_cancelled_at: None,
                     skill_tags: None, // 每日重複任務預設無技能標籤
+                    career_mainline_id: None,
+                    task_category: None,
                 };
                 
                 if let Ok(_) = Task::insert(rb.get_ref(), &daily_task).await {
