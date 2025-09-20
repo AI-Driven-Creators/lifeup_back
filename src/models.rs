@@ -294,6 +294,9 @@ pub struct Task {
     pub last_cancelled_at: Option<DateTime<Utc>>, // 最後取消時間
     #[serde(default, deserialize_with = "deserialize_skill_tags")]
     pub skill_tags: Option<Vec<String>>, // 相關技能標籤，JSON格式儲存["Vue.js", "JavaScript"]
+    // 職業任務相關欄位
+    pub career_mainline_id: Option<String>, // 職業主線ID
+    pub task_category: Option<String>, // 任務分類
 }
 crud!(Task{});
 
@@ -729,4 +732,109 @@ pub struct ChatWithPersonalityRequest {
 pub struct DirectPersonalityChatRequest {
     pub message: String,
     pub personality_type: String,
+}
+
+// ============= 測驗和職業相關模型 =============
+
+// 測驗結果模型
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct QuizResults {
+    pub id: Option<String>,
+    pub user_id: Option<String>,
+    pub values_results: Option<String>,      // JSON: 價值觀測驗結果
+    pub interests_results: Option<String>,   // JSON: 興趣測驗結果
+    pub talents_results: Option<String>,     // JSON: 天賦測驗結果
+    pub workstyle_results: Option<String>,   // JSON: 工作風格測驗結果
+    #[serde(default, deserialize_with = "deserialize_optional_datetime")]
+    pub completed_at: Option<DateTime<Utc>>,
+    pub is_active: Option<i32>,
+    #[serde(default, deserialize_with = "deserialize_optional_datetime")]
+    pub created_at: Option<DateTime<Utc>>,
+    #[serde(default, deserialize_with = "deserialize_optional_datetime")]
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
+// 職業主線模型
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CareerMainlines {
+    pub id: Option<String>,
+    pub user_id: Option<String>,
+    pub quiz_result_id: Option<String>,
+    pub selected_career: Option<String>,
+    pub survey_answers: Option<String>,      // JSON: 問卷回答
+    pub total_tasks_generated: Option<i32>,
+    pub estimated_completion_months: Option<i32>,
+    pub status: Option<String>,              // active, paused, completed
+    pub progress_percentage: Option<f64>,
+    #[serde(default, deserialize_with = "deserialize_optional_datetime")]
+    pub created_at: Option<DateTime<Utc>>,
+    #[serde(default, deserialize_with = "deserialize_optional_datetime")]
+    pub updated_at: Option<DateTime<Utc>>,
+}
+
+// 保存測驗結果請求
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SaveQuizResultsRequest {
+    pub values_results: serde_json::Value,
+    pub interests_results: serde_json::Value,
+    pub talents_results: serde_json::Value,
+    pub workstyle_results: serde_json::Value,
+}
+
+// 生成職業任務請求
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GenerateCareerTasksRequest {
+    pub quiz_result_id: String,
+    pub selected_career: String,
+    pub survey_answers: SurveyAnswers,
+}
+
+// 問卷回答結構
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SurveyAnswers {
+    pub current_level: String,               // 當前程度
+    pub available_time: String,              // 可用時間
+    pub timeline: String,                    // 期望時程
+    pub learning_styles: Vec<String>,        // 學習偏好
+    pub motivation: Option<String>,          // 學習動機
+    pub special_requirements: Option<String>, // 特殊需求
+}
+
+// AI 生成任務回應
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GeneratedTasksResponse {
+    pub learning_summary: String,
+    pub estimated_months: i32,
+    pub personality_insights: String,
+    pub main_tasks: Vec<GeneratedTask>,
+    pub daily_tasks: Vec<GeneratedTask>,
+    pub project_tasks: Vec<GeneratedTask>,
+}
+
+// AI 生成的單個任務
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GeneratedTask {
+    pub title: String,
+    pub description: String,
+    #[serde(deserialize_with = "float_to_i32")]
+    pub difficulty: i32,
+    #[serde(deserialize_with = "float_to_i32")]
+    pub estimated_hours: i32,
+    pub skill_tags: Vec<String>,
+    pub resources: Vec<String>,
+    pub personality_match: Option<String>,   // AI 解釋為什麼適合用戶
+}
+
+// 為 QuizResults 和 CareerMainlines 添加 CRUD 宏
+crud!(QuizResults{});
+crud!(CareerMainlines{});
+
+// 自定義反序列化函數，將浮點數轉換為整數
+fn float_to_i32<'de, D>(deserializer: D) -> Result<i32, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Error;
+    let f: f64 = serde::Deserialize::deserialize(deserializer)?;
+    Ok(f.round() as i32)
 } 
