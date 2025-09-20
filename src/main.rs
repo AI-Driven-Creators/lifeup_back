@@ -6,6 +6,7 @@ mod seed_data;
 mod ai_service;
 mod ai_tasks;
 mod achievement_service;
+mod career_routes;
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
 use rbatis::RBatis;
@@ -95,6 +96,8 @@ async fn main() -> std::io::Result<()> {
     // 正常啟動模式：建立資料庫表
     create_tables(&rb).await;
 
+    // 執行資料庫遷移
+    migrate_database(&rb).await;
 
     // 用 web::Data 包裝 rbatis 實例
     let rb_data = web::Data::new(rb);
@@ -177,6 +180,10 @@ async fn main() -> std::io::Result<()> {
             // AI 成就生成路由
             .route("/api/achievements/generate", web::post().to(generate_achievement_with_ai))
             .route("/api/achievements/generate-from-tasks/{user_id}", web::post().to(crate::ai_tasks::generate_achievement_from_tasks))
+
+            // 職業主線任務系統路由
+            .route("/api/quiz/save-results", web::post().to(crate::career_routes::save_quiz_results))
+            .route("/api/career/generate-tasks", web::post().to(crate::career_routes::generate_career_tasks))
     })
     .workers(2)
     .bind(&server_addr)?
@@ -377,6 +384,40 @@ async fn create_tables(rb: &RBatis) {
             FOREIGN KEY (user_id) REFERENCES user (id)
         )
         "#,
+        // 測驗結果表
+        r#"
+        CREATE TABLE IF NOT EXISTS quiz_results (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            values_results TEXT NOT NULL,
+            interests_results TEXT NOT NULL,
+            talents_results TEXT NOT NULL,
+            workstyle_results TEXT NOT NULL,
+            completed_at TEXT NOT NULL,
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES user (id)
+        )
+        "#,
+        // 職業主線任務表
+        r#"
+        CREATE TABLE IF NOT EXISTS career_mainlines (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            quiz_result_id TEXT NOT NULL,
+            selected_career TEXT NOT NULL,
+            survey_answers TEXT,
+            total_tasks_generated INTEGER DEFAULT 0,
+            estimated_completion_months INTEGER,
+            status TEXT DEFAULT 'active',
+            progress_percentage REAL DEFAULT 0.0,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES user (id),
+            FOREIGN KEY (quiz_result_id) REFERENCES quiz_results (id)
+        )
+        "#,
     ];
 
     for (i, sql) in tables.iter().enumerate() {
@@ -387,5 +428,29 @@ async fn create_tables(rb: &RBatis) {
     }
     
     log::info!("所有資料庫表建立完成");
+}
+
+async fn migrate_database(rb: &RBatis) {
+    // 添加職業任務相關欄位到 task 表
+    let alter_table_queries = vec![
+        "ALTER TABLE task ADD COLUMN career_mainline_id TEXT",
+        "ALTER TABLE task ADD COLUMN task_category TEXT",
+        "ALTER TABLE quiz_results ADD COLUMN updated_at TEXT",
+    ];
+
+    for query in alter_table_queries {
+        match rb.exec(query, vec![]).await {
+            Ok(_) => log::info!("資料庫遷移成功: {}", query),
+            Err(e) => {
+                // 忽略欄位已存在的錯誤
+                if e.to_string().contains("duplicate column name") {
+                    log::info!("欄位已存在，跳過: {}", query);
+                } else {
+                    log::warn!("資料庫遷移警告: {} - {}", query, e);
+                }
+            }
+        }
+    }
+    log::info!("資料庫遷移完成");
 }
 

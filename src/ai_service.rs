@@ -205,7 +205,7 @@ impl OpenAIService {
                 }
             ],
             "temperature": 0.8,
-            "max_tokens": 150
+            "max_tokens": 4000
         });
 
         let response = self.client
@@ -463,6 +463,8 @@ pub fn convert_to_task_model(
         cancel_count: Some(0),
         last_cancelled_at: None,
         skill_tags: None,
+        career_mainline_id: None,
+        task_category: None,
     }
 }
 
