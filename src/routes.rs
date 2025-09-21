@@ -1763,8 +1763,8 @@ pub async fn get_gamified_user_data(rb: web::Data<RBatis>, path: web::Path<Strin
             log::info!("獲取到的數據: users={}, profiles={}, attrs={}", users.len(), profiles.len(), attrs.len());
             
             let user = users.first();
-            let profile = profiles.first();
-            let attr = attrs.first();
+            let mut profile = profiles.first().cloned();
+            let mut attr = attrs.first().cloned();
             
             if user.is_none() {
                 log::error!("未找到用戶資料");
@@ -1775,22 +1775,90 @@ pub async fn get_gamified_user_data(rb: web::Data<RBatis>, path: web::Path<Strin
                 }));
             }
             
-            if profile.is_none() {
-                log::error!("未找到用戶遊戲化資料");
-                return Ok(HttpResponse::NotFound().json(ApiResponse::<()> {
-                    success: false,
-                    data: None,
-                    message: "用戶遊戲化資料不存在".to_string(),
-                }));
-            }
-            
-            if attr.is_none() {
-                log::error!("未找到用戶屬性資料");
-                return Ok(HttpResponse::NotFound().json(ApiResponse::<()> {
-                    success: false,
-                    data: None,
-                    message: "用戶屬性資料不存在".to_string(),
-                }));
+            // 若缺少 profile 或 attributes，嘗試自動補齊（懶初始化）
+            if profile.is_none() || attr.is_none() {
+                log::warn!(
+                    "用戶 {} 缺少資料：profile={} attrs={}，嘗試自動建立...",
+                    user_id,
+                    profile.is_none(),
+                    attr.is_none()
+                );
+                let now = Utc::now().to_rfc3339();
+
+                if profile.is_none() {
+                    let profile_id = Uuid::new_v4().to_string();
+                    let insert_profile_sql = r#"
+                        INSERT INTO user_profile (
+                            id, user_id, level, experience, max_experience, title,
+                            adventure_days, consecutive_login_days, persona_type, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    "#;
+                    if let Err(e) = rb.exec(
+                        insert_profile_sql,
+                        vec![
+                            profile_id.into(),
+                            user_id.clone().into(),
+                            1i32.into(),
+                            0i32.into(),
+                            100i32.into(),
+                            "新手冒險者".into(),
+                            1i32.into(),
+                            1i32.into(),
+                            "internal".into(),
+                            now.clone().into(),
+                            now.clone().into(),
+                        ],
+                    ).await {
+                        log::error!("自動建立 user_profile 失敗: {}", e);
+                    } else {
+                        log::info!("已自動為用戶 {} 建立 user_profile", user_id);
+                    }
+                    // 重新查詢
+                    if let Ok(profiles2) = UserProfile::select_by_map(rb.get_ref(), value!{"user_id": user_id.clone()}).await {
+                        profile = profiles2.first().cloned();
+                    }
+                }
+
+                if attr.is_none() {
+                    let attributes_id = Uuid::new_v4().to_string();
+                    let insert_attr_sql = r#"
+                        INSERT INTO user_attributes (
+                            id, user_id, intelligence, endurance, creativity, social, focus, adaptability, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    "#;
+                    if let Err(e) = rb.exec(
+                        insert_attr_sql,
+                        vec![
+                            attributes_id.into(),
+                            user_id.clone().into(),
+                            50i32.into(),
+                            50i32.into(),
+                            50i32.into(),
+                            50i32.into(),
+                            50i32.into(),
+                            50i32.into(),
+                            now.clone().into(),
+                            now.clone().into(),
+                        ],
+                    ).await {
+                        log::error!("自動建立 user_attributes 失敗: {}", e);
+                    } else {
+                        log::info!("已自動為用戶 {} 建立 user_attributes", user_id);
+                    }
+                    // 重新查詢
+                    if let Ok(attrs2) = UserAttributes::select_by_map(rb.get_ref(), value!{"user_id": user_id.clone()}).await {
+                        attr = attrs2.first().cloned();
+                    }
+                }
+
+                if profile.is_none() || attr.is_none() {
+                    log::error!("補齊後依然缺少用戶資料 (profile 或 attributes)");
+                    return Ok(HttpResponse::NotFound().json(ApiResponse::<()> {
+                        success: false,
+                        data: None,
+                        message: "用戶資料尚未初始化，請稍後重試".to_string(),
+                    }));
+                }
             }
             
             let user = user.unwrap();
