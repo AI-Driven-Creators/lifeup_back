@@ -61,6 +61,93 @@ pub async fn seed_database(rb: &RBatis) -> Result<(), Box<dyn std::error::Error>
     Ok(())
 }
 
+/// 僅插入最小化用戶資料（用戶本體 + user_profile + user_attributes）
+/// 用於 `--init-db` 場景，確保前端 /personal 能正常讀取
+pub async fn seed_minimum_user_data(rb: &RBatis) -> Result<String, Box<dyn std::error::Error>> {
+    info!("開始插入最小化用戶資料...");
+
+    // 建立用戶
+    let user_id = Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+
+    let insert_user_sql = r#"
+        INSERT INTO user (id, name, email, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+    "#;
+
+    rb.exec(
+        insert_user_sql,
+        vec![
+            user_id.clone().into(),
+            "小雅".into(),
+            "xiaoya@lifeup.com".into(),
+            now.clone().into(),
+            now.clone().into(),
+        ],
+    )
+    .await?;
+    info!("用戶建立成功: {}", user_id);
+
+    // 建立用戶遊戲化資料（user_profile）
+    let profile_id = Uuid::new_v4().to_string();
+    let insert_profile_sql = r#"
+        INSERT INTO user_profile (
+            id, user_id, level, experience, max_experience, title,
+            adventure_days, consecutive_login_days, persona_type, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    "#;
+
+    rb.exec(
+        insert_profile_sql,
+        vec![
+            profile_id.into(),
+            user_id.clone().into(),
+            1i32.into(),
+            0i32.into(),
+            100i32.into(),
+            "新手冒險者".into(),
+            1i32.into(),
+            1i32.into(),
+            "internal".into(),
+            now.clone().into(),
+            now.clone().into(),
+        ],
+    )
+    .await?;
+    info!("user_profile 建立成功");
+
+    // 建立用戶屬性（user_attributes）
+    let attributes_id = Uuid::new_v4().to_string();
+    let insert_attributes_sql = r#"
+        INSERT INTO user_attributes (
+            id, user_id, intelligence, endurance, creativity, social, focus, adaptability, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    "#;
+
+    rb.exec(
+        insert_attributes_sql,
+        vec![
+            attributes_id.into(),
+            user_id.clone().into(),
+            50i32.into(),
+            50i32.into(),
+            50i32.into(),
+            50i32.into(),
+            50i32.into(),
+            50i32.into(),
+            now.clone().into(),
+            now.into(),
+        ],
+    )
+    .await?;
+    info!("user_attributes 建立成功");
+
+    info!("最小化用戶資料插入完成");
+    Ok(user_id)
+}
+
 /// 插入測試用戶
 async fn insert_test_user(rb: &RBatis) -> Result<String, Box<dyn std::error::Error>> {
     let user_id = Uuid::new_v4().to_string();

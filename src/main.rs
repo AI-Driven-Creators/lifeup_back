@@ -15,7 +15,7 @@ use rbdc_sqlite::driver::SqliteDriver;
 use config::Config;
 use routes::*;
 use database_reset::reset_database;
-use seed_data::seed_database;
+use seed_data::{seed_database, seed_minimum_user_data};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -25,6 +25,7 @@ async fn main() -> std::io::Result<()> {
     // 處理命令行參數
     let args: Vec<String> = std::env::args().collect();
     let reset_db = args.contains(&"--reset-db".to_string());
+    let init_db = args.contains(&"--init-db".to_string());
     let seed_only = args.contains(&"--seed".to_string());
     // 載入配置
     let config = Config::from_env();
@@ -54,7 +55,7 @@ async fn main() -> std::io::Result<()> {
     rb.init(SqliteDriver {}, &config.database.url).unwrap();
     log::info!("資料庫連接成功: {}", config.database.url);
 
-    // 處理數據庫重置命令
+    // 處理數據庫重置命令 (--reset-db: 完全重置 + 插入測試數據)
     if reset_db {
         log::info!("執行數據庫重置...");
         if let Err(e) = reset_database(&rb).await {
@@ -69,20 +70,28 @@ async fn main() -> std::io::Result<()> {
         return Ok(());
     }
     
-    // 處理僅插入種子數據命令
-    if seed_only {
-        log::info!("僅插入種子數據...");
-        if let Err(e) = seed_database(&rb).await {
-            log::error!("種子數據插入失敗: {}", e);
+    // 處理數據庫初始化命令 (--init-db: 建立表結構 + 插入最小化用戶資料)
+    if init_db {
+        log::info!("執行數據庫初始化...");
+        if let Err(e) = reset_database(&rb).await {
+            log::error!("數據庫初始化失敗: {}", e);
             return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()));
         }
-        log::info!("種子數據插入完成！");
+        // 插入最小化用戶資料，確保前端 /personal 能正常載入
+        match seed_minimum_user_data(&rb).await {
+            Ok(user_id) => {
+                log::info!("最小化用戶資料建立完成，user_id={}", user_id);
+            }
+            Err(e) => {
+                log::error!("最小化用戶資料建立失敗: {}", e);
+                return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()));
+            }
+        }
+        log::info!("數據庫初始化完成（已插入最小化用戶資料）！");
         return Ok(());
     }
-
-    // 正常啟動模式：建立資料庫表
-    create_tables(&rb).await;    
-    // 處理僅插入種子數據命令
+    
+    // 處理僅插入種子數據命令 (--seed: 保留現有表，只插入數據)
     if seed_only {
         log::info!("僅插入種子數據...");
         if let Err(e) = seed_database(&rb).await {
