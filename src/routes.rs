@@ -3210,4 +3210,298 @@ async fn call_chatgpt_api_with_direct_personality(message: &str, personality_typ
     }
 }
 
+// 重置類型枚舉
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResetType {
+    All,           // 重置所有數據
+    Tasks,         // 只重置任務
+    Skills,        // 只重置技能
+    Chat,          // 只重置聊天記錄
+    Progress,      // 只重置進度數據
+    Achievements,  // 只重置成就
+    Profile,       // 只重置遊戲化資料
+}
+
+// 選擇性重置請求結構
+#[derive(serde::Deserialize)]
+pub struct SelectiveResetRequest {
+    pub reset_types: Vec<ResetType>,
+}
+
+// 重置結果結構
+#[derive(serde::Serialize, Clone)]
+pub struct ResetResult {
+    pub total_deleted: i32,
+    pub details: std::collections::HashMap<String, i32>,
+}
+
+// 完全重置用戶數據 API
+pub async fn reset_user_data(rb: web::Data<RBatis>, path: web::Path<String>) -> Result<HttpResponse> {
+    let user_id = path.into_inner();
+    log::info!("開始完全重置用戶 {} 的數據...", user_id);
+
+    // 驗證用戶是否存在
+    match User::select_by_map(rb.get_ref(), value!{"id": user_id.clone()}).await {
+        Ok(users) if users.is_empty() => {
+            return Ok(HttpResponse::NotFound().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: "用戶不存在".to_string(),
+            }));
+        }
+        Err(e) => {
+            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("驗證用戶失敗: {}", e),
+            }));
+        }
+        _ => {}
+    }
+
+    match reset_user_all_data(rb.get_ref(), &user_id).await {
+        Ok(result) => {
+            log::info!("用戶 {} 數據重置成功，共刪除 {} 筆記錄", user_id, result.total_deleted);
+            Ok(HttpResponse::Ok().json(ApiResponse {
+                success: true,
+                data: Some(result.clone()),
+                message: format!("用戶數據重置成功，共刪除 {} 筆記錄", result.total_deleted),
+            }))
+        }
+        Err(e) => {
+            log::error!("用戶 {} 數據重置失敗: {}", user_id, e);
+            Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("用戶數據重置失敗: {}", e),
+            }))
+        }
+    }
+}
+
+// 選擇性重置用戶數據 API
+pub async fn reset_user_data_selective(
+    rb: web::Data<RBatis>,
+    path: web::Path<String>,
+    body: web::Json<SelectiveResetRequest>
+) -> Result<HttpResponse> {
+    let user_id = path.into_inner();
+    let request = body.into_inner();
+
+    log::info!("開始選擇性重置用戶 {} 的數據，重置類型: {:?}", user_id, request.reset_types.len());
+
+    // 驗證用戶是否存在
+    match User::select_by_map(rb.get_ref(), value!{"id": user_id.clone()}).await {
+        Ok(users) if users.is_empty() => {
+            return Ok(HttpResponse::NotFound().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: "用戶不存在".to_string(),
+            }));
+        }
+        Err(e) => {
+            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("驗證用戶失敗: {}", e),
+            }));
+        }
+        _ => {}
+    }
+
+    match reset_user_selective_data(rb.get_ref(), &user_id, request.reset_types).await {
+        Ok(result) => {
+            log::info!("用戶 {} 選擇性數據重置成功，共刪除 {} 筆記錄", user_id, result.total_deleted);
+            Ok(HttpResponse::Ok().json(ApiResponse {
+                success: true,
+                data: Some(result.clone()),
+                message: format!("用戶數據重置成功，共刪除 {} 筆記錄", result.total_deleted),
+            }))
+        }
+        Err(e) => {
+            log::error!("用戶 {} 選擇性數據重置失敗: {}", user_id, e);
+            Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("用戶數據重置失敗: {}", e),
+            }))
+        }
+    }
+}
+
+/// 完全重置用戶所有數據
+async fn reset_user_all_data(rb: &RBatis, user_id: &str) -> Result<ResetResult, Box<dyn std::error::Error>> {
+    let mut total_deleted = 0i32;
+    let mut details = std::collections::HashMap::new();
+
+    // 定義要重置的表和對應的條件
+    // 按照外鍵依賴關係的順序刪除
+    let delete_operations = vec![
+        // 1. 先刪除依賴其他表的記錄
+        ("user_achievement", format!("user_id = '{}'", user_id)),
+        ("weekly_attribute_snapshot", format!("user_id = '{}'", user_id)),
+        ("daily_progress", format!("user_id = '{}'", user_id)),
+        ("chat_message", format!("user_id = '{}'", user_id)),
+
+        // 2. 刪除重複任務模板（通過父任務關聯）
+        ("recurring_task_template", format!("parent_task_id IN (SELECT id FROM task WHERE user_id = '{}')", user_id)),
+
+        // 3. 刪除任務相關的記錄（子任務先於父任務）
+        ("task", format!("user_id = '{}' AND parent_task_id IS NOT NULL", user_id)),
+        ("task", format!("user_id = '{}' AND parent_task_id IS NULL", user_id)),
+
+        // 4. 刪除技能記錄
+        ("skill", format!("user_id = '{}'", user_id)),
+
+        // 5. 刪除用戶相關記錄（但保留用戶主記錄）
+        ("user_attributes", format!("user_id = '{}'", user_id)),
+        ("user_profile", format!("user_id = '{}'", user_id)),
+        ("user_coach_preference", format!("user_id = '{}'", user_id)),
+        ("career_mainlines", format!("user_id = '{}'", user_id)),
+        ("quiz_results", format!("user_id = '{}'", user_id)),
+    ];
+
+    for (table, condition) in delete_operations {
+        let sql = format!("DELETE FROM {} WHERE {}", table, condition);
+
+        match rb.exec(&sql, vec![]).await {
+            Ok(result) => {
+                let deleted = result.rows_affected as i32;
+                if deleted > 0 {
+                    log::info!("從 {} 表刪除了 {} 筆記錄", table, deleted);
+                    details.insert(table.to_string(), deleted);
+                    total_deleted += deleted;
+                }
+            }
+            Err(e) => {
+                log::warn!("刪除 {} 表時出現錯誤: {}", table, e);
+                // 繼續執行其他刪除操作，不中斷整個流程
+            }
+        }
+    }
+
+    Ok(ResetResult {
+        total_deleted,
+        details,
+    })
+}
+
+/// 選擇性重置用戶數據
+async fn reset_user_selective_data(
+    rb: &RBatis,
+    user_id: &str,
+    reset_types: Vec<ResetType>
+) -> Result<ResetResult, Box<dyn std::error::Error>> {
+    let mut total_deleted = 0i32;
+    let mut details = std::collections::HashMap::new();
+
+    for reset_type in reset_types {
+        match reset_type {
+            ResetType::All => {
+                // 如果包含 All，直接調用完全重置
+                return reset_user_all_data(rb, user_id).await;
+            }
+            ResetType::Tasks => {
+                let operations = vec![
+                    ("recurring_task_template", format!("parent_task_id IN (SELECT id FROM task WHERE user_id = '{}')", user_id)),
+                    ("task", format!("user_id = '{}' AND parent_task_id IS NOT NULL", user_id)),
+                    ("task", format!("user_id = '{}' AND parent_task_id IS NULL", user_id)),
+                ];
+                let deleted = execute_delete_operations(rb, operations).await?;
+                details.insert("tasks".to_string(), deleted);
+                total_deleted += deleted;
+            }
+            ResetType::Skills => {
+                let deleted = delete_user_data(rb, "skill", user_id).await?;
+                details.insert("skills".to_string(), deleted);
+                total_deleted += deleted;
+            }
+            ResetType::Chat => {
+                let deleted = delete_user_data(rb, "chat_message", user_id).await?;
+                details.insert("chat".to_string(), deleted);
+                total_deleted += deleted;
+            }
+            ResetType::Progress => {
+                let operations = vec![
+                    ("daily_progress", format!("user_id = '{}'", user_id)),
+                    ("weekly_attribute_snapshot", format!("user_id = '{}'", user_id)),
+                ];
+                let deleted = execute_delete_operations(rb, operations).await?;
+                details.insert("progress".to_string(), deleted);
+                total_deleted += deleted;
+            }
+            ResetType::Achievements => {
+                let deleted = delete_user_data(rb, "user_achievement", user_id).await?;
+                details.insert("achievements".to_string(), deleted);
+                total_deleted += deleted;
+            }
+            ResetType::Profile => {
+                let operations = vec![
+                    ("user_attributes", format!("user_id = '{}'", user_id)),
+                    ("user_profile", format!("user_id = '{}'", user_id)),
+                    ("user_coach_preference", format!("user_id = '{}'", user_id)),
+                    ("career_mainlines", format!("user_id = '{}'", user_id)),
+                    ("quiz_results", format!("user_id = '{}'", user_id)),
+                ];
+                let deleted = execute_delete_operations(rb, operations).await?;
+                details.insert("profile".to_string(), deleted);
+                total_deleted += deleted;
+            }
+        }
+    }
+
+    Ok(ResetResult {
+        total_deleted,
+        details,
+    })
+}
+
+/// 執行單個表的刪除操作
+async fn delete_user_data(rb: &RBatis, table: &str, user_id: &str) -> Result<i32, Box<dyn std::error::Error>> {
+    let sql = format!("DELETE FROM {} WHERE user_id = '{}'", table, user_id);
+
+    match rb.exec(&sql, vec![]).await {
+        Ok(result) => {
+            let deleted = result.rows_affected as i32;
+            if deleted > 0 {
+                log::info!("從 {} 表刪除了 {} 筆記錄", table, deleted);
+            }
+            Ok(deleted)
+        }
+        Err(e) => {
+            log::warn!("刪除 {} 表時出現錯誤: {}", table, e);
+            Err(e.into())
+        }
+    }
+}
+
+/// 執行多個刪除操作
+async fn execute_delete_operations(
+    rb: &RBatis,
+    operations: Vec<(&str, String)>
+) -> Result<i32, Box<dyn std::error::Error>> {
+    let mut total_deleted = 0i32;
+
+    for (table, condition) in operations {
+        let sql = format!("DELETE FROM {} WHERE {}", table, condition);
+
+        match rb.exec(&sql, vec![]).await {
+            Ok(result) => {
+                let deleted = result.rows_affected as i32;
+                if deleted > 0 {
+                    log::info!("從 {} 表刪除了 {} 筆記錄", table, deleted);
+                    total_deleted += deleted;
+                }
+            }
+            Err(e) => {
+                log::warn!("刪除 {} 表時出現錯誤: {}", table, e);
+                // 繼續執行其他刪除操作，不中斷整個流程
+            }
+        }
+    }
+
+    Ok(total_deleted)
+}
+
 
