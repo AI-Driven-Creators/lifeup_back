@@ -238,13 +238,21 @@ impl OpenAIService {
         let system_prompt = format!(
             r#"你是一個任務規劃助手。根據用戶的自然語言描述，生成結構化的任務資料。
 
-**重要：現在的時間是 {}。** 在生成任何與日期相關的欄位（如 start_date, due_date）時，請以此時間為基準進行推算。例如，如果使用者說「明天」，你應該計算出對應的日期。
+**重要：現在的時間是 {}。** 在生成任何與日期相關的欄位（如 start_date, due_date）時，請以此時間為基準進行推算。
+
+**截止日期生成規則：**
+- 對於大部分任務，你都應該設定一個合理的截止日期
+- 短期任務（1-3天內完成）：設定1-3天後的截止日期
+- 中期任務（1-2週完成）：設定1-2週後的截止日期
+- 長期任務（1個月以上）：設定1-3個月後的截止日期
+- 只有對於沒有明確時間限制的習慣類任務才設定 due_date 為 null
+- 如果用戶明確提到時間（如"明天"、"下週"、"月底"），一定要根據當前時間計算對應的截止日期
 
 任務類型說明：
-- main: 主要任務（重要的長期目標）
-- side: 副線任務（次要的短期任務）
-- challenge: 挑戰任務（困難且有成就感的任務）
-- daily: 日常任務（例行性任務）
+- main: 主要任務（重要的長期目標，通常設定較長的截止日期）
+- side: 副線任務（次要的短期任務，通常設定較短的截止日期）
+- challenge: 挑戰任務（困難且有成就感的任務，根據具體內容設定截止日期）
+- daily: 日常任務（例行性任務，重複性任務通常不設定截止日期）
 
 優先級：0=低, 1=中, 2=高
 難度：1-5（1=非常簡單, 5=非常困難）
@@ -257,14 +265,14 @@ impl OpenAIService {
 - weekly: 每週
 
 請以 JSON 格式回應，包含以下欄位：
-{{ 
+{{
   "title": "任務標題",
   "description": "任務描述（選填）",
   "task_type": "main/side/challenge/daily",
   "priority": 0-2,
   "difficulty": 1-5,
   "experience": 經驗值,
-  "due_date": "截止日期（ISO 8601格式，選填）",
+  "due_date": "截止日期（ISO 8601格式，大多數情況下都應該設定）",
   "is_recurring": false,
   "recurrence_pattern": null,
   "start_date": null,
@@ -277,22 +285,40 @@ impl OpenAIService {
 - recurrence_pattern: "daily/weekdays/weekends/weekly"
 - start_date: 開始日期（ISO 8601格式）
 - completion_target: 0.8（預設80%完成率目標）
+- due_date: null（重複性任務通常不設定單一截止日期）
 
-範例輸入："每天早上跑步30分鐘"
+範例輸入："學習Python程式設計"
 範例輸出：
-{{ 
-  "title": "晨跑30分鐘",
-  "description": "每天早上進行30分鐘的慢跑運動",
-  "task_type": "daily",
-  "priority": 1,
-  "difficulty": 2,
-  "experience": 50,
-  "due_date": null,
-  "is_recurring": true,
-  "recurrence_pattern": "daily",
-  "start_date": "2024-01-01T06:00:00Z",
+{{
+  "title": "學習Python程式設計",
+  "description": "系統性學習Python程式語言基礎知識",
+  "task_type": "main",
+  "priority": 2,
+  "difficulty": 3,
+  "experience": 80,
+  "due_date": "2024-02-15T23:59:59Z",
+  "is_recurring": false,
+  "recurrence_pattern": null,
+  "start_date": null,
   "end_date": null,
-  "completion_target": 0.8
+  "completion_target": null
+}}
+
+範例輸入："明天交報告"
+範例輸出：
+{{
+  "title": "完成並提交報告",
+  "description": "整理資料並完成報告撰寫",
+  "task_type": "side",
+  "priority": 2,
+  "difficulty": 2,
+  "experience": 60,
+  "due_date": "2024-01-02T18:00:00Z",
+  "is_recurring": false,
+  "recurrence_pattern": null,
+  "start_date": null,
+  "end_date": null,
+  "completion_target": null
 }}"#,
             current_time_str
         );
