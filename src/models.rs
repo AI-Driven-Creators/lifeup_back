@@ -539,6 +539,17 @@ pub struct UserAchievement {
 }
 crud!(UserAchievement{});
 
+// 成就統計模型
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AchievementStats {
+    pub id: Option<String>,
+    pub achievement_id: Option<String>,
+    pub completion_count: Option<i32>, // 完成該成就的用戶數量
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+}
+crud!(AchievementStats{});
+
 // 創建用戶資料請求
 #[derive(Deserialize)]
 pub struct CreateUserProfileRequest {
@@ -744,6 +755,23 @@ pub struct ChatWithPersonalityRequest {
 pub struct DirectPersonalityChatRequest {
     pub message: String,
     pub personality_type: String,
+}
+
+// 成就詳細資訊回應（包含統計數據）
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AchievementWithStats {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub icon: Option<String>,
+    pub category: Option<String>,
+    pub requirement_type: Option<String>,
+    pub requirement_value: Option<i32>,
+    pub experience_reward: Option<i32>,
+    pub completion_count: i32,    // 完成此成就的用戶數量
+    pub total_users: i32,         // 應用程式總用戶數量
+    pub completion_rate: f64,     // 完成率 (completion_count / total_users)
+    pub created_at: Option<DateTime<Utc>>,
 }
 
 // ============= 測驗和職業相關模型 =============

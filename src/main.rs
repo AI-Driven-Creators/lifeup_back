@@ -172,6 +172,8 @@ async fn main() -> std::io::Result<()> {
             .route("/api/users/{id}/gamified", web::get().to(get_gamified_user_data))
             // 成就相關路由
             .route("/api/achievements", web::get().to(get_achievements))
+            .route("/api/achievements/{id}", web::get().to(get_achievement_details))
+            .route("/api/achievements/sync-stats", web::post().to(sync_achievement_statistics))
             .route("/api/users/{user_id}/achievements", web::get().to(get_user_achievements))
             .route("/api/users/{user_id}/achievements/status", web::get().to(get_user_achievements_status))
             .route("/api/users/{user_id}/achievements/{achievement_id}/unlock", web::post().to(unlock_user_achievement))
@@ -429,6 +431,17 @@ async fn create_tables(rb: &RBatis) {
             updated_at TEXT DEFAULT (datetime('now')),
             FOREIGN KEY (user_id) REFERENCES user (id),
             FOREIGN KEY (quiz_result_id) REFERENCES quiz_results (id)
+        )
+        "#,
+        // 成就統計表
+        r#"
+        CREATE TABLE IF NOT EXISTS achievement_stats (
+            id TEXT PRIMARY KEY,
+            achievement_id TEXT UNIQUE NOT NULL,
+            completion_count INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (achievement_id) REFERENCES achievement (id)
         )
         "#,
     ];
