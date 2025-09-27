@@ -1205,6 +1205,7 @@ pub async fn get_homepage_tasks(rb: web::Data<RBatis>) -> Result<HttpResponse> {
             t.task_date,
             t.cancel_count,
             t.last_cancelled_at,
+            t.skill_tags,
             p.title as parent_task_title
         FROM task t
         LEFT JOIN task p ON t.parent_task_id = p.id

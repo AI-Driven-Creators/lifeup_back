@@ -823,6 +823,13 @@ pub struct GeneratedTasksResponse {
     pub project_tasks: Vec<GeneratedTask>,
 }
 
+// 技能標籤物件
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SkillTag {
+    pub name: String,
+    pub category: String,  // "technical" 或 "soft"
+}
+
 // AI 生成的單個任務
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GeneratedTask {
@@ -832,7 +839,7 @@ pub struct GeneratedTask {
     pub difficulty: i32,
     #[serde(deserialize_with = "float_to_i32")]
     pub estimated_hours: i32,
-    pub skill_tags: Vec<String>,
+    pub skill_tags: Vec<SkillTag>,
     pub resources: Vec<String>,
     pub personality_match: Option<String>,   // AI 解釋為什麼適合用戶
 }
