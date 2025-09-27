@@ -4,11 +4,12 @@ use uuid::Uuid;
 use chrono::Utc;
 use serde_json;
 use log;
+use rbs::{Value, value};
 
 use crate::models::{
     QuizResults, CareerMainlines, Task, ChatMessage, User,
-    SaveQuizResultsRequest, GenerateCareerTasksRequest, 
-    GeneratedTasksResponse, GeneratedTask, SurveyAnswers
+    SaveQuizResultsRequest, GenerateCareerTasksRequest,
+    GeneratedTasksResponse, GeneratedTask, SurveyAnswers, SkillTag
 };
 use crate::ai_tasks::ApiResponse;
 use crate::ai_service::OpenAIService;
@@ -235,7 +236,30 @@ pub async fn generate_career_tasks(
         task_date: None,
         cancel_count: Some(0),
         last_cancelled_at: None,
-        skill_tags: None,
+        skill_tags: {
+            // 聚合所有子任務的技能標籤（只取名稱）
+            let mut all_skills: std::collections::HashSet<String> = std::collections::HashSet::new();
+            for task in &generated_tasks.main_tasks {
+                for skill in &task.skill_tags {
+                    all_skills.insert(skill.name.clone());
+                }
+            }
+            for task in &generated_tasks.daily_tasks {
+                for skill in &task.skill_tags {
+                    all_skills.insert(skill.name.clone());
+                }
+            }
+            for task in &generated_tasks.project_tasks {
+                for skill in &task.skill_tags {
+                    all_skills.insert(skill.name.clone());
+                }
+            }
+            if all_skills.is_empty() {
+                None
+            } else {
+                Some(all_skills.into_iter().collect())
+            }
+        },
     };
 
     // 保存父任務
@@ -453,7 +477,7 @@ fn build_career_task_prompt(
       "description": "詳細說明任務內容和學習目標",
       "difficulty": 3,
       "estimated_hours": 20,
-      "skill_tags": ["核心技能1", "核心技能2"],
+      "skill_tags": [{{"name": "核心技能1", "category": "technical"}}, {{"name": "核心技能2", "category": "soft"}}],
       "resources": ["學習資源1", "學習資源2"],
       "personality_match": "為什麼這個任務適合用戶的個性特質"
     }},
@@ -462,7 +486,7 @@ fn build_career_task_prompt(
       "description": "詳細說明任務內容和學習目標",
       "difficulty": 4,
       "estimated_hours": 25,
-      "skill_tags": ["核心技能3", "核心技能4"],
+      "skill_tags": [{{"name": "核心技能3", "category": "technical"}}, {{"name": "核心技能4", "category": "soft"}}],
       "resources": ["學習資源3", "學習資源4"],
       "personality_match": "個性化匹配說明"
     }}
@@ -473,7 +497,7 @@ fn build_career_task_prompt(
       "description": "每日執行的習慣性任務說明",
       "difficulty": 2,
       "estimated_hours": 1,
-      "skill_tags": ["日常技能1"],
+      "skill_tags": [{{"name": "日常技能1", "category": "soft"}}],
       "resources": ["資源1"],
       "personality_match": "個性化匹配說明"
     }}
@@ -484,7 +508,7 @@ fn build_career_task_prompt(
       "description": "實戰項目的具體要求和目標",
       "difficulty": 5,
       "estimated_hours": 40,
-      "skill_tags": ["實戰技能1", "綜合技能2"],
+      "skill_tags": [{{"name": "實戰技能1", "category": "technical"}}, {{"name": "綜合技能2", "category": "soft"}}],
       "resources": ["項目資源1", "項目資源2"],
       "personality_match": "個性化匹配說明"
     }}
@@ -492,7 +516,15 @@ fn build_career_task_prompt(
 }}
 ```
 
-**請嚴格按照上述JSON格式回應，確保每個任務對象都包含所有必需字段：title, description, difficulty, estimated_hours, skill_tags, resources, personality_match。使用繁體中文內容，但JSON結構必須完全符合格式要求。**
+**請嚴格按照上述JSON格式回應，確保每個任務對象都包含所有必需字段：title, description, difficulty, estimated_hours, skill_tags, resources, personality_match。
+
+重要提醒：
+- skill_tags 現在必須是物件陣列格式，每個技能包含 name（技能名稱）和 category（分類）
+- category 只能是 "technical"（技術技能）或 "soft"（軟技能）
+- 技術技能包括：程式語言、開發工具、技術操作、硬體知識、數學概念等
+- 軟技能包括：溝通、領導、分析思考、時間管理、創意思維等
+
+使用繁體中文內容，但JSON結構必須完全符合格式要求。**
 "#, 
         career = selected_career,
         values = extract_quiz_summary(&quiz_result.values_results),
@@ -640,7 +672,11 @@ async fn create_subtask_from_ai_data(
         experience: Some(experience),
         career_mainline_id: Some(mainline_id.to_string()),
         task_category: Some(task_category.to_string()),
-        skill_tags: Some(ai_task.skill_tags.clone()),
+        skill_tags: {
+            // 將SkillTag陣列轉換為字串陣列的JSON
+            let skill_names: Vec<String> = ai_task.skill_tags.iter().map(|s| s.name.clone()).collect();
+            Some(skill_names)
+        },
         task_order: Some(task_order),
         created_at: Some(now),
         updated_at: Some(now),
@@ -659,10 +695,63 @@ async fn create_subtask_from_ai_data(
         last_cancelled_at: None,
     };
 
+    // 在保存任務之前，先確保所有技能標籤都存在於技能表中
+    if let Err(e) = ensure_skills_exist(rb, user_id, &ai_task.skill_tags).await {
+        log::warn!("創建技能時發生錯誤: {}", e);
+    }
+
     // 保存到資料庫
     Task::insert(rb, &task).await?;
-    log::debug!("✅ 創建任務: {} (類型: {}, 難度: {})", 
-               ai_task.title, task_category, ai_task.difficulty);
-    
+    log::debug!("✅ 創建任務: {} (類型: {}, 難度: {}, 技能標籤: {:?})",
+               ai_task.title, task_category, ai_task.difficulty, ai_task.skill_tags);
+
     Ok(task)
 }
+
+// 輔助函數：確保技能存在於技能表中
+async fn ensure_skills_exist(rb: &RBatis, user_id: &str, skill_tags: &[SkillTag]) -> Result<(), Box<dyn std::error::Error>> {
+    use crate::models::Skill;
+
+    for skill_tag in skill_tags {
+        let skill_name = &skill_tag.name;
+        // 檢查技能是否已存在
+        let existing_skills = Skill::select_by_map(rb, value!{
+            "user_id": user_id,
+            "name": skill_name
+        }).await?;
+
+        if existing_skills.is_empty() {
+            // 技能不存在，創建新技能
+            let skill_category = &skill_tag.category;  // 使用AI提供的分類
+
+            let new_skill = Skill {
+                id: Some(uuid::Uuid::new_v4().to_string()),
+                user_id: Some(user_id.to_string()),
+                name: Some(skill_name.clone()),
+                description: Some(format!("通過任務自動創建的技能：{}", skill_name)),
+                category: Some(skill_category.clone()),
+                level: Some(1),
+                experience: Some(0),
+                max_experience: Some(100),
+                icon: Some("🎯".to_string()), // 默認圖標
+                created_at: Some(chrono::Utc::now()),
+                updated_at: Some(chrono::Utc::now()),
+            };
+
+            match Skill::insert(rb, &new_skill).await {
+                Ok(_) => {
+                    log::info!("✅ 自動創建技能: {} (類型: {})", skill_name, skill_category);
+                }
+                Err(e) => {
+                    log::error!("❌ 創建技能 {} 失敗: {}", skill_name, e);
+                    return Err(e.into());
+                }
+            }
+        } else {
+            log::debug!("技能 {} 已存在，跳過創建", skill_name);
+        }
+    }
+
+    Ok(())
+}
+
