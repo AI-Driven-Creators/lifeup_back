@@ -1941,11 +1941,59 @@ pub async fn get_gamified_user_data(rb: web::Data<RBatis>, path: web::Path<Strin
 // 獲取所有成就
 pub async fn get_achievements(rb: web::Data<RBatis>) -> Result<HttpResponse> {
     match Achievement::select_all(rb.get_ref()).await {
-        Ok(achievements) => Ok(HttpResponse::Ok().json(ApiResponse {
-            success: true,
-            data: Some(achievements),
-            message: "獲取成就列表成功".to_string(),
-        })),
+        Ok(achievements) => {
+            // 獲取總用戶數
+            let total_users = match get_total_user_count(rb.get_ref()).await {
+                Ok(count) => count,
+                Err(e) => {
+                    log::warn!("獲取總用戶數失敗: {}", e);
+                    0
+                }
+            };
+
+            // 為每個成就添加統計資訊
+            let mut achievements_with_stats = Vec::new();
+
+            for achievement in achievements {
+                let achievement_id = achievement.id.as_ref().map(|s| s.as_str()).unwrap_or("");
+
+                // 獲取統計資訊
+                let stats = AchievementStats::select_by_map(rb.get_ref(), value!{"achievement_id": achievement_id}).await.unwrap_or_default();
+                let completion_count = stats.first()
+                    .and_then(|s| s.completion_count)
+                    .unwrap_or(0);
+
+                // 計算完成率
+                let completion_rate = if total_users > 0 {
+                    completion_count as f64 / total_users as f64
+                } else {
+                    0.0
+                };
+
+                let achievement_with_stats = AchievementWithStats {
+                    id: achievement.id.as_ref().unwrap_or(&String::new()).clone(),
+                    name: achievement.name.as_ref().unwrap_or(&String::new()).clone(),
+                    description: achievement.description.clone(),
+                    icon: achievement.icon.clone(),
+                    category: achievement.category.clone(),
+                    requirement_type: achievement.requirement_type.as_ref().map(|rt| rt.to_string().to_owned()),
+                    requirement_value: achievement.requirement_value,
+                    experience_reward: achievement.experience_reward,
+                    completion_count,
+                    total_users,
+                    completion_rate,
+                    created_at: achievement.created_at,
+                };
+
+                achievements_with_stats.push(achievement_with_stats);
+            }
+
+            Ok(HttpResponse::Ok().json(ApiResponse {
+                success: true,
+                data: Some(achievements_with_stats),
+                message: "獲取成就列表成功".to_string(),
+            }))
+        },
         Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
             success: false,
             data: None,
@@ -2132,15 +2180,23 @@ pub async fn unlock_user_achievement(
                             };
                             
                             match UserAchievement::insert(rb.get_ref(), &user_achievement).await {
-                                Ok(_) => Ok(HttpResponse::Created().json(ApiResponse {
-                                    success: true,
-                                    data: Some(serde_json::json!({
-                                        "achievement": achievement,
-                                        "unlocked_at": now.to_string(),
-                                        "experience_reward": achievement.experience_reward
-                                    })),
-                                    message: format!("成就「{}」解鎖成功！", achievement.name.as_ref().unwrap_or(&"未知成就".to_string())),
-                                })),
+                                Ok(_) => {
+                                    // 成功插入用戶成就記錄後，更新成就統計
+                                    if let Err(e) = increment_achievement_completion_count(rb.get_ref(), &achievement_id).await {
+                                        log::warn!("更新成就統計失敗: {}", e);
+                                        // 不影響主要流程，只記錄警告
+                                    }
+
+                                    Ok(HttpResponse::Created().json(ApiResponse {
+                                        success: true,
+                                        data: Some(serde_json::json!({
+                                            "achievement": achievement,
+                                            "unlocked_at": now.to_string(),
+                                            "experience_reward": achievement.experience_reward
+                                        })),
+                                        message: format!("成就「{}」解鎖成功！", achievement.name.as_ref().unwrap_or(&"未知成就".to_string())),
+                                    }))
+                                },
                                 Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
                                     success: false,
                                     data: None,
@@ -2302,6 +2358,38 @@ pub async fn generate_achievement_with_ai(
             data: None,
             message: format!("生成成就失敗: {}", e),
         })),
+    }
+}
+
+// 獲取單個成就詳細資訊（包含統計數據）
+pub async fn get_achievement_details(
+    rb: web::Data<RBatis>,
+    path: web::Path<String>,
+) -> Result<HttpResponse> {
+    let achievement_id = path.into_inner();
+
+    match get_achievement_with_stats(rb.get_ref(), &achievement_id).await {
+        Ok(Some(achievement_with_stats)) => {
+            Ok(HttpResponse::Ok().json(ApiResponse {
+                success: true,
+                data: Some(achievement_with_stats),
+                message: "獲取成就詳細資訊成功".to_string(),
+            }))
+        }
+        Ok(None) => {
+            Ok(HttpResponse::NotFound().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: "成就不存在".to_string(),
+            }))
+        }
+        Err(e) => {
+            Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("獲取成就詳細資訊失敗: {}", e),
+            }))
+        }
     }
 }
 
@@ -3242,25 +3330,6 @@ pub async fn reset_user_data(rb: web::Data<RBatis>, path: web::Path<String>) -> 
     let user_id = path.into_inner();
     log::info!("開始完全重置用戶 {} 的數據...", user_id);
 
-    // 驗證用戶是否存在
-    match User::select_by_map(rb.get_ref(), value!{"id": user_id.clone()}).await {
-        Ok(users) if users.is_empty() => {
-            return Ok(HttpResponse::NotFound().json(ApiResponse::<()> {
-                success: false,
-                data: None,
-                message: "用戶不存在".to_string(),
-            }));
-        }
-        Err(e) => {
-            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
-                success: false,
-                data: None,
-                message: format!("驗證用戶失敗: {}", e),
-            }));
-        }
-        _ => {}
-    }
-
     match reset_user_all_data(rb.get_ref(), &user_id).await {
         Ok(result) => {
             log::info!("用戶 {} 數據重置成功，共刪除 {} 筆記錄", user_id, result.total_deleted);
@@ -3291,25 +3360,6 @@ pub async fn reset_user_data_selective(
     let request = body.into_inner();
 
     log::info!("開始選擇性重置用戶 {} 的數據，重置類型: {:?}", user_id, request.reset_types.len());
-
-    // 驗證用戶是否存在
-    match User::select_by_map(rb.get_ref(), value!{"id": user_id.clone()}).await {
-        Ok(users) if users.is_empty() => {
-            return Ok(HttpResponse::NotFound().json(ApiResponse::<()> {
-                success: false,
-                data: None,
-                message: "用戶不存在".to_string(),
-            }));
-        }
-        Err(e) => {
-            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
-                success: false,
-                data: None,
-                message: format!("驗證用戶失敗: {}", e),
-            }));
-        }
-        _ => {}
-    }
 
     match reset_user_selective_data(rb.get_ref(), &user_id, request.reset_types).await {
         Ok(result) => {
@@ -3503,6 +3553,171 @@ async fn execute_delete_operations(
     }
 
     Ok(total_deleted)
+}
+
+// 成就統計相關輔助函數
+async fn increment_achievement_completion_count(rb: &RBatis, achievement_id: &str) -> rbatis::Result<()> {
+    let now = Utc::now();
+
+    // 檢查是否已存在統計記錄
+    match AchievementStats::select_by_map(rb, value!{"achievement_id": achievement_id}).await {
+        Ok(stats) => {
+            if let Some(stat) = stats.first() {
+                // 更新現有記錄
+                let sql = "UPDATE achievement_stats SET completion_count = completion_count + 1, updated_at = ? WHERE achievement_id = ?";
+                rb.exec(sql, vec![Value::String(now.to_rfc3339()), Value::String(achievement_id.to_string())]).await?;
+            } else {
+                // 創建新記錄
+                let new_stat = AchievementStats {
+                    id: Some(Uuid::new_v4().to_string()),
+                    achievement_id: Some(achievement_id.to_string()),
+                    completion_count: Some(1),
+                    created_at: Some(now),
+                    updated_at: Some(now),
+                };
+                AchievementStats::insert(rb, &new_stat).await?;
+            }
+        }
+        Err(e) => return Err(e),
+    }
+
+    Ok(())
+}
+
+async fn get_total_user_count(rb: &RBatis) -> rbatis::Result<i32> {
+    let sql = "SELECT COUNT(*) as count FROM user";
+    let result: Vec<serde_json::Value> = rb.query_decode(sql, vec![]).await?;
+
+    if let Some(row) = result.first() {
+        if let Some(count) = row.get("count").and_then(|v| v.as_i64()) {
+            return Ok(count as i32);
+        }
+    }
+
+    Ok(0)
+}
+
+async fn get_achievement_with_stats(rb: &RBatis, achievement_id: &str) -> rbatis::Result<Option<AchievementWithStats>> {
+    // 獲取成就基本資訊
+    let achievements = Achievement::select_by_map(rb, value!{"id": achievement_id}).await?;
+    let achievement = match achievements.first() {
+        Some(ach) => ach,
+        None => return Ok(None),
+    };
+
+    // 獲取統計資訊
+    let stats = AchievementStats::select_by_map(rb, value!{"achievement_id": achievement_id}).await?;
+    let completion_count = stats.first()
+        .and_then(|s| s.completion_count)
+        .unwrap_or(0);
+
+    // 獲取總用戶數
+    let total_users = get_total_user_count(rb).await?;
+
+    // 計算完成率
+    let completion_rate = if total_users > 0 {
+        completion_count as f64 / total_users as f64
+    } else {
+        0.0
+    };
+
+    let achievement_with_stats = AchievementWithStats {
+        id: achievement.id.as_ref().unwrap_or(&String::new()).clone(),
+        name: achievement.name.as_ref().unwrap_or(&String::new()).clone(),
+        description: achievement.description.clone(),
+        icon: achievement.icon.clone(),
+        category: achievement.category.clone(),
+        requirement_type: achievement.requirement_type.as_ref().map(|rt| rt.to_string().to_owned()),
+        requirement_value: achievement.requirement_value,
+        experience_reward: achievement.experience_reward,
+        completion_count,
+        total_users,
+        completion_rate,
+        created_at: achievement.created_at,
+    };
+
+    Ok(Some(achievement_with_stats))
+}
+
+// 同步成就統計數據 - 重建所有成就的統計記錄
+async fn sync_achievement_stats(rb: &RBatis) -> rbatis::Result<i32> {
+    let now = Utc::now();
+    let mut synced_count = 0;
+
+    // 獲取所有成就
+    let achievements = Achievement::select_all(rb).await?;
+
+    for achievement in achievements {
+        let achievement_id = match &achievement.id {
+            Some(id) => id,
+            None => continue,
+        };
+
+        // 統計該成就被多少用戶完成
+        let sql = "SELECT COUNT(*) as count FROM user_achievement WHERE achievement_id = ?";
+        let result: Vec<serde_json::Value> = rb.query_decode(sql, vec![Value::String(achievement_id.clone())]).await?;
+
+        let completion_count = if let Some(row) = result.first() {
+            row.get("count").and_then(|v| v.as_i64()).unwrap_or(0) as i32
+        } else {
+            0
+        };
+
+        // 檢查是否已存在統計記錄
+        let existing_stats = AchievementStats::select_by_map(rb, value!{"achievement_id": achievement_id}).await?;
+
+        if let Some(existing_stat) = existing_stats.first() {
+            // 更新現有記錄
+            let update_sql = "UPDATE achievement_stats SET completion_count = ?, updated_at = ? WHERE achievement_id = ?";
+            rb.exec(update_sql, vec![
+                Value::from(completion_count),
+                Value::String(now.to_rfc3339()),
+                Value::String(achievement_id.clone())
+            ]).await?;
+        } else {
+            // 創建新記錄
+            let new_stat = AchievementStats {
+                id: Some(Uuid::new_v4().to_string()),
+                achievement_id: Some(achievement_id.clone()),
+                completion_count: Some(completion_count),
+                created_at: Some(now),
+                updated_at: Some(now),
+            };
+            AchievementStats::insert(rb, &new_stat).await?;
+        }
+
+        synced_count += 1;
+        log::info!("同步成就 {} 統計數據：完成人數 {}", achievement_id, completion_count);
+    }
+
+    log::info!("成就統計數據同步完成，共處理 {} 個成就", synced_count);
+    Ok(synced_count)
+}
+
+// 同步成就統計數據的管理員 API
+pub async fn sync_achievement_statistics(rb: web::Data<RBatis>) -> Result<HttpResponse> {
+    log::info!("開始同步成就統計數據...");
+
+    match sync_achievement_stats(rb.get_ref()).await {
+        Ok(synced_count) => {
+            Ok(HttpResponse::Ok().json(ApiResponse {
+                success: true,
+                data: Some(serde_json::json!({
+                    "synced_achievements": synced_count,
+                    "message": format!("成功同步 {} 個成就的統計數據", synced_count)
+                })),
+                message: format!("成就統計數據同步完成，共處理 {} 個成就", synced_count),
+            }))
+        }
+        Err(e) => {
+            log::error!("同步成就統計數據失敗: {}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("同步成就統計數據失敗: {}", e),
+            }))
+        }
+    }
 }
 
 
