@@ -128,7 +128,19 @@ pub async fn create_task(
         priority: req.priority.or(Some(1)),
         task_type: req.task_type.clone().or(Some("daily".to_string())),
         difficulty: req.difficulty.or(Some(1)),
-        experience: req.experience.or(Some(10)),
+        experience: {
+            if req.experience.is_some() {
+                req.experience
+            } else {
+                // 除了每日任務之外，其他任務類型的父任務初始經驗值都為0
+                let task_type = req.task_type.as_deref().unwrap_or("daily");
+                if task_type == "daily" {
+                    Some(10) // 每日任務使用預設值
+                } else {
+                    Some(0) // 其他任務類型（main/side/challenge）初始為0
+                }
+            }
+        },
         parent_task_id: req.parent_task_id.clone(),
         is_parent_task: Some(if req.parent_task_id.is_some() { 0 } else if req.task_type.as_ref().map_or(false, |t| t == "main" || t == "side" || t == "challenge") { 1 } else { 0 }), // 有父任務的是子任務(0)，否則按類型判斷
         task_order: req.task_order.or(Some(0)),
@@ -151,11 +163,20 @@ pub async fn create_task(
     };
 
     match Task::insert(rb.get_ref(), &new_task).await {
-        Ok(_) => Ok(HttpResponse::Created().json(ApiResponse {
-            success: true,
-            data: Some(new_task),
-            message: "任務建立成功".to_string(),
-        })),
+        Ok(_) => {
+            // 如果這是子任務，需要更新父任務的經驗值
+            if let Some(parent_task_id) = &new_task.parent_task_id {
+                if let Err(e) = update_parent_task_experience(rb.get_ref(), parent_task_id).await {
+                    log::warn!("更新父任務經驗值時發生錯誤: {}", e);
+                }
+            }
+
+            Ok(HttpResponse::Created().json(ApiResponse {
+                success: true,
+                data: Some(new_task),
+                message: "任務建立成功".to_string(),
+            }))
+        },
         Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
             success: false,
             data: None,
@@ -472,10 +493,15 @@ pub async fn update_task(
                 
                 match result {
                     Ok(_) => {
-                        // 如果這是子任務，任何狀態變化都要檢查父任務狀態
+                        // 如果這是子任務，任何變化都要檢查和更新父任務
                         if let Some(parent_task_id) = &task.parent_task_id {
+                            // 更新父任務狀態
                             if let Err(e) = check_and_update_parent_task_status(rb.get_ref(), parent_task_id).await {
                                 log::warn!("檢查父任務狀態時發生錯誤: {}", e);
+                            }
+                            // 更新父任務經驗值
+                            if let Err(e) = update_parent_task_experience(rb.get_ref(), parent_task_id).await {
+                                log::warn!("更新父任務經驗值時發生錯誤: {}", e);
                             }
                         }
                         
@@ -551,9 +577,19 @@ pub async fn delete_task(
                     }
                 }
 
+                // 記住父任務ID用於稍後更新經驗值
+                let parent_task_id = task.parent_task_id.clone();
+
                 // 刪除任務本身
                 match Task::delete_by_map(rb.get_ref(), value!{"id": task_id}).await {
                     Ok(_) => {
+                        // 如果這是子任務，需要更新父任務的經驗值
+                        if let Some(parent_id) = &parent_task_id {
+                            if let Err(e) = update_parent_task_experience(rb.get_ref(), parent_id).await {
+                                log::warn!("更新父任務經驗值時發生錯誤: {}", e);
+                            }
+                        }
+
                         log::info!("任務 {} 刪除成功", task.title.unwrap_or_default());
                         Ok(HttpResponse::Ok().json(ApiResponse {
                             success: true,
@@ -822,7 +858,7 @@ pub async fn start_task(
                 }
                 
                 // 檢查是否需要生成子任務
-                if req.generate_subtasks.unwrap_or(true) {
+                if req.generate_subtasks.unwrap_or(false) {
                     // 先查詢現有的子任務
                     match Task::select_by_map(rb.get_ref(), value!{"parent_task_id": task_id.clone()}).await {
                         Ok(existing_subtasks) => {
@@ -869,15 +905,39 @@ pub async fn start_task(
                                         subtasks.push(subtask);
                                     }
                                 }
-                                
+
+                                // 計算所有子任務的經驗值總和並更新父任務
+                                let total_experience: i32 = subtasks.iter()
+                                    .map(|subtask| subtask.experience.unwrap_or(0))
+                                    .sum();
+
+                                // 更新父任務的經驗值
+                                let update_parent_exp_sql = "UPDATE task SET experience = ?, updated_at = ? WHERE id = ?";
+                                if let Err(e) = rb.exec(
+                                    update_parent_exp_sql,
+                                    vec![
+                                        Value::I32(total_experience),
+                                        Value::String(Utc::now().to_string()),
+                                        Value::String(task_id.clone()),
+                                    ],
+                                ).await {
+                                    log::error!("更新父任務經驗值失敗: {}", e);
+                                    // 繼續執行，不影響主要功能
+                                } else {
+                                    // 更新內存中的父任務經驗值
+                                    parent_task.experience = Some(total_experience);
+                                    log::info!("父任務 {} 經驗值已更新為子任務總和: {}", task_id, total_experience);
+                                }
+
                                 Ok(HttpResponse::Ok().json(ApiResponse {
                                     success: true,
                                     data: Some(serde_json::json!({
                                         "parent_task": parent_task,
                                         "subtasks": subtasks,
-                                        "subtasks_count": subtasks.len()
+                                        "subtasks_count": subtasks.len(),
+                                        "total_experience": total_experience
                                     })),
-                                    message: format!("任務開始成功，生成了 {} 個子任務", subtasks.len()),
+                                    message: format!("任務開始成功，生成了 {} 個子任務，總經驗值: {}", subtasks.len(), total_experience),
                                 }))
                             } else {
                                 // 有現有子任務，檢查是否需要恢復暫停的子任務
@@ -905,6 +965,11 @@ pub async fn start_task(
                                     // 重新查詢更新後的子任務
                                     match Task::select_by_map(rb.get_ref(), value!{"parent_task_id": task_id.clone()}).await {
                                         Ok(updated_subtasks) => {
+                                            // 更新父任務經驗值
+                                            if let Err(e) = update_parent_task_experience(rb.get_ref(), &task_id).await {
+                                                log::error!("更新父任務經驗值失敗: {}", e);
+                                            }
+
                                             Ok(HttpResponse::Ok().json(ApiResponse {
                                                 success: true,
                                                 data: Some(serde_json::json!({
@@ -922,7 +987,11 @@ pub async fn start_task(
                                         }))
                                     }
                                 } else {
-                                    // 子任務已存在且不需要恢復，直接返回現有子任務
+                                    // 子任務已存在且不需要恢復，更新父任務經驗值並返回現有子任務
+                                    if let Err(e) = update_parent_task_experience(rb.get_ref(), &task_id).await {
+                                        log::error!("更新父任務經驗值失敗: {}", e);
+                                    }
+
                                     Ok(HttpResponse::Ok().json(ApiResponse {
                                         success: true,
                                         data: Some(serde_json::json!({
@@ -2688,6 +2757,37 @@ async fn update_parent_task_status(rb: &RBatis, parent_task_id: &str, new_status
         _ => "unknown",
     };
     log::info!("父任務 {} 狀態更新為: {}", parent_task_id, status_name);
+    Ok(())
+}
+
+// 輔助函數：更新父任務經驗值為所有子任務經驗值總和
+async fn update_parent_task_experience(rb: &RBatis, parent_task_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+    // 查詢所有子任務
+    let subtasks = Task::select_by_map(rb, value!{"parent_task_id": parent_task_id}).await?;
+
+    if subtasks.is_empty() {
+        log::info!("父任務 {} 沒有子任務，保持原有經驗值", parent_task_id);
+        return Ok(());
+    }
+
+    // 計算所有子任務的經驗值總和
+    let total_experience: i32 = subtasks.iter()
+        .map(|subtask| subtask.experience.unwrap_or(0))
+        .sum();
+
+    // 更新父任務的經驗值
+    let update_sql = "UPDATE task SET experience = ?, updated_at = ? WHERE id = ?";
+    rb.exec(
+        update_sql,
+        vec![
+            Value::I32(total_experience),
+            Value::String(chrono::Utc::now().to_string()),
+            Value::String(parent_task_id.to_string()),
+        ],
+    ).await?;
+
+    log::info!("父任務 {} 經驗值已更新為子任務總和: {} (共 {} 個子任務)",
+               parent_task_id, total_experience, subtasks.len());
     Ok(())
 }
 
