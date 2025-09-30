@@ -356,6 +356,12 @@ pub struct CreateTaskRequest {
     pub skill_tags: Option<Vec<String>>, // 技能標籤陣列
     pub parent_task_id: Option<String>, // 父任務ID（用於創建子任務）
     pub task_order: Option<i32>, // 任務順序
+    // 重複性任務相關欄位
+    pub is_recurring: Option<i32>, // 是否為重複性任務（0/1）
+    pub recurrence_pattern: Option<String>, // 重複模式：daily, weekdays, weekends, weekly
+    pub start_date: Option<DateTime<Utc>>, // 開始日期
+    pub end_date: Option<DateTime<Utc>>, // 結束日期
+    pub completion_target: Option<f64>, // 完成率目標（0.0-1.0）
 }
 
 // 更新任務的請求

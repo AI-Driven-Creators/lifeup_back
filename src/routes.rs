@@ -147,13 +147,13 @@ pub async fn create_task(
         due_date: req.due_date,
         created_at: Some(now),
         updated_at: Some(now),
-        // 新欄位
-        is_recurring: Some(0),
-        recurrence_pattern: None,
-        start_date: None,
-        end_date: None,
-        completion_target: None,
-        completion_rate: None,
+        // 重複性任務相關欄位
+        is_recurring: req.is_recurring.or(Some(0)),
+        recurrence_pattern: req.recurrence_pattern.clone(),
+        start_date: req.start_date,
+        end_date: req.end_date,
+        completion_target: req.completion_target,
+        completion_rate: if req.is_recurring == Some(1) { Some(0.0) } else { None },
         task_date: None,
         cancel_count: Some(0),
         last_cancelled_at: None,
@@ -824,53 +824,68 @@ pub async fn start_task(
 ) -> Result<HttpResponse> {
     let task_id = path.into_inner();
     
-    // 查詢父任務
+    // 查詢任務
     match Task::select_by_map(rb.get_ref(), value!{"id": task_id.clone()}).await {
         Ok(tasks) => {
-            if let Some(mut parent_task) = tasks.into_iter().next() {
-                // 檢查是否為大任務
-                if parent_task.is_parent_task.unwrap_or(0) == 0 {
+            if let Some(mut task) = tasks.into_iter().next() {
+                let is_parent_task = task.is_parent_task.unwrap_or(0) == 1;
+                let is_daily_task = task.task_type.as_deref() == Some("daily");
+
+                // 檢查是否為大任務或每日任務
+                if !is_parent_task && !is_daily_task {
                     return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
                         success: false,
                         data: None,
-                        message: "此任務不是大任務，無法生成子任務".to_string(),
+                        message: "只有大任務或每日任務可以開始".to_string(),
                     }));
                 }
-                
-                // 更新父任務狀態為進行中
-                parent_task.status = Some(1);
-                parent_task.updated_at = Some(Utc::now());
+
+                // 決定新狀態：每日任務使用 daily_in_progress (5)，其他使用 in_progress (1)
+                let new_status = if is_daily_task { 5 } else { 1 };
+
+                // 更新任務狀態為進行中
+                task.status = Some(new_status);
+                task.updated_at = Some(Utc::now());
                 
                 let update_sql = "UPDATE task SET status = ?, updated_at = ? WHERE id = ?";
                 if let Err(e) = rb.exec(
                     update_sql,
                     vec![
-                        Value::I32(1),
-                        Value::String(parent_task.updated_at.unwrap().to_string()),
+                        Value::I32(new_status),
+                        Value::String(task.updated_at.unwrap().to_string()),
                         Value::String(task_id.clone()),
                     ],
                 ).await {
                     return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
                         success: false,
                         data: None,
-                        message: format!("更新父任務狀態失敗: {}", e),
+                        message: format!("更新任務狀態失敗: {}", e),
                     }));
                 }
-                
-                // 檢查是否需要生成子任務
-                if req.generate_subtasks.unwrap_or(false) {
+
+                // 每日任務直接返回成功，不需要生成子任務
+                if is_daily_task {
+                    return Ok(HttpResponse::Ok().json(ApiResponse {
+                        success: true,
+                        data: Some(task),
+                        message: "每日任務已開始".to_string(),
+                    }));
+                }
+
+                // 檢查是否需要生成子任務（僅限父任務）
+                if is_parent_task && req.generate_subtasks.unwrap_or(false) {
                     // 先查詢現有的子任務
                     match Task::select_by_map(rb.get_ref(), value!{"parent_task_id": task_id.clone()}).await {
                         Ok(existing_subtasks) => {
                             if existing_subtasks.is_empty() {
                                 // 沒有現有子任務，生成新的子任務
-                                let templates = get_subtask_templates(&parent_task.title.clone().unwrap_or_default());
+                                let templates = get_subtask_templates(&task.title.clone().unwrap_or_default());
                                 let mut subtasks = Vec::new();
-                                
+
                                 for template in templates {
                                     let subtask = Task {
                                         id: Some(Uuid::new_v4().to_string()),
-                                        user_id: parent_task.user_id.clone(),
+                                        user_id: task.user_id.clone(),
                                         title: Some(template.title),
                                         description: template.description,
                                         status: Some(0), // 待完成
@@ -894,7 +909,7 @@ pub async fn start_task(
                                         task_date: None,
                                         cancel_count: Some(0),
                                         last_cancelled_at: None,
-                                        skill_tags: parent_task.skill_tags.clone(), // 子任務繼承父任務的技能標籤
+                                        skill_tags: task.skill_tags.clone(), // 子任務繼承父任務的技能標籤
                                         career_mainline_id: None,
                                         task_category: None,
                                     };
@@ -925,14 +940,14 @@ pub async fn start_task(
                                     // 繼續執行，不影響主要功能
                                 } else {
                                     // 更新內存中的父任務經驗值
-                                    parent_task.experience = Some(total_experience);
+                                    task.experience = Some(total_experience);
                                     log::info!("父任務 {} 經驗值已更新為子任務總和: {}", task_id, total_experience);
                                 }
 
                                 Ok(HttpResponse::Ok().json(ApiResponse {
                                     success: true,
                                     data: Some(serde_json::json!({
-                                        "parent_task": parent_task,
+                                        "parent_task": task,
                                         "subtasks": subtasks,
                                         "subtasks_count": subtasks.len(),
                                         "total_experience": total_experience
@@ -973,7 +988,7 @@ pub async fn start_task(
                                             Ok(HttpResponse::Ok().json(ApiResponse {
                                                 success: true,
                                                 data: Some(serde_json::json!({
-                                                    "parent_task": parent_task,
+                                                    "parent_task": task,
                                                     "subtasks": updated_subtasks,
                                                     "subtasks_count": updated_subtasks.len()
                                                 })),
@@ -995,7 +1010,7 @@ pub async fn start_task(
                                     Ok(HttpResponse::Ok().json(ApiResponse {
                                         success: true,
                                         data: Some(serde_json::json!({
-                                            "parent_task": parent_task,
+                                            "parent_task": task,
                                             "subtasks": existing_subtasks,
                                             "subtasks_count": existing_subtasks.len()
                                         })),
@@ -1011,9 +1026,10 @@ pub async fn start_task(
                         }))
                     }
                 } else {
+                    // 父任務開始但不生成子任務
                     Ok(HttpResponse::Ok().json(ApiResponse {
                         success: true,
-                        data: Some(parent_task),
+                        data: Some(task),
                         message: "任務開始成功".to_string(),
                     }))
                 }
