@@ -144,7 +144,7 @@ impl OpenAIService {
         let user_message = format!("請根據以下用戶行為數據生成合適的成就：{}", user_input);
 
         let request = OpenAIRequest {
-            model: "gpt-4o-mini".to_string(),
+            model: "gpt-5-mini".to_string(),
             messages: vec![
                 ChatMessage {
                     role: "system".to_string(),
