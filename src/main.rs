@@ -9,6 +9,7 @@ mod achievement_service;
 mod career_routes;
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
+use actix_web::middleware::Logger;
 use rbatis::RBatis;
 use rbdc_sqlite::driver::SqliteDriver;
 
@@ -70,27 +71,17 @@ async fn main() -> std::io::Result<()> {
         return Ok(());
     }
     
-    // 處理數據庫初始化命令 (--init-db: 建立表結構 + 插入最小化用戶資料)
+    // 處理數據庫初始化命令 (--init-db: 僅建立表結構，不插入任何用戶資料)
     if init_db {
         log::info!("執行數據庫初始化...");
         if let Err(e) = reset_database(&rb).await {
             log::error!("數據庫初始化失敗: {}", e);
             return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()));
         }
-        // 插入最小化用戶資料，確保前端 /personal 能正常載入
-        match seed_minimum_user_data(&rb).await {
-            Ok(user_id) => {
-                log::info!("最小化用戶資料建立完成，user_id={}", user_id);
-            }
-            Err(e) => {
-                log::error!("最小化用戶資料建立失敗: {}", e);
-                return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()));
-            }
-        }
-        log::info!("數據庫初始化完成（已插入最小化用戶資料）！");
+        log::info!("數據庫初始化完成（未插入任何用戶資料），請先註冊帳號。");
         return Ok(());
     }
-    
+
     // 處理僅插入種子數據命令 (--seed: 保留現有表，只插入數據)
     if seed_only {
         log::info!("僅插入種子數據...");
@@ -102,29 +93,31 @@ async fn main() -> std::io::Result<()> {
         return Ok(());
     }
 
-    // 正常啟動模式：建立資料庫表
+    // 確保資料表存在並執行必要的遷移
     create_tables(&rb).await;
-
-    // 執行資料庫遷移
     migrate_database(&rb).await;
 
-    // 用 web::Data 包裝 rbatis 實例
-    let rb_data = web::Data::new(rb);
-
-    // 啟動 HTTP 伺服器
     let server_addr = config.server_addr();
-    log::info!("啟動 HTTP 伺服器在 http://{}", server_addr);
-    log::info!("Worker 數量: 2");
-    
+    log::info!("啟動 HTTP 伺服器在 http://{}", &server_addr);
+
+    // 共享資料庫連線
+    let rb_data = web::Data::new(rb.clone());
+
     HttpServer::new(move || {
-        // 配置 CORS
+        // 設定 CORS
         let cors = Cors::default()
             .allow_any_origin()
-            .allow_any_method()
-            .allow_any_header()
+            .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+            .allowed_headers(vec![
+                actix_web::http::header::AUTHORIZATION,
+                actix_web::http::header::ACCEPT,
+                actix_web::http::header::CONTENT_TYPE,
+            ])
             .max_age(3600);
 
         App::new()
+            // HTTP 請求日誌
+            .wrap(Logger::default())
             .wrap(cors)
             .app_data(rb_data.clone())
             // 健康檢查
@@ -132,6 +125,8 @@ async fn main() -> std::io::Result<()> {
             // 使用者相關路由
             .route("/api/users", web::get().to(get_users))
             .route("/api/users", web::post().to(create_user))
+            .route("/api/auth/login", web::post().to(login))
+            .route("/api/auth/logout", web::post().to(logout))
             .route("/api/users/{id}", web::get().to(get_user))
             // 任務相關路由
             .route("/api/tasks", web::get().to(get_tasks))
@@ -163,7 +158,6 @@ async fn main() -> std::io::Result<()> {
             .route("/api/chat/personality", web::post().to(send_message_with_personality))
             .route("/api/chat/test-personality", web::post().to(send_message_with_direct_personality))
             .route("/api/chat/test", web::get().to(test_endpoint))
-            
             // 教練個性相關路由
             .route("/api/coach/personalities", web::get().to(get_available_personalities))
             .route("/api/coach/personality", web::post().to(set_coach_personality))
@@ -179,7 +173,6 @@ async fn main() -> std::io::Result<()> {
             .route("/api/users/{user_id}/achievements/{achievement_id}/unlock", web::post().to(unlock_user_achievement))
             // 週屬性相關路由
             .route("/api/users/{user_id}/attributes/weekly/{weeks_ago}", web::get().to(get_weekly_attributes))
-            
             // AI 任務生成路由
             .route("/api/tasks/generate", web::post().to(crate::ai_tasks::generate_task_with_ai))
             .route("/api/tasks/generate-json", web::post().to(crate::ai_tasks::generate_task_json))
@@ -187,15 +180,15 @@ async fn main() -> std::io::Result<()> {
             .route("/api/tasks/create-from-json", web::post().to(crate::ai_tasks::create_task_from_json))
             .route("/api/tasks/validate-preview", web::post().to(crate::ai_tasks::validate_and_preview_task))
             .route("/api/tasks/generate-from-chat", web::post().to(crate::ai_tasks::generate_task_from_chat))
-            
             // AI 成就生成路由
             .route("/api/achievements/generate", web::post().to(generate_achievement_with_ai))
-            .route("/api/achievements/generate-from-tasks/{user_id}", web::post().to(crate::ai_tasks::generate_achievement_from_tasks))
-
+            .route(
+                "/api/achievements/generate-from-tasks/{user_id}",
+                web::post().to(crate::ai_tasks::generate_achievement_from_tasks),
+            )
             // 職業主線任務系統路由
             .route("/api/quiz/save-results", web::post().to(crate::career_routes::save_quiz_results))
             .route("/api/career/generate-tasks", web::post().to(crate::career_routes::generate_career_tasks))
-
             // 用戶數據重置路由
             .route("/api/users/{user_id}/reset", web::delete().to(reset_user_data))
             .route("/api/users/{user_id}/reset", web::post().to(reset_user_data_selective))
@@ -214,6 +207,7 @@ async fn create_tables(rb: &RBatis) {
             id TEXT PRIMARY KEY,
             name TEXT,
             email TEXT,
+            password_hash TEXT,
             created_at TEXT,
             updated_at TEXT
         )
@@ -459,9 +453,12 @@ async fn create_tables(rb: &RBatis) {
 async fn migrate_database(rb: &RBatis) {
     // 添加職業任務相關欄位到 task 表
     let alter_table_queries = vec![
+        "ALTER TABLE user ADD COLUMN password_hash TEXT",
         "ALTER TABLE task ADD COLUMN career_mainline_id TEXT",
         "ALTER TABLE task ADD COLUMN task_category TEXT",
         "ALTER TABLE quiz_results ADD COLUMN updated_at TEXT",
+        // 確保 email 唯一
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_user_email_unique ON user(email)",
     ];
 
     for query in alter_table_queries {

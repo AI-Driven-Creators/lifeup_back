@@ -66,6 +66,15 @@ pub async fn seed_database(rb: &RBatis) -> Result<(), Box<dyn std::error::Error>
 pub async fn seed_minimum_user_data(rb: &RBatis) -> Result<String, Box<dyn std::error::Error>> {
     info!("開始插入最小化用戶資料...");
 
+    // 若已存在相同 email 的用戶，直接返回其 id（冪等處理）
+    if let Ok(existing) = rb.query_decode::<Vec<crate::models::User>>("SELECT * FROM user WHERE email = ?", vec!["xiaoya@lifeup.com".into()]).await {
+        if let Some(u) = existing.first() {
+            let uid = u.id.clone().unwrap_or_default();
+            info!("最小化用戶已存在，跳過建立: {}", uid);
+            return Ok(uid);
+        }
+    }
+
     // 建立用戶
     let user_id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
