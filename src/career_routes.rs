@@ -21,19 +21,26 @@ pub async fn save_quiz_results(
     request: web::Json<SaveQuizResultsRequest>
 ) -> Result<HttpResponse> {
     log::info!("開始保存測驗結果");
+    log::info!("測驗結果數據: {:?}", &*request);
 
     let quiz_id = Uuid::new_v4().to_string();
+    log::info!("UUID 生成成功: {}", quiz_id);
+    log::info!("開始查詢用戶...");
     // 使用第一個用戶ID（與任務系統保持一致）
     let user_id = match rb.query_decode::<Vec<crate::models::User>>("SELECT id FROM user LIMIT 1", vec![]).await {
         Ok(users) => {
+            log::info!("查詢到 {} 個用戶", users.len());
             if users.is_empty() {
+                log::error!("系統中沒有用戶");
                 return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
                     success: false,
                     data: None,
                     message: "系統中沒有用戶，請先創建用戶".to_string(),
                 }));
             }
-            users[0].id.clone().unwrap_or_default()
+            let user_id = users[0].id.clone().unwrap_or_default();
+            log::info!("使用用戶ID: {}", user_id);
+            user_id
         }
         Err(e) => {
             log::error!("查詢用戶失敗: {}", e);
@@ -47,14 +54,62 @@ pub async fn save_quiz_results(
     
     let now = Utc::now();
 
-    // 創建測驗結果記錄
+    // 創建測驗結果記錄，使用錯誤處理來避免直接崩潰
+    let values_json = match serde_json::to_string(&request.values_results) {
+        Ok(json) => json,
+        Err(e) => {
+            log::error!("序列化價值觀結果失敗: {}", e);
+            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: "價值觀測驗結果數據格式錯誤".to_string(),
+            }));
+        }
+    };
+
+    let interests_json = match serde_json::to_string(&request.interests_results) {
+        Ok(json) => json,
+        Err(e) => {
+            log::error!("序列化興趣結果失敗: {}", e);
+            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: "興趣測驗結果數據格式錯誤".to_string(),
+            }));
+        }
+    };
+
+    let talents_json = match serde_json::to_string(&request.talents_results) {
+        Ok(json) => json,
+        Err(e) => {
+            log::error!("序列化天賦結果失敗: {}", e);
+            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: "天賦測驗結果數據格式錯誤".to_string(),
+            }));
+        }
+    };
+
+    let workstyle_json = match serde_json::to_string(&request.workstyle_results) {
+        Ok(json) => json,
+        Err(e) => {
+            log::error!("序列化工作風格結果失敗: {}", e);
+            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: "工作風格測驗結果數據格式錯誤".to_string(),
+            }));
+        }
+    };
+
     let quiz_result = QuizResults {
         id: Some(quiz_id.clone()),
         user_id: Some(user_id.clone()),
-        values_results: Some(serde_json::to_string(&request.values_results)?),
-        interests_results: Some(serde_json::to_string(&request.interests_results)?),
-        talents_results: Some(serde_json::to_string(&request.talents_results)?),
-        workstyle_results: Some(serde_json::to_string(&request.workstyle_results)?),
+        values_results: Some(values_json),
+        interests_results: Some(interests_json),
+        talents_results: Some(talents_json),
+        workstyle_results: Some(workstyle_json),
         completed_at: Some(now),
         is_active: Some(1),
         created_at: Some(now),
@@ -314,6 +369,11 @@ pub async fn generate_career_tasks(
     }
 
     log::info!("✅ 成功創建 {} 個任務", created_tasks.len());
+
+    // 更新父任務的經驗值為所有子任務經驗值總和
+    if let Err(e) = crate::routes::update_parent_task_experience(rb.get_ref(), &parent_task_id).await {
+        log::warn!("更新父任務經驗值時發生錯誤: {}", e);
+    }
 
     // 7. 記錄到聊天記錄（作為 AI 互動記錄）
     let chat_message = crate::models::ChatMessage {

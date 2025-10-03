@@ -2777,7 +2777,7 @@ async fn update_parent_task_status(rb: &RBatis, parent_task_id: &str, new_status
 }
 
 // 輔助函數：更新父任務經驗值為所有子任務經驗值總和
-async fn update_parent_task_experience(rb: &RBatis, parent_task_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn update_parent_task_experience(rb: &RBatis, parent_task_id: &str) -> Result<(), Box<dyn std::error::Error>> {
     // 查詢所有子任務
     let subtasks = Task::select_by_map(rb, value!{"parent_task_id": parent_task_id}).await?;
 
