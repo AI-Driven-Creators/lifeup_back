@@ -30,32 +30,57 @@ pub async fn reset_database(rb: &RBatis) -> Result<(), Box<dyn std::error::Error
 
     info!("開始重置數據庫...");
 
+    // 暫時關閉外鍵檢查，避免刪除順序造成的約束錯誤
+    let _ = rb.exec("PRAGMA foreign_keys = OFF;", vec![]).await;
+
     // 刪除所有表（按依賴順序）
     let drop_tables = vec![
-        "DROP TABLE IF EXISTS chat_message",
-        "DROP TABLE IF EXISTS recurring_task_template", 
-        "DROP TABLE IF EXISTS weekly_attribute_snapshot",
+        // 先刪關聯子表
         "DROP TABLE IF EXISTS user_achievement",
+        "DROP TABLE IF EXISTS achievement_stats",
         "DROP TABLE IF EXISTS daily_progress",
-        "DROP TABLE IF EXISTS achievement",
-        "DROP TABLE IF EXISTS user_attributes",
-        "DROP TABLE IF EXISTS user_profile",
+        "DROP TABLE IF EXISTS recurring_task_template",
+        "DROP TABLE IF EXISTS weekly_attribute_snapshot",
         "DROP TABLE IF EXISTS chat_message",
-        "DROP TABLE IF EXISTS recurring_task_template", 
+        "DROP TABLE IF EXISTS career_mainlines",
+        "DROP TABLE IF EXISTS quiz_results",
+        "DROP TABLE IF EXISTS user_coach_preference",
+        // 再刪引用 user 的資料表
         "DROP TABLE IF EXISTS task",
         "DROP TABLE IF EXISTS skill",
+        "DROP TABLE IF EXISTS user_attributes",
+        "DROP TABLE IF EXISTS user_profile",
+        // 最後刪主表
+        "DROP TABLE IF EXISTS achievement",
         "DROP TABLE IF EXISTS user",
     ];
 
     for sql in drop_tables {
         match rb.exec(sql, vec![]).await {
-            Ok(_) => info!("成功刪除表"),
-            Err(e) => warn!("刪除表失敗（可能不存在）: {}", e),
+            Ok(_) => info!("成功刪除表: {}", sql),
+            Err(e) => warn!("刪除表失敗（可能不存在）: {} -> {}", sql, e),
         }
+    }
+
+    // 刪除可能存在的索引（SQLite 不會隨表自動刪索引）
+    let drop_indexes = vec![
+        "DROP INDEX IF EXISTS idx_user_email_unique",
+    ];
+    for sql in drop_indexes {
+        let _ = rb.exec(sql, vec![]).await;
     }
 
     // 重新建立所有表
     create_all_tables(rb).await?;
+    // 重新建立唯一索引
+    let _ = rb.exec(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_user_email_unique ON user(email)",
+        vec![]
+    ).await;
+    // 雙保險：確保核心表無殘留資料
+    let _ = rb.exec("DELETE FROM user", vec![]).await;
+    // 開啟外鍵檢查
+    let _ = rb.exec("PRAGMA foreign_keys = ON;", vec![]).await;
     
     info!("數據庫重置完成！");
     Ok(())
