@@ -3,7 +3,6 @@ name = "lifeup_back"
 version = "0.1.0"
 edition = "2021"
 
-
 # 隱藏所有編譯器警告
 [lints.rust]
 warnings = "allow"
@@ -54,7 +53,15 @@ config = "0.13"
 # 隨機數生成
 rand = "0.8"
 
+# 密碼哈希
+bcrypt = "0.15"
 
+# 會話管理
+actix-session = { version = "0.8", features = ["redis-rs-session"] }
+actix-identity = "0.6"
+
+# Redis (for sessions)
+redis = "0.24"
 
 # HTTP 客戶端
 reqwest = { version = "0.11", features = ["json"] }

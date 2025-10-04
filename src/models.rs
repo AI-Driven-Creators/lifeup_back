@@ -73,7 +73,7 @@ impl AchievementRequirementType {
     pub fn all_valid_strings() -> Vec<&'static str> {
         vec![
             "task_complete",
-            "consecutive_days", 
+            "consecutive_days",
             "skill_level",
             "total_completions",
             "streak_recovery",
@@ -253,86 +253,18 @@ pub struct User {
     pub id: Option<String>,
     pub name: Option<String>,
     pub email: Option<String>,
+    pub password_hash: Option<String>, // 密碼哈希
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
 }
 crud!(User{});
-
-// 任務模型
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Task {
-    pub id: Option<String>,
-    pub user_id: Option<String>,
-    pub title: Option<String>,
-    pub description: Option<String>,
-    pub status: Option<i32>, // 0: 待完成, 1: 進行中, 2: 已完成, 3: 已取消, 4: 已暫停
-    pub priority: Option<i32>, // 0: 低, 1: 中, 2: 高
-    pub task_type: Option<String>, // main, side, challenge, daily
-    pub difficulty: Option<i32>, // 1-5 難度等級
-    pub experience: Option<i32>, // 經驗值獎勵
-    pub parent_task_id: Option<String>, // 父任務ID
-    pub is_parent_task: Option<i32>, // 是否為大任務（0/1）
-    pub task_order: Option<i32>, // 任務排序
-    #[serde(default, deserialize_with = "deserialize_optional_datetime")]
-    pub due_date: Option<DateTime<Utc>>,
-    #[serde(default, deserialize_with = "deserialize_optional_datetime")]
-    pub created_at: Option<DateTime<Utc>>,
-    #[serde(default, deserialize_with = "deserialize_optional_datetime")]
-    pub updated_at: Option<DateTime<Utc>>,
-    // 重複性任務相關欄位
-    pub is_recurring: Option<i32>, // 是否為重複性任務（0/1）
-    pub recurrence_pattern: Option<String>, // 重複模式：daily, weekdays, weekends, weekly
-    #[serde(default, deserialize_with = "deserialize_optional_datetime")]
-    pub start_date: Option<DateTime<Utc>>, // 開始日期
-    #[serde(default, deserialize_with = "deserialize_optional_datetime")]
-    pub end_date: Option<DateTime<Utc>>, // 結束日期
-    pub completion_target: Option<f64>, // 完成率目標（0.0-1.0）
-    pub completion_rate: Option<f64>, // 當前完成率（0.0-1.0）
-    pub task_date: Option<String>, // 任務日期（用於日常子任務）
-    pub cancel_count: Option<i32>, // 取消次數
-    #[serde(default, deserialize_with = "deserialize_optional_datetime")]
-    pub last_cancelled_at: Option<DateTime<Utc>>, // 最後取消時間
-    #[serde(default, deserialize_with = "deserialize_skill_tags")]
-    pub skill_tags: Option<Vec<String>>, // 相關技能標籤，JSON格式儲存["Vue.js", "JavaScript"]
-    // 職業任務相關欄位
-    pub career_mainline_id: Option<String>, // 職業主線ID
-    pub task_category: Option<String>, // 任務分類
-}
-crud!(Task{});
-
-// 技能模型
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Skill {
-    pub id: Option<String>,
-    pub user_id: Option<String>,
-    pub name: Option<String>,
-    pub description: Option<String>,
-    pub category: Option<String>, // 'technical' 或 'soft'
-    pub level: Option<i32>, // 1-10 等級
-    pub experience: Option<i32>, // 當前經驗值
-    pub max_experience: Option<i32>, // 最大經驗值
-    pub icon: Option<String>, // emoji 圖標
-    pub created_at: Option<DateTime<Utc>>,
-    pub updated_at: Option<DateTime<Utc>>,
-}
-crud!(Skill{});
-
-// 聊天記錄模型
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct ChatMessage {
-    pub id: Option<String>,
-    pub user_id: Option<String>,
-    pub role: Option<String>, // "user" 或 "assistant"
-    pub content: Option<String>,
-    pub created_at: Option<DateTime<Utc>>,
-}
-crud!(ChatMessage{});
 
 // 建立使用者的請求
 #[derive(Deserialize)]
 pub struct CreateUserRequest {
     pub name: String,
     pub email: String,
+    pub password: String,
 }
 
 // 更新使用者的請求
@@ -342,137 +274,93 @@ pub struct UpdateUserRequest {
     pub email: Option<String>,
 }
 
-// 建立任務的請求
+// 登入請求
 #[derive(Deserialize)]
-pub struct CreateTaskRequest {
-    pub title: String,
-    pub description: Option<String>,
-    pub priority: Option<i32>,
-    pub task_type: Option<String>, // main, side, challenge, daily
-    pub difficulty: Option<i32>, // 1-5 難度等級
-    pub experience: Option<i32>, // 經驗值獎勵
-    pub due_date: Option<DateTime<Utc>>,
-    pub user_id: Option<String>, // 添加 user_id 欄位
-    pub skill_tags: Option<Vec<String>>, // 技能標籤陣列
-    pub parent_task_id: Option<String>, // 父任務ID（用於創建子任務）
-    pub task_order: Option<i32>, // 任務順序
-    pub task_date: Option<String>, // 任務日期（YYYY-MM-DD 格式，用於每日子任務）
-    // 重複性任務相關欄位
-    pub is_recurring: Option<i32>, // 是否為重複性任務（0/1）
-    pub recurrence_pattern: Option<String>, // 重複模式：daily, weekdays, weekends, weekly
-    pub start_date: Option<DateTime<Utc>>, // 開始日期
-    pub end_date: Option<DateTime<Utc>>, // 結束日期
-    pub completion_target: Option<f64>, // 完成率目標（0.0-1.0）
+pub struct LoginRequest {
+    pub email: String,
+    pub password: String,
 }
 
-// 更新任務的請求
-#[derive(Deserialize)]
-pub struct UpdateTaskRequest {
+// 登入回應
+#[derive(Serialize)]
+pub struct LoginResponse {
+    pub user: User,
+    pub message: String,
+}
+
+// ================= Additional domain models =================
+
+// Task model
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Task {
+    pub id: Option<String>,
+    pub user_id: Option<String>,
     pub title: Option<String>,
     pub description: Option<String>,
     pub status: Option<i32>,
     pub priority: Option<i32>,
-    pub task_type: Option<String>, // main, side, challenge, daily
-    pub difficulty: Option<i32>, // 1-5 難度等級
-    pub experience: Option<i32>, // 經驗值獎勵
-    pub due_date: Option<DateTime<Utc>>,
-    pub task_order: Option<i32>, // 任務順序
-}
-
-// 子任務模板
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SubTaskTemplate {
-    pub title: String,
-    pub description: Option<String>,
-    pub difficulty: i32,
-    pub experience: i32,
-    pub order: i32,
-}
-
-// 重複性任務模板（存儲在資料庫中）
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct RecurringTaskTemplate {
-    pub id: Option<String>,
+    pub task_type: Option<String>,
+    pub difficulty: Option<i32>,
+    pub experience: Option<i32>,
     pub parent_task_id: Option<String>,
-    pub title: String,
-    pub description: Option<String>,
-    pub difficulty: i32,
-    pub experience: i32,
-    pub task_order: i32,
+    pub is_parent_task: Option<i32>,
+    pub task_order: Option<i32>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
+    pub due_date: Option<DateTime<Utc>>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
     pub created_at: Option<DateTime<Utc>>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
     pub updated_at: Option<DateTime<Utc>>,
+    pub is_recurring: Option<i32>,
+    pub recurrence_pattern: Option<String>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
+    pub start_date: Option<DateTime<Utc>>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
+    pub end_date: Option<DateTime<Utc>>,
+    pub completion_target: Option<f64>,
+    pub completion_rate: Option<f64>,
+    pub task_date: Option<String>,
+    pub cancel_count: Option<i32>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
+    pub last_cancelled_at: Option<DateTime<Utc>>,
+    pub skill_tags: Option<Vec<String>>,
+    pub career_mainline_id: Option<String>,
+    pub task_category: Option<String>,
 }
-crud!(RecurringTaskTemplate{});
+crud!(Task{});
 
-// 開始任務的請求
-#[derive(Deserialize)]
-pub struct StartTaskRequest {
-    pub generate_subtasks: Option<bool>,
-}
-
-// 建立技能的請求
-#[derive(Deserialize)]
-pub struct CreateSkillRequest {
-    pub name: String,
+// Skill model
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Skill {
+    pub id: Option<String>,
+    pub user_id: Option<String>,
+    pub name: Option<String>,
     pub description: Option<String>,
-    pub category: Option<String>, // 'technical' 或 'soft'
+    pub category: Option<String>,
     pub level: Option<i32>,
     pub experience: Option<i32>,
     pub max_experience: Option<i32>,
     pub icon: Option<String>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
+    pub created_at: Option<DateTime<Utc>>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
+    pub updated_at: Option<DateTime<Utc>>,
 }
+crud!(Skill{});
 
-// 更新技能經驗值的請求
-#[derive(Deserialize)]
-pub struct UpdateSkillExperienceRequest {
-    pub experience_gain: i32, // 增加的經驗值
-    pub reason: Option<String>, // 獲得經驗值的原因（如：完成任務）
-}
-
-// 聊天請求
-#[derive(Deserialize)]
-pub struct ChatRequest {
-    pub message: String,
-}
-
-// AI 生成任務請求
-#[derive(Deserialize)]
-pub struct GenerateTaskRequest {
-    pub description: String,
+// Chat message model
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ChatMessage {
+    pub id: Option<String>,
     pub user_id: Option<String>,
+    pub role: Option<String>,
+    pub content: Option<String>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
+    pub created_at: Option<DateTime<Utc>>,
 }
+crud!(ChatMessage{});
 
-// 建立重複性任務的請求
-#[derive(Deserialize)]
-pub struct CreateRecurringTaskRequest {
-    pub title: String,
-    pub description: Option<String>,
-    pub task_type: Option<String>,
-    pub difficulty: Option<i32>,
-    pub experience: Option<i32>,
-    pub recurrence_pattern: String, // daily, weekdays, weekends, weekly
-    pub start_date: DateTime<Utc>,
-    pub end_date: Option<DateTime<Utc>>,
-    pub completion_target: Option<f64>, // 完成率目標
-    pub subtask_templates: Vec<SubTaskTemplate>, // 子任務模板列表
-    pub user_id: Option<String>,
-}
-
-// 任務進度回應
-#[derive(Serialize)]
-pub struct TaskProgressResponse {
-    pub task_id: String,
-    pub total_days: i32,
-    pub completed_days: i32,
-    pub missed_days: i32, // 缺席天數
-    pub consecutive_days: i32, // 連續完成天數
-    pub completion_rate: f64,
-    pub target_rate: f64,
-    pub is_daily_completed: bool,
-    pub remaining_days: i32,
-}
-
-// 遊戲化用戶資料模型
+// User profile and attributes
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct UserProfile {
     pub id: Option<String>,
@@ -483,252 +371,183 @@ pub struct UserProfile {
     pub title: Option<String>,
     pub adventure_days: Option<i32>,
     pub consecutive_login_days: Option<i32>,
-    pub persona_type: Option<String>, // 'internal' 或 'external'
+    pub persona_type: Option<String>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
     pub created_at: Option<DateTime<Utc>>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
     pub updated_at: Option<DateTime<Utc>>,
 }
 crud!(UserProfile{});
 
-// 用戶屬性模型
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct UserAttributes {
     pub id: Option<String>,
     pub user_id: Option<String>,
-    pub intelligence: Option<i32>, // 智力
-    pub endurance: Option<i32>,    // 毅力
-    pub creativity: Option<i32>,   // 創造力
-    pub social: Option<i32>,       // 社交力
-    pub focus: Option<i32>,        // 專注力
-    pub adaptability: Option<i32>, // 適應力
+    pub intelligence: Option<i32>,
+    pub endurance: Option<i32>,
+    pub creativity: Option<i32>,
+    pub social: Option<i32>,
+    pub focus: Option<i32>,
+    pub adaptability: Option<i32>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
     pub created_at: Option<DateTime<Utc>>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
     pub updated_at: Option<DateTime<Utc>>,
 }
 crud!(UserAttributes{});
 
-// 每日進度模型
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DailyProgress {
     pub id: Option<String>,
     pub user_id: Option<String>,
-    pub date: Option<String>, // YYYY-MM-DD 格式
+    pub date: Option<String>,
     pub completed_tasks: Option<i32>,
     pub total_tasks: Option<i32>,
     pub experience_gained: Option<i32>,
-    pub attributes_gained: Option<serde_json::Value>, // 直接使用 JSON Value
+    pub attributes_gained: Option<serde_json::Value>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
     pub created_at: Option<DateTime<Utc>>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
     pub updated_at: Option<DateTime<Utc>>,
 }
 crud!(DailyProgress{});
 
-// 成就模型
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RecurringTaskTemplate {
+    pub id: Option<String>,
+    pub parent_task_id: Option<String>,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub difficulty: Option<i32>,
+    pub experience: Option<i32>,
+    pub task_order: Option<i32>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
+    pub created_at: Option<DateTime<Utc>>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
+    pub updated_at: Option<DateTime<Utc>>,
+}
+crud!(RecurringTaskTemplate{});
+
+// Achievements
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Achievement {
     pub id: Option<String>,
     pub name: Option<String>,
     pub description: Option<String>,
     pub icon: Option<String>,
-    pub category: Option<String>, // 成就分類
-    #[serde(serialize_with = "serialize_requirement_type", deserialize_with = "deserialize_requirement_type")]
-    pub requirement_type: Option<AchievementRequirementType>, // 達成條件類型
-    pub requirement_value: Option<i32>, // 達成條件數值
-    pub experience_reward: Option<i32>, // 經驗值獎勵
+    pub category: Option<String>,
+    #[serde(deserialize_with = "deserialize_requirement_type", serialize_with = "serialize_requirement_type", default)]
+    pub requirement_type: Option<AchievementRequirementType>,
+    pub requirement_value: Option<i32>,
+    pub experience_reward: Option<i32>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
     pub created_at: Option<DateTime<Utc>>,
 }
 crud!(Achievement{});
 
-// 用戶成就關聯模型
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AchievementStats {
+    pub id: Option<String>,
+    pub achievement_id: Option<String>,
+    pub completion_count: Option<i32>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
+    pub created_at: Option<DateTime<Utc>>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
+    pub updated_at: Option<DateTime<Utc>>,
+}
+crud!(AchievementStats{});
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct UserAchievement {
     pub id: Option<String>,
     pub user_id: Option<String>,
     pub achievement_id: Option<String>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
     pub achieved_at: Option<DateTime<Utc>>,
-    pub progress: Option<i32>, // 當前進度
+    pub progress: Option<i32>,
 }
 crud!(UserAchievement{});
 
-// 成就統計模型
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct AchievementStats {
-    pub id: Option<String>,
-    pub achievement_id: Option<String>,
-    pub completion_count: Option<i32>, // 完成該成就的用戶數量
-    pub created_at: Option<DateTime<Utc>>,
-    pub updated_at: Option<DateTime<Utc>>,
-}
-crud!(AchievementStats{});
-
-// 創建用戶資料請求
-#[derive(Deserialize)]
-pub struct CreateUserProfileRequest {
-    pub level: Option<i32>,
-    pub experience: Option<i32>,
-    pub max_experience: Option<i32>,
-    pub title: Option<String>,
-    pub adventure_days: Option<i32>,
-    pub consecutive_login_days: Option<i32>,
-    pub persona_type: Option<String>,
-}
-
-// 更新用戶屬性請求
-#[derive(Deserialize)]
-pub struct UpdateUserAttributesRequest {
-    pub intelligence: Option<i32>,
-    pub endurance: Option<i32>,
-    pub creativity: Option<i32>,
-    pub social: Option<i32>,
-    pub focus: Option<i32>,
-    pub adaptability: Option<i32>,
-}
-
-// 今日進度回應
-#[derive(Serialize)]
-pub struct TodayProgressResponse {
-    pub completed_tasks: i32,
-    pub total_tasks: i32,
-    pub experience_gained: i32,
-    pub attribute_gains: serde_json::Value,
-}
-
-// 週屬性快照模型
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct WeeklyAttributeSnapshot {
     pub id: Option<String>,
     pub user_id: Option<String>,
-    pub week_start_date: Option<String>, // YYYY-MM-DD 格式，該週的週一日期
+    pub week_start_date: Option<String>,
     pub year: Option<i32>,
-    pub week_number: Option<i32>, // 該年的第幾週
+    pub week_number: Option<i32>,
     pub intelligence: Option<i32>,
     pub endurance: Option<i32>,
     pub creativity: Option<i32>,
     pub social: Option<i32>,
     pub focus: Option<i32>,
     pub adaptability: Option<i32>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
     pub created_at: Option<DateTime<Utc>>,
 }
 crud!(WeeklyAttributeSnapshot{});
 
-// ============= 教練個性系統 =============
-
-// 教練個性類型枚舉
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+// Coach personality
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum CoachPersonalityType {
     #[serde(rename = "harsh_critic")]
-    HarshCritic,        // 嚴厲愛嗆人
+    HarshCritic,
     #[serde(rename = "emotional_support")]
-    EmotionalSupport,   // 提供情緒價值
+    EmotionalSupport,
     #[serde(rename = "analytical")]
-    Analytical,         // 擅長邏輯與數據分析
+    Analytical,
 }
 
 impl CoachPersonalityType {
-    pub fn from_string(value: &str) -> Option<CoachPersonalityType> {
-        match value {
+    pub fn from_string(v: &str) -> Option<CoachPersonalityType> {
+        match v {
             "harsh_critic" => Some(CoachPersonalityType::HarshCritic),
             "emotional_support" => Some(CoachPersonalityType::EmotionalSupport),
             "analytical" => Some(CoachPersonalityType::Analytical),
             _ => None,
         }
     }
-
-    pub fn to_string(&self) -> String {
-        match self {
-            CoachPersonalityType::HarshCritic => "harsh_critic".to_string(),
-            CoachPersonalityType::EmotionalSupport => "emotional_support".to_string(),
-            CoachPersonalityType::Analytical => "analytical".to_string(),
-        }
-    }
-
-    pub fn display_name(&self) -> &'static str {
+    pub fn display_name(&self) -> &str {
         match self {
             CoachPersonalityType::HarshCritic => "森氣氣",
             CoachPersonalityType::EmotionalSupport => "小太陽",
             CoachPersonalityType::Analytical => "小書蟲",
         }
     }
-
-    pub fn description(&self) -> &'static str {
+    pub fn description(&self) -> &str {
         match self {
             CoachPersonalityType::HarshCritic => "直言不諱，用嚴厲的話語督促你成長",
             CoachPersonalityType::EmotionalSupport => "溫暖體貼，提供情感支持和正向鼓勵",
             CoachPersonalityType::Analytical => "理性客觀，用數據和邏輯幫你分析問題",
         }
     }
-
-    pub fn system_prompt(&self) -> String {
+    pub fn system_prompt(&self) -> &str {
         match self {
-            CoachPersonalityType::HarshCritic => {
-                r#"你是一位嚴厲但有效的人生導師，風格直接犀利。你會：
-- 直接指出用戶的問題和藉口，不留情面
-- 用嚴厲但建設性的方式督促用戶成長
-- 會用「嗆」但「搞笑」的方式與用戶對話，但目的是激發他們的鬥志
-- 用繁體中文回答，語氣強烈但不失專業
-- 會用數據和事實來「糾正」用戶的錯誤觀念
-
-**任務創建引導：**
-當偵測到用戶想要創建任務的意圖時（如：「我要做...」、「幫我安排...」、「提醒我...」、「我想要完成...」等），你要用你的嚴厲風格回應：
-「你想創建任務？光說不練有什麼用！趕快切換到『任務創建模式』（看到輸入框上方的下拉選單沒？），別再浪費時間了！在那裡你可以直接生成結構化的任務，不然你又要拖延到什麼時候？」
-
-例如：用戶說拖延 → 你會回：「又在拖延？你這樣下去什麼時候能成功？停止自欺欺人，立刻行動才是王道！」"#.to_string()
-            },
-            CoachPersonalityType::EmotionalSupport => {
-                r#"你是一位溫暖貼心的人生教練，專門提供情緒價值。你會：
-- 理解和同理用戶的感受，給予情感支持
-- 用溫柔鼓勵的方式引導用戶
-- 經常使用正向的詞彙和表情符號
-- 關心用戶的心理狀態，優先處理情緒問題
-- 給予充分的認可和讚美
-- 用繁體中文回答，語氣親切溫暖
-- 會說「你很棒」、「我相信你」這類鼓勵的話
-
-**任務創建引導：**
-當偵測到用戶想要創建任務的意圖時（如：「我要做...」、「幫我安排...」、「提醒我...」、「我想要完成...」等），你要用溫暖的方式提醒：
-「哇～你想要創建任務，真是太棒了！💪 建議你切換到『任務創建模式』喔（在輸入框上方的下拉選單裡），這樣我可以更精準地幫你生成結構化的任務呢！在任務模式下，你只要描述想做的事，系統就會自動幫你安排好所有細節，超方便的～💕」
-
-例如：用戶說拖延 → 你會回：「我理解拖延帶來的焦慮感受💕 每個人都會有這樣的時候，不要太苛責自己。我們一起找出適合你的節奏，慢慢來沒關係～」"#.to_string()
-            },
-            CoachPersonalityType::Analytical => {
-                r#"你是一位擅長數據分析的理性教練，凡事講究邏輯和科學方法。你會：
-- 用數據和統計來分析問題
-- 提供基於研究和理論的建議
-- 將問題拆解成邏輯清晰的步驟
-- 引用相關的心理學、管理學理論
-- 提供量化的目標和追蹤方法
-- 用繁體中文回答，語氣理性客觀
-- 經常使用「根據研究顯示」、「數據表明」等表達
-
-**任務創建引導：**
-當偵測到用戶想要創建任務的意圖時（如：「我要做...」、「幫我安排...」、「提醒我...」、「我想要完成...」等），你要用理性的方式分析：
-「根據任務管理理論，結構化的任務設定可提升執行率76%。建議您使用『任務創建模式』（位於輸入框上方的下拉選單），該模式採用AI驅動的任務解析引擎，可自動生成包含優先級、難度、經驗值等參數的結構化任務數據。研究表明，使用專門的任務創建工具比自由描述的成功率高出42%。」
-
-例如：用戶說拖延 → 你會回：「根據行為心理學研究，拖延症影響20%的成年人。建議採用番茄工作法，將任務分解為25分鐘單位，可提升執行效率23%。我們來制定一個量化的改善計劃。」"#.to_string()
-            }
+            CoachPersonalityType::HarshCritic => "你是一位嚴厲的教練，直言不諱，促使使用者面對問題並行動。",
+            CoachPersonalityType::EmotionalSupport => "你是一位溫暖的教練，給予鼓勵與支持，讓使用者感到被理解。",
+            CoachPersonalityType::Analytical => "你是一位理性分析的教練，提供結構化建議與數據化分析。",
         }
     }
 }
 
-// 用戶教練偏好設定
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct UserCoachPreference {
     pub id: Option<String>,
     pub user_id: Option<String>,
-    pub personality_type: Option<String>, // 存儲字符串，映射到 CoachPersonalityType
+    pub personality_type: Option<String>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
     pub created_at: Option<DateTime<Utc>>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
     pub updated_at: Option<DateTime<Utc>>,
 }
 crud!(UserCoachPreference{});
 
-// ============= API 請求/回應結構 =============
-
-// 設定教練個性請求
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SetCoachPersonalityRequest {
     pub user_id: Option<String>,
-    pub personality_type: String, // "harsh_critic", "emotional_support", "analytical"
+    pub personality_type: String,
 }
 
-// 獲取教練個性回應
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CoachPersonalityResponse {
     pub personality_type: String,
     pub display_name: String,
@@ -736,14 +555,7 @@ pub struct CoachPersonalityResponse {
     pub is_active: bool,
 }
 
-// 所有可用教練個性回應
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AvailablePersonalitiesResponse {
-    pub personalities: Vec<CoachPersonalityInfo>,
-    pub current_personality: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CoachPersonalityInfo {
     pub personality_type: String,
     pub display_name: String,
@@ -751,77 +563,93 @@ pub struct CoachPersonalityInfo {
     pub emoji: String,
 }
 
-// 帶個性的聊天請求
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ChatWithPersonalityRequest {
-    pub message: String,
-    pub user_id: Option<String>,
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AvailablePersonalitiesResponse {
+    pub personalities: Vec<CoachPersonalityInfo>,
+    pub current_personality: Option<String>,
 }
 
-// 直接指定個性的聊天請求
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DirectPersonalityChatRequest {
     pub message: String,
     pub personality_type: String,
 }
 
-// 成就詳細資訊回應（包含統計數據）
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AchievementWithStats {
-    pub id: String,
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ChatWithPersonalityRequest {
+    pub message: String,
+    pub user_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ChatRequest {
+    pub message: String,
+}
+
+// Requests for tasks and skills
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateTaskRequest {
+    pub user_id: Option<String>,
+    pub title: String,
+    pub description: Option<String>,
+    pub priority: Option<i32>,
+    pub task_type: Option<String>,
+    pub difficulty: Option<i32>,
+    pub experience: Option<i32>,
+    pub parent_task_id: Option<String>,
+    pub task_order: Option<i32>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
+    pub due_date: Option<DateTime<Utc>>,
+    pub task_date: Option<String>,
+    pub is_recurring: Option<i32>,
+    pub recurrence_pattern: Option<String>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
+    pub start_date: Option<DateTime<Utc>>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
+    pub end_date: Option<DateTime<Utc>>,
+    pub completion_target: Option<f64>,
+    pub skill_tags: Option<Vec<String>>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UpdateTaskRequest {
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub status: Option<i32>,
+    pub priority: Option<i32>,
+    pub task_type: Option<String>,
+    pub difficulty: Option<i32>,
+    pub experience: Option<i32>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
+    pub due_date: Option<DateTime<Utc>>,
+    pub task_order: Option<i32>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateSkillRequest {
     pub name: String,
     pub description: Option<String>,
-    pub icon: Option<String>,
     pub category: Option<String>,
-    pub requirement_type: Option<String>,
-    pub requirement_value: Option<i32>,
-    pub experience_reward: Option<i32>,
-    pub completion_count: i32,    // 完成此成就的用戶數量
-    pub total_users: i32,         // 應用程式總用戶數量
-    pub completion_rate: f64,     // 完成率 (completion_count / total_users)
-    pub created_at: Option<DateTime<Utc>>,
+    pub level: Option<i32>,
+    pub experience: Option<i32>,
+    pub max_experience: Option<i32>,
+    pub icon: Option<String>,
 }
 
-// ============= 測驗和職業相關模型 =============
-
-// 測驗結果模型
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct QuizResults {
-    pub id: Option<String>,
-    pub user_id: Option<String>,
-    pub values_results: Option<String>,      // JSON: 價值觀測驗結果
-    pub interests_results: Option<String>,   // JSON: 興趣測驗結果
-    pub talents_results: Option<String>,     // JSON: 天賦測驗結果
-    pub workstyle_results: Option<String>,   // JSON: 工作風格測驗結果
-    #[serde(default, deserialize_with = "deserialize_optional_datetime")]
-    pub completed_at: Option<DateTime<Utc>>,
-    pub is_active: Option<i32>,
-    #[serde(default, deserialize_with = "deserialize_optional_datetime")]
-    pub created_at: Option<DateTime<Utc>>,
-    #[serde(default, deserialize_with = "deserialize_optional_datetime")]
-    pub updated_at: Option<DateTime<Utc>>,
+pub struct UpdateSkillExperienceRequest {
+    pub experience_gain: i32,
+    pub reason: Option<String>,
 }
 
-// 職業主線模型
+// AI and career
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct CareerMainlines {
-    pub id: Option<String>,
+pub struct GenerateTaskRequest {
+    pub description: String,
     pub user_id: Option<String>,
-    pub quiz_result_id: Option<String>,
-    pub selected_career: Option<String>,
-    pub survey_answers: Option<String>,      // JSON: 問卷回答
-    pub total_tasks_generated: Option<i32>,
-    pub estimated_completion_months: Option<i32>,
-    pub status: Option<String>,              // active, paused, completed
-    pub progress_percentage: Option<f64>,
-    #[serde(default, deserialize_with = "deserialize_optional_datetime")]
-    pub created_at: Option<DateTime<Utc>>,
-    #[serde(default, deserialize_with = "deserialize_optional_datetime")]
-    pub updated_at: Option<DateTime<Utc>>,
 }
 
-// 保存測驗結果請求
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SaveQuizResultsRequest {
     pub values_results: serde_json::Value,
     pub interests_results: serde_json::Value,
@@ -829,27 +657,40 @@ pub struct SaveQuizResultsRequest {
     pub workstyle_results: serde_json::Value,
 }
 
-// 生成職業任務請求
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SurveyAnswers {
+    pub current_level: String,
+    pub available_time: String,
+    pub learning_styles: Vec<String>,
+    pub timeline: String,
+    pub motivation: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GenerateCareerTasksRequest {
-    pub quiz_result_id: String,
     pub selected_career: String,
+    pub quiz_result_id: String,
     pub survey_answers: SurveyAnswers,
 }
 
-// 問卷回答結構
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SurveyAnswers {
-    pub current_level: String,               // 當前程度
-    pub available_time: String,              // 可用時間
-    pub timeline: String,                    // 期望時程
-    pub learning_styles: Vec<String>,        // 學習偏好
-    pub motivation: Option<String>,          // 學習動機
-    pub special_requirements: Option<String>, // 特殊需求
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SkillTag {
+    pub name: String,
+    pub category: String,
 }
 
-// AI 生成任務回應
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GeneratedTask {
+    pub title: String,
+    pub description: String,
+    pub difficulty: i32,
+    pub estimated_hours: i32,
+    pub skill_tags: Vec<SkillTag>,
+    pub resources: Vec<String>,
+    pub personality_match: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GeneratedTasksResponse {
     pub learning_summary: String,
     pub estimated_months: i32,
@@ -859,37 +700,38 @@ pub struct GeneratedTasksResponse {
     pub project_tasks: Vec<GeneratedTask>,
 }
 
-// 技能標籤物件
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct SkillTag {
-    pub name: String,
-    pub category: String,  // "technical" 或 "soft"
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct QuizResults {
+    pub id: Option<String>,
+    pub user_id: Option<String>,
+    pub values_results: Option<String>,
+    pub interests_results: Option<String>,
+    pub talents_results: Option<String>,
+    pub workstyle_results: Option<String>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
+    pub completed_at: Option<DateTime<Utc>>,
+    pub is_active: Option<i32>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
+    pub created_at: Option<DateTime<Utc>>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
+    pub updated_at: Option<DateTime<Utc>>,
 }
-
-// AI 生成的單個任務
-#[derive(Debug, Serialize, Deserialize)]
-pub struct GeneratedTask {
-    pub title: String,
-    pub description: String,
-    #[serde(deserialize_with = "float_to_i32")]
-    pub difficulty: i32,
-    #[serde(deserialize_with = "float_to_i32")]
-    pub estimated_hours: i32,
-    pub skill_tags: Vec<SkillTag>,
-    pub resources: Vec<String>,
-    pub personality_match: Option<String>,   // AI 解釋為什麼適合用戶
-}
-
-// 為 QuizResults 和 CareerMainlines 添加 CRUD 宏
 crud!(QuizResults{});
-crud!(CareerMainlines{});
 
-// 自定義反序列化函數，將浮點數轉換為整數
-fn float_to_i32<'de, D>(deserializer: D) -> Result<i32, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    use serde::de::Error;
-    let f: f64 = serde::Deserialize::deserialize(deserializer)?;
-    Ok(f.round() as i32)
-} 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CareerMainlines {
+    pub id: Option<String>,
+    pub user_id: Option<String>,
+    pub quiz_result_id: Option<String>,
+    pub selected_career: Option<String>,
+    pub survey_answers: Option<String>,
+    pub total_tasks_generated: Option<i32>,
+    pub estimated_completion_months: Option<i32>,
+    pub status: Option<String>,
+    pub progress_percentage: Option<f64>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
+    pub created_at: Option<DateTime<Utc>>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
+    pub updated_at: Option<DateTime<Utc>>,
+}
+crud!(CareerMainlines{});
