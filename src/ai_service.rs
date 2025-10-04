@@ -9,7 +9,7 @@ use crate::models::AchievementRequirementType;
 struct OpenAIRequest {
     model: String,
     messages: Vec<ChatMessage>,
-    temperature: f32,
+    // temperature 新模型只支持默認值 1，因此不再傳遞
     max_completion_tokens: i32,
     response_format: ResponseFormat,
 }
@@ -155,7 +155,6 @@ impl OpenAIService {
                     content: user_message,
                 },
             ],
-            temperature: 0.8,
             max_completion_tokens: 400,
             response_format: ResponseFormat {
                 format_type: "json_object".to_string(),
@@ -204,7 +203,6 @@ impl OpenAIService {
                     "content": prompt
                 }
             ],
-            "temperature": 0.8,
             "max_completion_tokens": 4000
         });
 
@@ -337,7 +335,6 @@ impl OpenAIService {
                     content: user_message,
                 },
             ],
-            temperature: 0.7,
             max_completion_tokens: 500,
             response_format: ResponseFormat {
                 format_type: "json_object".to_string(),
