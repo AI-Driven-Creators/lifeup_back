@@ -5,8 +5,7 @@ use chrono::{Utc, Datelike};
 use crate::models::*;
 use crate::ai_service::{OpenAIService, convert_to_achievement_model};
 use rbs::{Value, value};
-
-
+use bcrypt::{hash, verify, DEFAULT_COST};
 use serde_json::json;
 use rand;
 // API 回應結構
@@ -15,6 +14,49 @@ struct ApiResponse<T> {
     success: bool,
     data: Option<T>,
     message: String,
+}
+
+#[derive(serde::Serialize)]
+struct TaskProgressResponse {
+    task_id: String,
+    total_days: i32,
+    completed_days: i32,
+    missed_days: i32,
+    completion_rate: f64,
+    target_rate: f64,
+    is_daily_completed: bool,
+    remaining_days: i32,
+}
+
+#[derive(serde::Serialize)]
+struct AchievementWithStats {
+    id: String,
+    name: String,
+    description: Option<String>,
+    icon: Option<String>,
+    category: Option<String>,
+    requirement_type: Option<String>,
+    requirement_value: Option<i32>,
+    experience_reward: Option<i32>,
+    completion_count: i32,
+    total_users: i32,
+    completion_rate: f64,
+    created_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct CreateRecurringTaskRequest {
+    pub user_id: Option<String>,
+    pub title: String,
+    pub description: Option<String>,
+    pub task_type: Option<String>,
+    pub difficulty: Option<i32>,
+    pub experience: Option<i32>,
+    pub start_date: Option<chrono::DateTime<chrono::Utc>>,
+    pub end_date: Option<chrono::DateTime<chrono::Utc>>,
+    pub recurrence_pattern: String,
+    pub completion_target: Option<f64>,
+    pub subtask_templates: Vec<SubTaskTemplate>,
 }
 
 // 健康檢查
@@ -67,16 +109,54 @@ pub async fn get_user(rb: web::Data<RBatis>, path: web::Path<String>) -> Result<
         })),
     }
 }
-
 pub async fn create_user(
     rb: web::Data<RBatis>,
     req: web::Json<CreateUserRequest>,
 ) -> Result<HttpResponse> {
+    // 正規化 email（去除空格並轉小寫）
+    let normalized_email = req.email.trim().to_lowercase();
+    log::info!("註冊請求: name={}, email={}", req.name, normalized_email);
+
+    // 檢查email是否已被註冊
+    match User::select_by_map(rb.get_ref(), value!{"email": normalized_email.clone()}).await {
+        Ok(existing_users) => {
+            if !existing_users.is_empty() {
+                log::info!("註冊失敗：email 已存在 -> {}", normalized_email);
+                return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: "該email已被註冊".to_string(),
+                }));
+            }
+        }
+        Err(e) => {
+            log::error!("檢查 email 是否存在時發生錯誤: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("檢查email失敗: {}", e),
+            }));
+        }
+    }
+
+    // 哈希密碼
+    let password_hash = match hash(&req.password, DEFAULT_COST) {
+        Ok(hash) => hash,
+        Err(e) => {
+            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("密碼處理失敗: {}", e),
+            }));
+        }
+    };
+
     let now = Utc::now();
     let new_user = User {
         id: Some(Uuid::new_v4().to_string()),
         name: Some(req.name.clone()),
-        email: Some(req.email.clone()),
+        email: Some(normalized_email),
+        password_hash: Some(password_hash),
         created_at: Some(now),
         updated_at: Some(now),
     };
@@ -87,12 +167,96 @@ pub async fn create_user(
             data: Some(new_user),
             message: "使用者建立成功".to_string(),
         })),
+        Err(e) => {
+            // 若觸發唯一索引違反，轉換為 400 回應
+            let err_str = e.to_string();
+            if err_str.contains("UNIQUE") || err_str.contains("unique") {
+                log::info!("註冊失敗（唯一索引）：{}", err_str);
+                return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: "該email已被註冊".to_string(),
+                }));
+            }
+            log::error!("使用者建立失敗: {}", err_str);
+            Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+                message: format!("使用者建立失敗: {}", err_str),
+            }))
+        }
+    }
+}
+
+// 登入路由
+pub async fn login(
+    rb: web::Data<RBatis>,
+    req: web::Json<LoginRequest>,
+) -> Result<HttpResponse> {
+    // 根據email查找用戶
+    let normalized_email = req.email.trim().to_lowercase();
+    log::info!("登入請求: email={}", normalized_email);
+    match User::select_by_map(rb.get_ref(), value!{"email": normalized_email.clone()}).await {
+        Ok(users) => {
+            if let Some(user) = users.first() {
+                // 驗證密碼
+                if let Some(password_hash) = &user.password_hash {
+                    match verify(&req.password, password_hash) {
+                        Ok(true) => {
+                            // 登入成功，返回用戶信息（不包含密碼哈希）
+                            let mut user_response = user.clone();
+                            user_response.password_hash = None; // 不返回密碼哈希
+
+                            Ok(HttpResponse::Ok().json(ApiResponse {
+                                success: true,
+                                data: Some(LoginResponse {
+                                    user: user_response,
+                                    message: "登入成功".to_string(),
+                                }),
+                                message: "登入成功".to_string(),
+                            }))
+                        }
+                        Ok(false) => Ok(HttpResponse::Unauthorized().json(ApiResponse::<()> {
+                            success: false,
+                            data: None,
+                            message: "密碼錯誤".to_string(),
+                        })),
+                        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                            success: false,
+                            data: None,
+                            message: format!("密碼驗證失敗: {}", e),
+                        })),
+                    }
+                } else {
+                    Ok(HttpResponse::Unauthorized().json(ApiResponse::<()> {
+                        success: false,
+                        data: None,
+                        message: "用戶密碼未設定".to_string(),
+                    }))
+                }
+            } else {
+                Ok(HttpResponse::Unauthorized().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: "用戶不存在".to_string(),
+                }))
+            }
+        }
         Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
             success: false,
             data: None,
-            message: format!("使用者建立失敗: {}", e),
+            message: format!("用戶查找失敗: {}", e),
         })),
     }
+}
+
+// 登出路由（目前簡單實現，未來可以配合session使用）
+pub async fn logout() -> Result<HttpResponse> {
+    Ok(HttpResponse::Ok().json(ApiResponse::<()> {
+        success: true,
+        data: None,
+        message: "登出成功".to_string(),
+    }))
 }
 
 // 任務相關路由 - 只返回父任務（非子任務）
@@ -100,7 +264,7 @@ pub async fn get_tasks(rb: web::Data<RBatis>) -> Result<HttpResponse> {
     // 只獲取父任務：parent_task_id 為 NULL 的任務
     let sql = "SELECT * FROM task WHERE parent_task_id IS NULL ORDER BY created_at DESC";
 
-    match rb.query_decode::<Vec<Task>>(sql, vec![]).await {
+    match rb.query_decode::<Vec<crate::models::Task>>(sql, vec![]).await {
         Ok(tasks) => Ok(HttpResponse::Ok().json(ApiResponse {
             success: true,
             data: Some(tasks),
@@ -116,10 +280,10 @@ pub async fn get_tasks(rb: web::Data<RBatis>) -> Result<HttpResponse> {
 
 pub async fn create_task(
     rb: web::Data<RBatis>,
-    req: web::Json<CreateTaskRequest>,
+    req: web::Json<crate::models::CreateTaskRequest>,
 ) -> Result<HttpResponse> {
     let now = Utc::now();
-    let new_task = Task {
+    let new_task = crate::models::Task {
         id: Some(Uuid::new_v4().to_string()),
         user_id: req.user_id.clone(), // 使用請求中的 user_id
         title: Some(req.title.clone()),
@@ -162,7 +326,7 @@ pub async fn create_task(
         task_category: None,
     };
 
-    match Task::insert(rb.get_ref(), &new_task).await {
+    match crate::models::Task::insert(rb.get_ref(), &new_task).await {
         Ok(_) => {
             // 如果這是子任務，需要更新父任務的經驗值
             if let Some(parent_task_id) = &new_task.parent_task_id {
@@ -206,7 +370,7 @@ pub async fn create_skill(
     req: web::Json<CreateSkillRequest>,
 ) -> Result<HttpResponse> {
     let now = Utc::now();
-    let new_skill = Skill {
+    let new_skill = crate::models::Skill {
         id: Some(Uuid::new_v4().to_string()),
         user_id: Some("d487f83e-dadd-4616-aeb2-959d6af9963b".to_string()), // 暫時使用已創建的使用者
         name: Some(req.name.clone()),
@@ -220,7 +384,7 @@ pub async fn create_skill(
         updated_at: Some(now),
     };
 
-    match Skill::insert(rb.get_ref(), &new_skill).await {
+    match crate::models::Skill::insert(rb.get_ref(), &new_skill).await {
         Ok(_) => Ok(HttpResponse::Created().json(ApiResponse {
             success: true,
             data: Some(new_skill),
@@ -238,12 +402,12 @@ pub async fn create_skill(
 pub async fn update_skill_experience(
     rb: web::Data<RBatis>,
     path: web::Path<String>,
-    req: web::Json<UpdateSkillExperienceRequest>,
+    req: web::Json<crate::models::UpdateSkillExperienceRequest>,
 ) -> Result<HttpResponse> {
     let skill_id = path.into_inner();
     
     // 查詢技能
-    match Skill::select_by_map(rb.get_ref(), value!{"id": skill_id.clone()}).await {
+    match crate::models::Skill::select_by_map(rb.get_ref(), value!{"id": skill_id.clone()}).await {
         Ok(skills) => {
             if let Some(mut skill) = skills.into_iter().next() {
                 // 增加經驗值
@@ -271,7 +435,7 @@ pub async fn update_skill_experience(
                 skill.updated_at = Some(Utc::now());
                 
                 // 更新資料庫
-                match Skill::update_by_map(
+                match crate::models::Skill::update_by_map(
                     rb.get_ref(),
                     &skill,
                     value!{"id": skill_id}
@@ -328,7 +492,7 @@ pub async fn get_chat_messages(rb: web::Data<RBatis>) -> Result<HttpResponse> {
         LIMIT 30
     "#;
     
-    match rb.query_decode::<Vec<ChatMessage>>(sql, vec![]).await {
+    match rb.query_decode::<Vec<crate::models::ChatMessage>>(sql, vec![]).await {
         Ok(mut messages) => {
             // 反轉順序，讓最早的消息在前
             messages.reverse();
@@ -348,7 +512,7 @@ pub async fn get_chat_messages(rb: web::Data<RBatis>) -> Result<HttpResponse> {
 
 // 獲取所有聊天記錄（用於下載）
 pub async fn get_all_chat_messages(rb: web::Data<RBatis>) -> Result<HttpResponse> {
-    match ChatMessage::select_all(rb.get_ref()).await {
+    match crate::models::ChatMessage::select_all(rb.get_ref()).await {
         Ok(messages) => {
             // 將對話記錄轉換為文本格式
             let mut text_content = String::from("=== AI 教練對話記錄 ===\n\n");
@@ -385,7 +549,7 @@ pub async fn send_message(
     let now = Utc::now();
     
     // 儲存使用者訊息
-    let user_message = ChatMessage {
+    let user_message = crate::models::ChatMessage {
         id: Some(Uuid::new_v4().to_string()),
         user_id: Some("d487f83e-dadd-4616-aeb2-959d6af9963b".to_string()),
         role: Some("user".to_string()),
@@ -393,7 +557,7 @@ pub async fn send_message(
         created_at: Some(now),
     };
 
-    if let Err(e) = ChatMessage::insert(rb.get_ref(), &user_message).await {
+    if let Err(e) = crate::models::ChatMessage::insert(rb.get_ref(), &user_message).await {
         return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
             success: false,
             data: None,
@@ -404,7 +568,7 @@ pub async fn send_message(
     // 模擬 AI 回覆
     let ai_response = format!("收到您的訊息：{}。我是您的 AI 教練，有什麼可以幫助您的嗎？", req.message);
     
-    let assistant_message = ChatMessage {
+    let assistant_message = crate::models::ChatMessage {
         id: Some(Uuid::new_v4().to_string()),
         user_id: Some("d487f83e-dadd-4616-aeb2-959d6af9963b".to_string()),
         role: Some("assistant".to_string()),
@@ -412,7 +576,7 @@ pub async fn send_message(
         created_at: Some(now),
     };
 
-    match ChatMessage::insert(rb.get_ref(), &assistant_message).await {
+    match crate::models::ChatMessage::insert(rb.get_ref(), &assistant_message).await {
         Ok(_) => Ok(HttpResponse::Ok().json(ApiResponse {
             success: true,
             data: Some(assistant_message),
@@ -435,7 +599,7 @@ pub async fn update_task(
     let task_id = path.into_inner();
     
     // 先查詢任務是否存在
-    match Task::select_by_map(rb.get_ref(), value!{"id": task_id.clone()}).await {
+    match crate::models::Task::select_by_map(rb.get_ref(), value!{"id": task_id.clone()}).await {
         Ok(tasks) => {
             if let Some(mut task) = tasks.into_iter().next() {
                 // 更新任務欄位
@@ -543,18 +707,18 @@ pub async fn delete_task(
     log::info!("刪除任務: {}", task_id);
 
     // 先查詢任務是否存在
-    match Task::select_by_map(rb.get_ref(), value!{"id": task_id.clone()}).await {
+    match crate::models::Task::select_by_map(rb.get_ref(), value!{"id": task_id.clone()}).await {
         Ok(tasks) => {
             if let Some(task) = tasks.into_iter().next() {
                 // 檢查是否為父任務
                 if task.is_parent_task.unwrap_or(0) == 1 {
                     // 如果是父任務，先刪除所有子任務
-                    match Task::select_by_map(rb.get_ref(), value!{"parent_task_id": task_id.clone()}).await {
+                    match crate::models::Task::select_by_map(rb.get_ref(), value!{"parent_task_id": task_id.clone()}).await {
                         Ok(subtasks) => {
                             let subtasks_count = subtasks.len();
                             for subtask in &subtasks {
                                 if let Some(subtask_id) = &subtask.id {
-                                    if let Err(e) = Task::delete_by_map(rb.get_ref(), value!{"id": subtask_id.clone()}).await {
+                                    if let Err(e) = crate::models::Task::delete_by_map(rb.get_ref(), value!{"id": subtask_id.clone()}).await {
                                         log::error!("刪除子任務 {} 失敗: {}", subtask_id, e);
                                         return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
                                             success: false,
@@ -581,7 +745,7 @@ pub async fn delete_task(
                 let parent_task_id = task.parent_task_id.clone();
 
                 // 刪除任務本身
-                match Task::delete_by_map(rb.get_ref(), value!{"id": task_id}).await {
+                match crate::models::Task::delete_by_map(rb.get_ref(), value!{"id": task_id}).await {
                     Ok(_) => {
                         // 如果這是子任務，需要更新父任務的經驗值
                         if let Some(parent_id) = &parent_task_id {
@@ -631,7 +795,7 @@ pub async fn delete_task(
 // 根據ID獲取單個任務
 pub async fn get_task(rb: web::Data<RBatis>, path: web::Path<String>) -> Result<HttpResponse> {
     let task_id = path.into_inner();
-    match Task::select_by_map(rb.get_ref(), value!{"id": task_id.clone()}).await {
+    match crate::models::Task::select_by_map(rb.get_ref(), value!{"id": task_id.clone()}).await {
         Ok(tasks) => {
             if let Some(task) = tasks.first() {
                 Ok(HttpResponse::Ok().json(ApiResponse {
@@ -666,7 +830,7 @@ pub async fn get_tasks_by_type(
     // 只獲取指定類型的父任務：parent_task_id 為 NULL 且 task_type 匹配
     let sql = "SELECT * FROM task WHERE task_type = ? AND parent_task_id IS NULL ORDER BY created_at DESC";
 
-    match rb.query_decode::<Vec<Task>>(sql, vec![rbs::Value::String(task_type.clone())]).await {
+    match rb.query_decode::<Vec<crate::models::Task>>(sql, vec![rbs::Value::String(task_type.clone())]).await {
         Ok(tasks) => {
             log::info!("成功獲取{}個{}類型任務", tasks.len(), task_type);
             
@@ -768,6 +932,15 @@ pub async fn get_tasks_by_skill(
 }
 
 // 獲取子任務模板
+#[derive(Clone, serde::Deserialize, serde::Serialize)]
+struct SubTaskTemplate {
+    title: String,
+    description: Option<String>,
+    difficulty: i32,
+    experience: i32,
+    order: i32,
+}
+
 fn get_subtask_templates(_task_title: &str) -> Vec<SubTaskTemplate> {
     // 返回通用的子任務模板，適用於所有類型的任務
     vec![
@@ -817,6 +990,11 @@ fn get_subtask_templates(_task_title: &str) -> Vec<SubTaskTemplate> {
 }
 
 // 開始任務（生成子任務）
+#[derive(serde::Deserialize)]
+pub struct StartTaskRequest {
+    pub generate_subtasks: Option<bool>,
+}
+
 pub async fn start_task(
     rb: web::Data<RBatis>,
     path: web::Path<String>,
@@ -825,7 +1003,7 @@ pub async fn start_task(
     let task_id = path.into_inner();
     
     // 查詢任務
-    match Task::select_by_map(rb.get_ref(), value!{"id": task_id.clone()}).await {
+    match crate::models::Task::select_by_map(rb.get_ref(), value!{"id": task_id.clone()}).await {
         Ok(tasks) => {
             if let Some(mut task) = tasks.into_iter().next() {
                 let is_parent_task = task.is_parent_task.unwrap_or(0) == 1;
@@ -883,7 +1061,7 @@ pub async fn start_task(
                                 let mut subtasks = Vec::new();
 
                                 for template in templates {
-                                    let subtask = Task {
+                                    let subtask = crate::models::Task {
                                         id: Some(Uuid::new_v4().to_string()),
                                         user_id: task.user_id.clone(),
                                         title: Some(template.title),
@@ -914,7 +1092,7 @@ pub async fn start_task(
                                         task_category: None,
                                     };
                                     
-                                    if let Err(e) = Task::insert(rb.get_ref(), &subtask).await {
+                                    if let Err(e) = crate::models::Task::insert(rb.get_ref(), &subtask).await {
                                         log::error!("Failed to create subtask: {}", e);
                                     } else {
                                         subtasks.push(subtask);
@@ -1378,7 +1556,7 @@ pub async fn create_recurring_task(
         // 重複性任務欄位
         is_recurring: Some(1),
         recurrence_pattern: Some(req.recurrence_pattern.clone()),
-        start_date: Some(req.start_date),
+        start_date: req.start_date,
         end_date: req.end_date,
         completion_target: req.completion_target.or(Some(0.8)),
         completion_rate: Some(0.0),
@@ -1400,11 +1578,11 @@ pub async fn create_recurring_task(
                 let recurring_template = RecurringTaskTemplate {
                     id: Some(Uuid::new_v4().to_string()),
                     parent_task_id: Some(parent_task_id.clone()),
-                    title: template.title.clone(),
+                    title: Some(template.title.clone()),
                     description: template.description.clone(),
-                    difficulty: template.difficulty,
-                    experience: template.experience,
-                    task_order: template.order,
+                    difficulty: Some(template.difficulty),
+                    experience: Some(template.experience),
+                    task_order: Some(template.order),
                     created_at: Some(now),
                     updated_at: Some(now),
                 };
@@ -1459,19 +1637,19 @@ pub async fn generate_daily_tasks(
             let mut generated_tasks = Vec::new();
             
             for template in templates {
-                let daily_task = Task {
+                let daily_task = crate::models::Task {
                     id: Some(Uuid::new_v4().to_string()),
                     user_id: Some("d487f83e-dadd-4616-aeb2-959d6af9963b".to_string()),
-                    title: Some(template.title.clone()),
+                    title: template.title.clone(),
                     description: template.description.clone(),
                     status: Some(0), // 待完成
                     priority: Some(1),
                     task_type: Some("daily_recurring".to_string()),
-                    difficulty: Some(template.difficulty),
-                    experience: Some(template.experience),
+                    difficulty: template.difficulty,
+                    experience: template.experience,
                     parent_task_id: Some(parent_task_id.clone()),
                     is_parent_task: Some(0),
-                    task_order: Some(template.task_order),
+                    task_order: template.task_order,
                     due_date: None,
                     created_at: Some(Utc::now()),
                     updated_at: Some(Utc::now()),
@@ -1489,7 +1667,7 @@ pub async fn generate_daily_tasks(
                     task_category: None,
                 };
                 
-                if let Ok(_) = Task::insert(rb.get_ref(), &daily_task).await {
+                if let Ok(_) = crate::models::Task::insert(rb.get_ref(), &daily_task).await {
                     generated_tasks.push(daily_task);
                 }
             }
@@ -1521,7 +1699,7 @@ pub async fn get_task_progress(
     let today = Utc::now().format("%Y-%m-%d").to_string();
     
     // 獲取父任務信息
-    match Task::select_by_map(rb.get_ref(), value!{"id": parent_task_id.clone()}).await {
+    match crate::models::Task::select_by_map(rb.get_ref(), value!{"id": parent_task_id.clone()}).await {
         Ok(tasks) => {
             if let Some(parent_task) = tasks.first() {
                 if parent_task.is_recurring == Some(1) {
@@ -2005,7 +2183,7 @@ pub async fn get_gamified_user_data(rb: web::Data<RBatis>, path: web::Path<Strin
                         log::info!("原始 attributes_gained 數據: {:?}", json_val);
                         json_val.clone()
                     }
-                    None => serde_json::json!({})
+                    None => serde_json::json!({}).to_string()
                 };
                 
                 serde_json::json!({
@@ -2819,9 +2997,9 @@ async fn update_parent_task_status(rb: &RBatis, parent_task_id: &str, new_status
 }
 
 // 輔助函數：更新父任務經驗值為所有子任務經驗值總和
-async fn update_parent_task_experience(rb: &RBatis, parent_task_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn update_parent_task_experience(rb: &RBatis, parent_task_id: &str) -> Result<(), Box<dyn std::error::Error>> {
     // 查詢所有子任務
-    let subtasks = Task::select_by_map(rb, value!{"parent_task_id": parent_task_id}).await?;
+    let subtasks = crate::models::Task::select_by_map(rb, value!{"parent_task_id": parent_task_id}).await?;
 
     if subtasks.is_empty() {
         log::info!("父任務 {} 沒有子任務，保持原有經驗值", parent_task_id);
@@ -2973,6 +3151,7 @@ pub async fn set_coach_personality(
                     id: Some(uuid::Uuid::new_v4().to_string()),
                     name: Some("測試用戶".to_string()),
                     email: Some("test@lifeup.com".to_string()),
+                    password_hash: Some("".to_string()),
                     created_at: Some(Utc::now()),
                     updated_at: Some(Utc::now()),
                 };
