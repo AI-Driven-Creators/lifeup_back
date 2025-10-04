@@ -169,22 +169,42 @@ impl OpenAIService {
             .send()
             .await?;
 
-        if !response.status().is_success() {
+        let status = response.status();
+        log::info!("OpenAI API 響應狀態: {}", status);
+
+        if !status.is_success() {
             let error_text = response.text().await?;
-            return Err(anyhow::anyhow!("OpenAI API 錯誤: {}", error_text));
+            log::error!("OpenAI API 錯誤響應: {}", error_text);
+            return Err(anyhow::anyhow!("OpenAI API 錯誤 ({}): {}", status, error_text));
         }
 
-        let openai_response: OpenAIResponse = response.json().await?;
-        
+        // 先獲取文本再解析
+        let response_text = response.text().await?;
+        log::info!("OpenAI API 響應長度: {} bytes", response_text.len());
+
+        if response_text.is_empty() {
+            log::error!("OpenAI API 返回空響應");
+            return Err(anyhow::anyhow!("OpenAI API 返回空響應"));
+        }
+
+        log::debug!("OpenAI 響應內容 (前500字): {}", &response_text[..std::cmp::min(500, response_text.len())]);
+
+        let openai_response: OpenAIResponse = serde_json::from_str(&response_text)
+            .map_err(|e| {
+                log::error!("解析 OpenAI 響應失敗: {}. 響應內容: {}", e, &response_text[..std::cmp::min(200, response_text.len())]);
+                anyhow::anyhow!("解析 OpenAI 響應失敗: {}", e)
+            })?;
+
         if let Some(choice) = openai_response.choices.first() {
             let achievement_json = &choice.message.content;
             let generated_achievement: AIGeneratedAchievement = serde_json::from_str(achievement_json)?;
-            
+
             // 驗證生成的成就
             validate_generated_achievement(&generated_achievement)?;
-            
+
             Ok(generated_achievement)
         } else {
+            log::error!("OpenAI 響應中沒有 choices");
             Err(anyhow::anyhow!("OpenAI 未返回有效回應"))
         }
     }
@@ -192,7 +212,7 @@ impl OpenAIService {
     pub async fn generate_task_preview(&self, prompt: &str) -> Result<String> {
         // 使用不同的請求結構，因為我們不需要 JSON 格式
         let request = serde_json::json!({
-            "model": "gpt-4o-mini",
+            "model": "gpt-5-mini",
             "messages": [
                 {
                     "role": "system",
@@ -324,7 +344,7 @@ impl OpenAIService {
         let user_message = format!("請根據以下描述生成任務：{}", user_input);
 
         let request = OpenAIRequest {
-            model: "gpt-4o-mini".to_string(),
+            model: "gpt-5-mini".to_string(),
             messages: vec![
                 ChatMessage {
                     role: "system".to_string(),
