@@ -116,11 +116,9 @@ pub async fn save_quiz_results(
         updated_at: None,
     };
 
-    // 先停用之前的測驗結果
-    let sql_deactivate = "UPDATE quiz_results SET is_active = 0 WHERE user_id = ?";
-    if let Err(e) = rb.exec(sql_deactivate, vec![rbs::Value::String(user_id.clone())]).await {
-        log::error!("停用舊測驗結果失敗: {}", e);
-    }
+    // 注意：不再自動停用舊測驗結果，允許多個測驗結果並存
+    // 這樣可以避免多用戶同時測驗時互相干擾
+    // 如果需要清理舊數據，應該通過定時任務或手動操作
 
     // 保存新的測驗結果
     match QuizResults::insert(rb.get_ref(), &quiz_result).await {
@@ -466,10 +464,14 @@ fn safe_substring(s: &str, start: usize, end: usize) -> &str {
 }
 
 async fn get_quiz_result(rb: &RBatis, quiz_result_id: &str) -> Result<QuizResults, Box<dyn std::error::Error>> {
+    log::info!("🔍 查詢測驗結果，ID: {}", quiz_result_id);
+
     let sql = "SELECT id, user_id, values_results, interests_results, talents_results, workstyle_results, completed_at, is_active, created_at FROM quiz_results WHERE id = ? AND is_active = 1";
-    
+
     // 先用原始查詢獲取數據
     let raw_results: Vec<serde_json::Value> = rb.query_decode(sql, vec![rbs::Value::String(quiz_result_id.to_string())]).await?;
+
+    log::info!("📊 查詢結果數量: {}", raw_results.len());
     
     if let Some(row) = raw_results.first() {
         let quiz_result = QuizResults {
@@ -484,8 +486,21 @@ async fn get_quiz_result(rb: &RBatis, quiz_result_id: &str) -> Result<QuizResult
             created_at: row.get("created_at").and_then(|v| v.as_str()).and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok()).map(|dt| dt.with_timezone(&chrono::Utc)),
             updated_at: None, // 這個查詢沒有包含 updated_at，設為 None
         };
+        log::info!("✅ 成功找到測驗結果");
         Ok(quiz_result)
     } else {
+        log::error!("❌ 測驗結果不存在，ID: {}", quiz_result_id);
+
+        // 嘗試不帶 is_active 條件查詢，看看是否存在但 is_active 不是 1
+        let sql_debug = "SELECT id, is_active FROM quiz_results WHERE id = ?";
+        if let Ok(debug_results) = rb.query_decode::<Vec<serde_json::Value>>(sql_debug, vec![rbs::Value::String(quiz_result_id.to_string())]).await {
+            if debug_results.is_empty() {
+                log::error!("❌ 測驗結果完全不存在（包括已停用的）");
+            } else {
+                log::error!("⚠️ 測驗結果存在但 is_active 不是 1: {:?}", debug_results);
+            }
+        }
+
         Err("測驗結果不存在或已過期".into())
     }
 }
