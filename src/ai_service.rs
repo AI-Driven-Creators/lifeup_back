@@ -197,7 +197,19 @@ impl OpenAIService {
 
         if let Some(choice) = openai_response.choices.first() {
             let achievement_json = &choice.message.content;
-            let generated_achievement: AIGeneratedAchievement = serde_json::from_str(achievement_json)?;
+            log::info!("AI 返回的成就 JSON 長度: {} 字符", achievement_json.len());
+            log::debug!("AI 返回的成就 JSON 內容: {}", achievement_json);
+
+            if achievement_json.trim().is_empty() {
+                log::error!("AI 返回的 content 為空");
+                return Err(anyhow::anyhow!("AI 返回的內容為空"));
+            }
+
+            let generated_achievement: AIGeneratedAchievement = serde_json::from_str(achievement_json)
+                .map_err(|e| {
+                    log::error!("解析成就 JSON 失敗: {}. JSON 內容: {}", e, achievement_json);
+                    anyhow::anyhow!("解析成就 JSON 失敗: {}", e)
+                })?;
 
             // 驗證生成的成就
             validate_generated_achievement(&generated_achievement)?;
