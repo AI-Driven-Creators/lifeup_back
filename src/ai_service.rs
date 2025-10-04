@@ -155,7 +155,7 @@ impl OpenAIService {
                     content: user_message,
                 },
             ],
-            max_completion_tokens: 400,
+            max_completion_tokens: 4000,
             response_format: ResponseFormat {
                 format_type: "json_object".to_string(),
             },
