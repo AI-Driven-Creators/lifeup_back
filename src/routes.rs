@@ -1640,7 +1640,7 @@ pub async fn generate_daily_tasks(
                 let daily_task = crate::models::Task {
                     id: Some(Uuid::new_v4().to_string()),
                     user_id: Some("d487f83e-dadd-4616-aeb2-959d6af9963b".to_string()),
-                    title: template.title.clone(),
+                    title: Some(template.title.unwrap_or_default()),
                     description: template.description.clone(),
                     status: Some(0), // 待完成
                     priority: Some(1),
@@ -1896,7 +1896,6 @@ pub async fn get_task_progress(
                         total_days,
                         completed_days,
                         missed_days: std::cmp::max(0, missed_days), // 確保不為負數
-                        consecutive_days,
                         completion_rate,
                         target_rate,
                         is_daily_completed,
@@ -1919,7 +1918,6 @@ pub async fn get_task_progress(
                         total_days: 1,
                         completed_days: if parent_task.status == Some(crate::models::TaskStatus::Completed.to_i32()) { 1 } else { 0 },
                         missed_days: 0,
-                        consecutive_days: 0, // 一般任務不計算連續天數
                         completion_rate,
                         target_rate,
                         is_daily_completed: parent_task.status == Some(crate::models::TaskStatus::Completed.to_i32()),
@@ -2183,7 +2181,7 @@ pub async fn get_gamified_user_data(rb: web::Data<RBatis>, path: web::Path<Strin
                         log::info!("原始 attributes_gained 數據: {:?}", json_val);
                         json_val.clone()
                     }
-                    None => serde_json::json!({}).to_string()
+                    None => serde_json::json!({})
                 };
                 
                 serde_json::json!({

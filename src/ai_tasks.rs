@@ -144,6 +144,7 @@ pub async fn insert_task_from_json(
                     id: Some(Uuid::new_v4().to_string()),
                     name: Some("測試用戶".to_string()),
                     email: Some("test@lifeup.com".to_string()),
+                    password_hash: Some("".to_string()),
                     created_at: Some(Utc::now()),
                     updated_at: Some(Utc::now()),
                 };
