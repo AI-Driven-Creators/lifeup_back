@@ -154,7 +154,7 @@ pub async fn create_task(
         end_date: req.end_date,
         completion_target: req.completion_target,
         completion_rate: if req.is_recurring == Some(1) { Some(0.0) } else { None },
-        task_date: None,
+        task_date: req.task_date.clone(),
         cancel_count: Some(0),
         last_cancelled_at: None,
         skill_tags: req.skill_tags.clone(),
@@ -1666,18 +1666,59 @@ pub async fn get_task_progress(
                     } else {
                         0.0
                     };
-                    
-                    log::info!("任務 {} 完成率計算: {}/{} = {:.1}%", 
+
+                    log::info!("任務 {} 完成率計算: {}/{} = {:.1}%",
                                parent_task_id, completed_days, total_days, completion_rate * 100.0);
-                    
+
+                    // 計算連續完成天數（從今天往回推算）
+                    let consecutive_days_sql = format!(
+                        "SELECT task_date FROM task
+                         WHERE parent_task_id = '{}' AND status = {} AND task_date IS NOT NULL
+                         AND task_date <= '{}'
+                         ORDER BY task_date DESC",
+                        parent_task_id,
+                        crate::models::TaskStatus::DailyCompleted.to_i32(),
+                        today
+                    );
+
+                    let consecutive_days = match rb.query_decode::<Vec<serde_json::Value>>(&consecutive_days_sql, vec![]).await {
+                        Ok(result) => {
+                            let mut streak = 0;
+                            let mut check_date = Utc::now().date_naive();
+
+                            for row in result.iter() {
+                                if let Some(task_date_str) = row.get("task_date").and_then(|v| v.as_str()) {
+                                    if let Ok(task_date) = chrono::NaiveDate::parse_from_str(task_date_str, "%Y-%m-%d") {
+                                        // 檢查是否與預期日期連續
+                                        if task_date == check_date {
+                                            streak += 1;
+                                            check_date = check_date - chrono::Duration::days(1);
+                                        } else if task_date < check_date {
+                                            // 發現斷層，停止計算
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+
+                            log::info!("任務 {} 連續完成天數: {}", parent_task_id, streak);
+                            streak
+                        },
+                        Err(e) => {
+                            log::error!("任務 {} 連續天數查詢失敗: {}", parent_task_id, e);
+                            0
+                        },
+                    };
+
                     let target_rate = parent_task.completion_target.unwrap_or(0.8);
                     let remaining_days = std::cmp::max(0, total_days - days_since_start);
-                    
+
                     let progress = TaskProgressResponse {
                         task_id: parent_task_id,
                         total_days,
                         completed_days,
                         missed_days: std::cmp::max(0, missed_days), // 確保不為負數
+                        consecutive_days,
                         completion_rate,
                         target_rate,
                         is_daily_completed,
@@ -1693,19 +1734,20 @@ pub async fn get_task_progress(
                     // 一般任務的進度計算
                     let completion_rate = parent_task.completion_rate.unwrap_or(0.0);
                     let target_rate = parent_task.completion_target.unwrap_or(1.0);
-                    
+
                     // 對於一般任務，我們簡化處理
                     let progress = TaskProgressResponse {
                         task_id: parent_task_id,
                         total_days: 1,
                         completed_days: if parent_task.status == Some(crate::models::TaskStatus::Completed.to_i32()) { 1 } else { 0 },
                         missed_days: 0,
+                        consecutive_days: 0, // 一般任務不計算連續天數
                         completion_rate,
                         target_rate,
                         is_daily_completed: parent_task.status == Some(crate::models::TaskStatus::Completed.to_i32()),
                         remaining_days: if parent_task.status == Some(crate::models::TaskStatus::Completed.to_i32()) { 0 } else { 1 },
                     };
-                    
+
                     Ok(HttpResponse::Ok().json(ApiResponse {
                         success: true,
                         data: Some(progress),

@@ -356,6 +356,7 @@ pub struct CreateTaskRequest {
     pub skill_tags: Option<Vec<String>>, // 技能標籤陣列
     pub parent_task_id: Option<String>, // 父任務ID（用於創建子任務）
     pub task_order: Option<i32>, // 任務順序
+    pub task_date: Option<String>, // 任務日期（YYYY-MM-DD 格式，用於每日子任務）
     // 重複性任務相關欄位
     pub is_recurring: Option<i32>, // 是否為重複性任務（0/1）
     pub recurrence_pattern: Option<String>, // 重複模式：daily, weekdays, weekends, weekly
@@ -464,6 +465,7 @@ pub struct TaskProgressResponse {
     pub total_days: i32,
     pub completed_days: i32,
     pub missed_days: i32, // 缺席天數
+    pub consecutive_days: i32, // 連續完成天數
     pub completion_rate: f64,
     pub target_rate: f64,
     pub is_daily_completed: bool,
