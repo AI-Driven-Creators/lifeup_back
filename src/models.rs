@@ -627,6 +627,7 @@ pub struct UpdateTaskRequest {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CreateSkillRequest {
+    pub user_id: Option<String>,
     pub name: String,
     pub description: Option<String>,
     pub category: Option<String>,
@@ -671,6 +672,7 @@ pub struct GenerateCareerTasksRequest {
     pub selected_career: String,
     pub quiz_result_id: String,
     pub survey_answers: SurveyAnswers,
+    pub user_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -679,11 +681,34 @@ pub struct SkillTag {
     pub category: String,
 }
 
+// 自定義反序列化器：將浮點數四捨五入為整數
+fn deserialize_rounded_i32<'de, D>(deserializer: D) -> Result<i32, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Error;
+    let value = serde_json::Value::deserialize(deserializer)?;
+    match value {
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Ok(i as i32)
+            } else if let Some(f) = n.as_f64() {
+                Ok(f.round() as i32)
+            } else {
+                Err(Error::custom("無效的數字格式"))
+            }
+        }
+        _ => Err(Error::custom("期望數字類型")),
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GeneratedTask {
     pub title: String,
     pub description: String,
+    #[serde(deserialize_with = "deserialize_rounded_i32")]
     pub difficulty: i32,
+    #[serde(deserialize_with = "deserialize_rounded_i32")]
     pub estimated_hours: i32,
     pub skill_tags: Vec<SkillTag>,
     pub resources: Vec<String>,
@@ -693,6 +718,7 @@ pub struct GeneratedTask {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GeneratedTasksResponse {
     pub learning_summary: String,
+    #[serde(deserialize_with = "deserialize_rounded_i32")]
     pub estimated_months: i32,
     pub personality_insights: String,
     pub main_tasks: Vec<GeneratedTask>,
