@@ -187,7 +187,7 @@ impl OpenAIService {
             return Err(anyhow::anyhow!("OpenAI API 返回空響應"));
         }
 
-        log::debug!("OpenAI 響應內容 (前500字): {}", &response_text[..std::cmp::min(500, response_text.len())]);
+        log::info!("OpenAI 完整響應: {}", &response_text);
 
         let openai_response: OpenAIResponse = serde_json::from_str(&response_text)
             .map_err(|e| {
