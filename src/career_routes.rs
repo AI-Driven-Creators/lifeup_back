@@ -152,28 +152,32 @@ pub async fn generate_career_tasks(
     rb: web::Data<RBatis>,
     request: web::Json<GenerateCareerTasksRequest>
 ) -> Result<HttpResponse> {
-    log::info!("開始生成職業任務: 職業={}, 測驗ID={}", 
+    log::info!("開始生成職業任務: 職業={}, 測驗ID={}",
                request.selected_career, request.quiz_result_id);
 
-    // 獲取第一個用戶ID（與測驗結果保存保持一致）
-    let user_id = match rb.query_decode::<Vec<crate::models::User>>("SELECT id FROM user LIMIT 1", vec![]).await {
-        Ok(users) => {
-            if users.is_empty() {
-                return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+    // 獲取用戶ID - 優先使用請求中的 user_id，否則使用第一個用戶
+    let user_id = if let Some(uid) = &request.user_id {
+        uid.clone()
+    } else {
+        match rb.query_decode::<Vec<crate::models::User>>("SELECT id FROM user LIMIT 1", vec![]).await {
+            Ok(users) => {
+                if users.is_empty() {
+                    return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                        success: false,
+                        data: None,
+                        message: "缺少 user_id 參數".to_string(),
+                    }));
+                }
+                users[0].id.clone().unwrap_or_default()
+            }
+            Err(e) => {
+                log::error!("查詢用戶失敗: {}", e);
+                return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
                     success: false,
                     data: None,
-                    message: "系統中沒有用戶，請先創建用戶".to_string(),
+                    message: "數據庫查詢失敗".to_string(),
                 }));
             }
-            users[0].id.clone().unwrap_or_default()
-        }
-        Err(e) => {
-            log::error!("查詢用戶失敗: {}", e);
-            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
-                success: false,
-                data: None,
-                message: "數據庫查詢失敗".to_string(),
-            }));
         }
     };
 
@@ -226,6 +230,27 @@ pub async fn generate_career_tasks(
             }));
         }
     };
+
+    // 檢查是否已經為此測驗結果和職業生成過任務
+    let existing_check = rb.query_decode::<Vec<CareerMainlines>>(
+        "SELECT * FROM career_mainlines WHERE quiz_result_id = ? AND selected_career = ? LIMIT 1",
+        vec![
+            rbs::to_value!(request.quiz_result_id.clone()),
+            rbs::to_value!(request.selected_career.clone()),
+        ],
+    ).await;
+
+    if let Ok(existing) = existing_check {
+        if !existing.is_empty() {
+            log::warn!("檢測到重複的任務生成請求: quiz_result_id={}, career={}",
+                      request.quiz_result_id, request.selected_career);
+            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: "該職業主線已經生成過，請勿重複創建".to_string(),
+            }));
+        }
+    }
 
     // 5. 創建職業主線記錄
     let mainline_id = Uuid::new_v4().to_string();

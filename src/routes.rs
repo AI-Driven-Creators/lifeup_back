@@ -260,11 +260,26 @@ pub async fn logout() -> Result<HttpResponse> {
 }
 
 // 任務相關路由 - 只返回父任務（非子任務）
-pub async fn get_tasks(rb: web::Data<RBatis>) -> Result<HttpResponse> {
-    // 只獲取父任務：parent_task_id 為 NULL 的任務
-    let sql = "SELECT * FROM task WHERE parent_task_id IS NULL ORDER BY created_at DESC";
+pub async fn get_tasks(
+    rb: web::Data<RBatis>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    // 獲取用戶ID參數
+    let user_id = match query.get("user_id") {
+        Some(id) => id,
+        None => {
+            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: "缺少user_id參數".to_string(),
+            }));
+        }
+    };
 
-    match rb.query_decode::<Vec<crate::models::Task>>(sql, vec![]).await {
+    // 只獲取指定用戶的父任務：parent_task_id 為 NULL 且 user_id 匹配
+    let sql = "SELECT * FROM task WHERE parent_task_id IS NULL AND user_id = ? ORDER BY created_at DESC";
+
+    match rb.query_decode::<Vec<crate::models::Task>>(sql, vec![rbs::Value::String(user_id.clone())]).await {
         Ok(tasks) => Ok(HttpResponse::Ok().json(ApiResponse {
             success: true,
             data: Some(tasks),
@@ -282,10 +297,22 @@ pub async fn create_task(
     rb: web::Data<RBatis>,
     req: web::Json<crate::models::CreateTaskRequest>,
 ) -> Result<HttpResponse> {
+    // 驗證 user_id 是否存在
+    let user_id = match &req.user_id {
+        Some(id) => id.clone(),
+        None => {
+            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: "缺少user_id參數".to_string(),
+            }));
+        }
+    };
+
     let now = Utc::now();
     let new_task = crate::models::Task {
         id: Some(Uuid::new_v4().to_string()),
-        user_id: req.user_id.clone(), // 使用請求中的 user_id
+        user_id: Some(user_id), // 使用驗證過的 user_id
         title: Some(req.title.clone()),
         description: req.description.clone(),
         status: Some(0), // 待完成
@@ -350,8 +377,23 @@ pub async fn create_task(
 }
 
 // 技能相關路由
-pub async fn get_skills(rb: web::Data<RBatis>) -> Result<HttpResponse> {
-    match Skill::select_all(rb.get_ref()).await {
+pub async fn get_skills(
+    rb: web::Data<RBatis>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    // 獲取用戶ID參數
+    let user_id = match query.get("user_id") {
+        Some(id) => id,
+        None => {
+            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: "缺少user_id參數".to_string(),
+            }));
+        }
+    };
+
+    match Skill::select_by_map(rb.get_ref(), value!{"user_id": user_id.clone()}).await {
         Ok(skills) => Ok(HttpResponse::Ok().json(ApiResponse {
             success: true,
             data: Some(skills),
@@ -369,10 +411,22 @@ pub async fn create_skill(
     rb: web::Data<RBatis>,
     req: web::Json<CreateSkillRequest>,
 ) -> Result<HttpResponse> {
+    // 驗證 user_id 是否存在
+    let user_id = match &req.user_id {
+        Some(id) => id.clone(),
+        None => {
+            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: "缺少user_id參數".to_string(),
+            }));
+        }
+    };
+
     let now = Utc::now();
     let new_skill = crate::models::Skill {
         id: Some(Uuid::new_v4().to_string()),
-        user_id: Some("d487f83e-dadd-4616-aeb2-959d6af9963b".to_string()), // 暫時使用已創建的使用者
+        user_id: Some(user_id), // 使用驗證過的 user_id
         name: Some(req.name.clone()),
         description: req.description.clone(),
         category: req.category.clone(),
@@ -823,14 +877,27 @@ pub async fn get_task(rb: web::Data<RBatis>, path: web::Path<String>) -> Result<
 pub async fn get_tasks_by_type(
     rb: web::Data<RBatis>,
     path: web::Path<String>,
+    query: web::Query<std::collections::HashMap<String, String>>,
 ) -> Result<HttpResponse> {
     let task_type = path.into_inner();
     log::info!("獲取任務類型: {}", task_type);
 
-    // 只獲取指定類型的父任務：parent_task_id 為 NULL 且 task_type 匹配
-    let sql = "SELECT * FROM task WHERE task_type = ? AND parent_task_id IS NULL ORDER BY created_at DESC";
+    // 獲取用戶ID參數
+    let user_id = match query.get("user_id") {
+        Some(id) => id,
+        None => {
+            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: "缺少user_id參數".to_string(),
+            }));
+        }
+    };
 
-    match rb.query_decode::<Vec<crate::models::Task>>(sql, vec![rbs::Value::String(task_type.clone())]).await {
+    // 只獲取指定用戶和類型的父任務：parent_task_id 為 NULL 且 task_type 匹配且 user_id 匹配
+    let sql = "SELECT * FROM task WHERE task_type = ? AND parent_task_id IS NULL AND user_id = ? ORDER BY created_at DESC";
+
+    match rb.query_decode::<Vec<crate::models::Task>>(sql, vec![rbs::Value::String(task_type.clone()), rbs::Value::String(user_id.clone())]).await {
         Ok(tasks) => {
             log::info!("成功獲取{}個{}類型任務", tasks.len(), task_type);
             
@@ -869,15 +936,28 @@ pub async fn get_tasks_by_type(
 pub async fn get_tasks_by_skill(
     rb: web::Data<RBatis>,
     path: web::Path<String>,
+    query: web::Query<std::collections::HashMap<String, String>>,
 ) -> Result<HttpResponse> {
     let skill_name = path.into_inner();
     log::info!("獲取技能相關任務: {}", skill_name);
-    
-    // 查詢包含指定技能標籤的任務，但排除子任務
-    let sql = "SELECT * FROM task WHERE skill_tags LIKE ? AND (task_type != 'subtask' OR task_type IS NULL)";
+
+    // 獲取用戶ID參數
+    let user_id = match query.get("user_id") {
+        Some(id) => id,
+        None => {
+            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: "缺少user_id參數".to_string(),
+            }));
+        }
+    };
+
+    // 查詢指定用戶的包含指定技能標籤的任務，但排除子任務
+    let sql = "SELECT * FROM task WHERE skill_tags LIKE ? AND (task_type != 'subtask' OR task_type IS NULL) AND user_id = ?";
     let skill_pattern = format!("%\"{}\"%", skill_name);
     
-    match rb.query_decode::<Vec<Task>>(sql, vec![Value::String(skill_pattern)]).await {
+    match rb.query_decode::<Vec<Task>>(sql, vec![Value::String(skill_pattern), Value::String(user_id.clone())]).await {
         Ok(tasks) => {
             log::info!("成功獲取{}個「{}」相關任務", tasks.len(), skill_name);
             
@@ -1438,12 +1518,27 @@ pub async fn cancel_task(
 }
 
 // 獲取首頁任務（只返回子任務和每日任務）
-pub async fn get_homepage_tasks(rb: web::Data<RBatis>) -> Result<HttpResponse> {
+pub async fn get_homepage_tasks(
+    rb: web::Data<RBatis>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
     log::info!("開始獲取首頁任務...");
-    
-    // 獲取子任務和每日任務，並關聯父任務標題
+
+    // 獲取用戶ID參數
+    let user_id = match query.get("user_id") {
+        Some(id) => id,
+        None => {
+            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: "缺少user_id參數".to_string(),
+            }));
+        }
+    };
+
+    // 獲取指定用戶的子任務和每日任務，並關聯父任務標題
     let sql = r#"
-        SELECT 
+        SELECT
             t.id,
             t.user_id,
             t.title,
@@ -1472,7 +1567,8 @@ pub async fn get_homepage_tasks(rb: web::Data<RBatis>) -> Result<HttpResponse> {
             p.title as parent_task_title
         FROM task t
         LEFT JOIN task p ON t.parent_task_id = p.id
-        WHERE t.parent_task_id IS NOT NULL 
+        WHERE t.parent_task_id IS NOT NULL
+            AND t.user_id = ?
             AND (t.task_date >= date('now', '-2 days') OR t.task_date IS NULL)
             AND t.status IN (0, 1, 2, 4, 5, 6, 7)  -- 顯示待處理、進行中、已完成、暫停、每日進行中、每日已完成、每日未完成等狀態
         ORDER BY t.task_date DESC, t.task_order, t.created_at
@@ -1480,7 +1576,7 @@ pub async fn get_homepage_tasks(rb: web::Data<RBatis>) -> Result<HttpResponse> {
     
     log::debug!("執行SQL查詢: {}", sql);
     
-    match rb.query(sql, vec![]).await {
+    match rb.query(sql, vec![rbs::Value::String(user_id.clone())]).await {
         Ok(tasks) => {
             let tasks_count = if let rbs::Value::Array(ref arr) = tasks {
                 arr.len()
@@ -1534,12 +1630,24 @@ pub async fn create_recurring_task(
     rb: web::Data<RBatis>,
     req: web::Json<CreateRecurringTaskRequest>,
 ) -> Result<HttpResponse> {
+    // 驗證 user_id 是否存在
+    let user_id = match &req.user_id {
+        Some(id) => id.clone(),
+        None => {
+            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: "缺少user_id參數".to_string(),
+            }));
+        }
+    };
+
     let now = Utc::now();
-    
+
     // 建立父任務
     let parent_task = Task {
         id: Some(Uuid::new_v4().to_string()),
-        user_id: req.user_id.clone().or(Some("d487f83e-dadd-4616-aeb2-959d6af9963b".to_string())),
+        user_id: Some(user_id.clone()),
         title: Some(req.title.clone()),
         description: req.description.clone(),
         status: Some(0), // 待開始
@@ -1694,14 +1802,35 @@ pub async fn generate_daily_tasks(
 pub async fn get_task_progress(
     rb: web::Data<RBatis>,
     path: web::Path<String>,
+    query: web::Query<std::collections::HashMap<String, String>>,
 ) -> Result<HttpResponse> {
     let parent_task_id = path.into_inner();
     let today = Utc::now().format("%Y-%m-%d").to_string();
-    
-    // 獲取父任務信息
+
+    // 獲取用戶ID參數
+    let user_id = match query.get("user_id") {
+        Some(id) => id,
+        None => {
+            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: "缺少user_id參數".to_string(),
+            }));
+        }
+    };
+
+    // 獲取父任務信息並驗證用戶權限
     match crate::models::Task::select_by_map(rb.get_ref(), value!{"id": parent_task_id.clone()}).await {
         Ok(tasks) => {
             if let Some(parent_task) = tasks.first() {
+                // 驗證任務是否屬於當前用戶
+                if parent_task.user_id.as_ref() != Some(user_id) {
+                    return Ok(HttpResponse::Forbidden().json(ApiResponse::<()> {
+                        success: false,
+                        data: None,
+                        message: "無權限存取此任務".to_string(),
+                    }));
+                }
                 if parent_task.is_recurring == Some(1) {
                     // 重複性任務的進度計算
                     let start_date = parent_task.start_date.unwrap_or(Utc::now());
