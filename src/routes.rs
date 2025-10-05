@@ -671,21 +671,23 @@ pub async fn get_chat_messages(rb: web::Data<RBatis>) -> Result<HttpResponse> {
 pub async fn get_all_chat_messages(rb: web::Data<RBatis>) -> Result<HttpResponse> {
     match crate::models::ChatMessage::select_all(rb.get_ref()).await {
         Ok(messages) => {
-            // 將對話記錄轉換為文本格式
-            let mut text_content = String::from("=== AI 教練對話記錄 ===\n\n");
-            
+            // UTF-8 BOM (Byte Order Mark) 用於確保正確編碼，特別是在 Windows 和手機上
+            let utf8_bom = "\u{FEFF}";
+            let mut text_content = String::from(utf8_bom);
+            text_content.push_str("=== AI 教練對話記錄 ===\n\n");
+
             for msg in messages {
                 let role = msg.role.unwrap_or_else(|| "unknown".to_string());
                 let content = msg.content.unwrap_or_else(|| "".to_string());
                 let time = msg.created_at
                     .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
                     .unwrap_or_else(|| "未知時間".to_string());
-                
+
                 let role_display = if role == "user" { "用戶" } else { "AI教練" };
                 text_content.push_str(&format!("[{}] {} - {}\n{}\n\n", time, role_display, role, content));
             }
-            
-            // 返回文本檔案
+
+            // 返回文本檔案，添加 UTF-8 BOM 確保編碼正確
             Ok(HttpResponse::Ok()
                 .content_type("text/plain; charset=utf-8")
                 .insert_header(("Content-Disposition", "attachment; filename=\"chat_history.txt\""))
@@ -2932,6 +2934,7 @@ pub async fn get_achievement_details(
 #[derive(serde::Deserialize)]
 pub struct ChatGPTRequest {
     pub message: String,
+    pub user_id: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -2944,40 +2947,60 @@ pub async fn send_message_to_chatgpt(
     req: web::Json<ChatGPTRequest>,
 ) -> Result<HttpResponse> {
     log::info!("收到ChatGPT API請求: {}", req.message);
+    log::debug!("請求 user_id: {:?}", req.user_id);
     let now = Utc::now();
-    
-    // 獲取第一個使用者的 ID（或者您可以從請求中傳入使用者 ID）
-    let users = match User::select_all(rb.get_ref()).await {
-        Ok(users) => users,
-        Err(e) => {
-            log::error!("獲取使用者失敗: {}", e);
-            return Ok(HttpResponse::InternalServerError().json(json!({
-                "error": format!("獲取使用者失敗: {}", e)
-            })));
+
+    // 決定用戶ID（可選，如果沒有就不保存聊天記錄）
+    let user_id = if let Some(id) = req.user_id.clone().filter(|s| !s.trim().is_empty()) {
+        // 驗證提供的用戶ID是否存在
+        match User::select_by_map(rb.get_ref(), value!{"id": id.clone()}).await {
+            Ok(users) if !users.is_empty() => Some(id),
+            _ => {
+                log::warn!("提供的用戶ID不存在: {}", id);
+                // 嘗試使用預設測試用戶
+                match User::select_by_map(rb.get_ref(), value!{"email": "test@lifeup.com"}).await {
+                    Ok(users) if !users.is_empty() => {
+                        log::info!("使用預設測試用戶");
+                        Some(users[0].id.clone().unwrap())
+                    },
+                    _ => {
+                        log::warn!("找不到預設測試用戶，將以訪客身份對話");
+                        None
+                    }
+                }
+            }
+        }
+    } else {
+        // 沒有提供用戶ID，嘗試使用預設測試用戶
+        match User::select_by_map(rb.get_ref(), value!{"email": "test@lifeup.com"}).await {
+            Ok(users) if !users.is_empty() => {
+                log::info!("使用預設測試用戶");
+                Some(users[0].id.clone().unwrap())
+            },
+            _ => {
+                log::warn!("找不到預設測試用戶，將以訪客身份對話");
+                None
+            }
         }
     };
     
-    if users.is_empty() {
-        return Ok(HttpResponse::InternalServerError().json(json!({
-            "error": "沒有找到使用者，請先創建使用者"
-        })));
-    }
-    
-    let user_id = users[0].id.clone().unwrap_or_else(|| "unknown".to_string());
-    
-    // 儲存使用者訊息到資料庫
-    let user_message = ChatMessage {
-        id: Some(Uuid::new_v4().to_string()),
-        user_id: Some(user_id.clone()),
-        role: Some("user".to_string()),
-        content: Some(req.message.clone()),
-        created_at: Some(now),
-    };
-    
-    if let Err(e) = ChatMessage::insert(rb.get_ref(), &user_message).await {
-        log::error!("儲存使用者訊息失敗: {}", e);
+    // 如果有用戶ID，儲存使用者訊息到資料庫
+    if let Some(uid) = user_id.clone() {
+        let user_message = ChatMessage {
+            id: Some(Uuid::new_v4().to_string()),
+            user_id: Some(uid),
+            role: Some("user".to_string()),
+            content: Some(req.message.clone()),
+            created_at: Some(now),
+        };
+
+        if let Err(e) = ChatMessage::insert(rb.get_ref(), &user_message).await {
+            log::error!("儲存使用者訊息失敗: {}", e);
+        } else {
+            log::info!("成功儲存使用者訊息");
+        }
     } else {
-        log::info!("成功儲存使用者訊息");
+        log::info!("訪客模式，不保存用戶訊息");
     }
 
     // 呼叫ChatGPT API或使用本地回應
@@ -2991,21 +3014,25 @@ pub async fn send_message_to_chatgpt(
             format!("收到您的訊息：「{}」。我是您的專業教練，有什麼可以幫助您的嗎？（註：AI服務暫時不可用）", req.message)
         }
     };
-    
-    // 儲存AI回覆到資料庫，確保時間戳晚於用戶訊息
-    let assistant_now = Utc::now();
-    let assistant_message = ChatMessage {
-        id: Some(Uuid::new_v4().to_string()),
-        user_id: Some(user_id),
-        role: Some("assistant".to_string()),
-        content: Some(ai_response.clone()),
-        created_at: Some(assistant_now),
-    };
-    
-    if let Err(e) = ChatMessage::insert(rb.get_ref(), &assistant_message).await {
-        log::error!("儲存AI回覆失敗: {}", e);
+
+    // 如果有用戶ID，儲存AI回覆到資料庫
+    if let Some(uid) = user_id.clone() {
+        let assistant_now = Utc::now();
+        let assistant_message = ChatMessage {
+            id: Some(Uuid::new_v4().to_string()),
+            user_id: Some(uid),
+            role: Some("assistant".to_string()),
+            content: Some(ai_response.clone()),
+            created_at: Some(assistant_now),
+        };
+
+        if let Err(e) = ChatMessage::insert(rb.get_ref(), &assistant_message).await {
+            log::error!("儲存AI回覆失敗: {}", e);
+        } else {
+            log::info!("成功儲存AI回覆");
+        }
     } else {
-        log::info!("成功儲存AI回覆");
+        log::info!("訪客模式，不保存AI回覆");
     }
     
     let response_data = json!({
