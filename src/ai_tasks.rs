@@ -130,9 +130,44 @@ pub async fn insert_task_from_json(
 ) -> Result<HttpResponse> {
     let task_input = &req.task_json;
     
-    // 決定使用者 ID
-    let user_id = if let Some(id) = req.user_id.clone() {
-        id
+    // 決定使用者 ID（過濾空字串）
+    let user_id = if let Some(id) = req.user_id.clone().filter(|s| !s.trim().is_empty()) {
+        // 驗證用戶是否存在
+        match User::select_by_map(rb.get_ref(), value!{"id": id.clone()}).await {
+            Ok(users) if !users.is_empty() => id,
+            _ => {
+                log::warn!("提供的用戶ID不存在: {}，使用預設用戶", id);
+                // 查詢或建立預設測試用戶
+                match User::select_by_map(rb.get_ref(), value!{"email": "test@lifeup.com"}).await {
+                    Ok(users) if !users.is_empty() => users[0].id.clone().unwrap(),
+                    _ => {
+                        let test_user = User {
+                            id: Some(Uuid::new_v4().to_string()),
+                            name: Some("測試用戶".to_string()),
+                            email: Some("test@lifeup.com".to_string()),
+                            password_hash: Some("".to_string()),
+                            created_at: Some(Utc::now()),
+                            updated_at: Some(Utc::now()),
+                        };
+
+                        match User::insert(rb.get_ref(), &test_user).await {
+                            Ok(_) => {
+                                log::info!("已自動建立測試用戶");
+                                test_user.id.unwrap()
+                            }
+                            Err(e) => {
+                                log::error!("建立測試用戶失敗: {}", e);
+                                return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                                    success: false,
+                                    data: None,
+                                    message: format!("建立測試用戶失敗: {}", e),
+                                }));
+                            }
+                        }
+                    }
+                }
+            }
+        }
     } else {
         // 查詢或建立預設測試用戶
         match User::select_by_map(rb.get_ref(), value!{"email": "test@lifeup.com"}).await {
