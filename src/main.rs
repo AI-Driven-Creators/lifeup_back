@@ -164,6 +164,7 @@ async fn main() -> std::io::Result<()> {
             .route("/api/coach/personality/current", web::get().to(get_current_personality))
             // 遊戲化數據相關路由
             .route("/api/users/{id}/gamified", web::get().to(get_gamified_user_data))
+            .route("/api/users/{id}/experience", web::post().to(update_user_experience))
             // 成就相關路由
             .route("/api/achievements", web::get().to(get_achievements))
             .route("/api/achievements/{id}", web::get().to(get_achievement_details))

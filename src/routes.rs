@@ -537,6 +537,109 @@ pub async fn update_skill_experience(
     }
 }
 
+// 更新使用者經驗值
+pub async fn update_user_experience(
+    rb: web::Data<RBatis>,
+    path: web::Path<String>,
+    req: web::Json<crate::models::UpdateUserExperienceRequest>,
+) -> Result<HttpResponse> {
+    let user_id = path.into_inner();
+
+    // 查詢使用者資料
+    match crate::models::UserProfile::select_by_map(rb.get_ref(), value!{"user_id": user_id.clone()}).await {
+        Ok(profiles) => {
+            if let Some(mut profile) = profiles.into_iter().next() {
+                // 增加經驗值
+                let current_exp = profile.experience.unwrap_or(0);
+                let new_exp = current_exp + req.experience_gain;
+
+                // 檢查升級或降級
+                let current_level = profile.level.unwrap_or(1);
+                let max_exp = profile.max_experience.unwrap_or(100);
+                let mut final_exp = new_exp;
+                let mut final_level = current_level;
+                let mut new_max_exp = max_exp;
+
+                // 升級邏輯：經驗值超過最大值時升級
+                while final_exp >= new_max_exp && final_level > 0 {
+                    final_exp -= new_max_exp;
+                    final_level += 1;
+                    // 每升一級，下一級所需經驗值增加 10%
+                    new_max_exp = (new_max_exp as f64 * 1.1) as i32;
+                }
+
+                // 降級邏輯：經驗值為負數時降級
+                while final_exp < 0 && final_level > 1 {
+                    final_level -= 1;
+                    // 計算上一級的最大經驗值（反向計算）
+                    new_max_exp = (new_max_exp as f64 / 1.1) as i32;
+                    final_exp += new_max_exp;
+                }
+
+                // 如果等級已經是1且經驗值仍為負，將經驗值設為0
+                if final_level <= 1 && final_exp < 0 {
+                    final_level = 1;
+                    final_exp = 0;
+                    new_max_exp = 100; // 重置為初始最大經驗值
+                }
+
+                profile.experience = Some(final_exp);
+                profile.level = Some(final_level);
+                profile.max_experience = Some(new_max_exp);
+                profile.updated_at = Some(Utc::now());
+
+                // 更新資料庫
+                match crate::models::UserProfile::update_by_map(
+                    rb.get_ref(),
+                    &profile,
+                    value!{"user_id": user_id}
+                ).await {
+                    Ok(_) => {
+                        let level_up = final_level > current_level;
+                        let level_down = final_level < current_level;
+                        let response_message = if level_up {
+                            format!("經驗值更新成功！恭喜升級到 {} 級！", final_level)
+                        } else if level_down {
+                            format!("經驗值更新成功！降級到 {} 級", final_level)
+                        } else {
+                            "經驗值更新成功".to_string()
+                        };
+
+                        Ok(HttpResponse::Ok().json(ApiResponse {
+                            success: true,
+                            data: Some(json!({
+                                "profile": profile,
+                                "experience_gained": req.experience_gain,
+                                "level_up": level_up,
+                                "level_down": level_down,
+                                "previous_level": current_level,
+                                "new_level": final_level
+                            })),
+                            message: response_message,
+                        }))
+                    },
+                    Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                        success: false,
+                        data: None,
+                        message: format!("更新使用者經驗值失敗: {}", e),
+                    }))
+                }
+            } else {
+                Ok(HttpResponse::NotFound().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: "找不到該使用者資料".to_string(),
+                }))
+            }
+        },
+        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: format!("查詢使用者資料失敗: {}", e),
+        }))
+    }
+}
+
 // 聊天相關路由
 pub async fn get_chat_messages(rb: web::Data<RBatis>) -> Result<HttpResponse> {
     // 修改為只獲取最後 30 條記錄
