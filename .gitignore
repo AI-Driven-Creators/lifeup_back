@@ -11,3 +11,6 @@ backend.log
 
 lifeup.db-shm
 lifeup.db-wal
+# 臨時測試文件
+bug.json
+last.json
