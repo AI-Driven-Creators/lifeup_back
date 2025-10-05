@@ -3045,7 +3045,7 @@ async fn call_chatgpt_api(message: &str) -> Result<String, Box<dyn std::error::E
     let prompt = "你是一位專業的教練，請根據給定的訊息提供建議。一律使用繁體中文回答。\n\n重要提示：如果使用者的訊息中包含以下任何意圖，請提醒他們使用任務創建模式：\n- 想要建立、創建、新增、設定任務\n- 提到「我要做...」、「我想要...」、「幫我規劃...」、「提醒我...」\n- 描述具體的待辦事項或目標\n- 想要安排時間或設定提醒\n\n當偵測到這些意圖時，請回覆：「我注意到您想要創建任務！建議您切換到『任務創建模式』（在輸入框上方的下拉選單中選擇），這樣我可以更精準地幫您生成結構化的任務。在任務創建模式下，您只需描述任務內容，系統就會自動生成完整的任務資料。」\n\n如果使用者只是想討論、詢問建議或聊天，則正常回應即可。";
     
     let request_body = json!({
-        "model": "gpt-5-mini",
+        "model": "gpt-4o-mini",
         "messages": [
             {"role": "system", "content": prompt},
             {"role": "user", "content": message}
@@ -3595,7 +3595,7 @@ async fn call_chatgpt_api_with_personality(rb: &RBatis, message: &str, user_id: 
     let client = reqwest::Client::new();
     
     let request_body = json!({
-        "model": "gpt-5-mini",
+        "model": "gpt-4o-mini",
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": message}
@@ -3650,59 +3650,81 @@ async fn call_chatgpt_api_with_personality(rb: &RBatis, message: &str, user_id: 
 // 新增：帶個性的聊天API
 pub async fn send_message_with_personality(
     rb: web::Data<RBatis>,
-    req: web::Json<ChatWithPersonalityRequest>,
+    body: web::Bytes,
 ) -> Result<HttpResponse> {
-    log::info!("收到帶個性的ChatGPT API請求: {}", req.message);
+    // 先記錄原始請求體
+    let body_str = String::from_utf8_lossy(&body);
+    log::info!("收到帶個性的ChatGPT API請求，原始body: {}", body_str);
+
+    // 嘗試解析 JSON
+    let req: ChatWithPersonalityRequest = match serde_json::from_slice(&body) {
+        Ok(r) => r,
+        Err(e) => {
+            log::error!("無法解析 JSON 請求: {}", e);
+            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("JSON 解析錯誤: {}", e),
+            }));
+        }
+    };
+
+    log::info!("解析後的請求: message={}, user_id={:?}", req.message, req.user_id);
     let now = Utc::now();
 
-    // 決定用戶ID（使用與個性設定相同的邏輯）
+    // 決定用戶ID（可選，如果沒有就不保存聊天記錄）
     let user_id = if let Some(id) = req.user_id.clone().filter(|s| !s.trim().is_empty()) {
         // 驗證提供的用戶ID是否存在
         match User::select_by_map(rb.get_ref(), value!{"id": id.clone()}).await {
-            Ok(users) if !users.is_empty() => id,
+            Ok(users) if !users.is_empty() => Some(id),
             _ => {
-                // 使用預設測試用戶
+                log::warn!("提供的用戶ID不存在: {}", id);
+                // 嘗試使用預設測試用戶
                 match User::select_by_map(rb.get_ref(), value!{"email": "test@lifeup.com"}).await {
-                    Ok(users) if !users.is_empty() => users[0].id.clone().unwrap(),
+                    Ok(users) if !users.is_empty() => {
+                        log::info!("使用預設測試用戶");
+                        Some(users[0].id.clone().unwrap())
+                    },
                     _ => {
-                        return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
-                            success: false,
-                            data: None,
-                            message: "找不到有效的用戶".to_string(),
-                        }));
+                        log::warn!("找不到預設測試用戶，將以訪客身份對話");
+                        None
                     }
                 }
             }
         }
     } else {
-        // 使用預設測試用戶
+        // 沒有提供用戶ID，嘗試使用預設測試用戶
         match User::select_by_map(rb.get_ref(), value!{"email": "test@lifeup.com"}).await {
-            Ok(users) if !users.is_empty() => users[0].id.clone().unwrap(),
+            Ok(users) if !users.is_empty() => {
+                log::info!("使用預設測試用戶");
+                Some(users[0].id.clone().unwrap())
+            },
             _ => {
-                return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
-                    success: false,
-                    data: None,
-                    message: "找不到預設測試用戶".to_string(),
-                }));
+                log::warn!("找不到預設測試用戶，將以訪客身份對話");
+                None
             }
         }
     };
 
-    // 儲存用戶訊息到資料庫
-    let user_message = ChatMessage {
-        id: Some(Uuid::new_v4().to_string()),
-        user_id: Some(user_id.clone()),
-        role: Some("user".to_string()),
-        content: Some(req.message.clone()),
-        created_at: Some(now),
-    };
+    // 如果有用戶ID，儲存用戶訊息到資料庫
+    if let Some(uid) = user_id.clone() {
+        let user_message = ChatMessage {
+            id: Some(Uuid::new_v4().to_string()),
+            user_id: Some(uid),
+            role: Some("user".to_string()),
+            content: Some(req.message.clone()),
+            created_at: Some(now),
+        };
 
-    if let Err(e) = ChatMessage::insert(rb.get_ref(), &user_message).await {
-        log::error!("儲存用戶訊息失敗: {}", e);
+        if let Err(e) = ChatMessage::insert(rb.get_ref(), &user_message).await {
+            log::error!("儲存用戶訊息失敗: {}", e);
+        }
+    } else {
+        log::info!("訪客模式，不保存聊天記錄");
     }
 
     // 呼叫帶個性的ChatGPT API
-    let ai_response = match call_chatgpt_api_with_personality(rb.get_ref(), &req.message, Some(user_id.clone())).await {
+    let ai_response = match call_chatgpt_api_with_personality(rb.get_ref(), &req.message, user_id.clone()).await {
         Ok(response) => {
             log::info!("成功獲取個性化ChatGPT回應");
             response
@@ -3710,9 +3732,9 @@ pub async fn send_message_with_personality(
         Err(e) => {
             log::warn!("個性化ChatGPT API呼叫失敗，使用本地回應: {}", e);
             // 根據用戶個性提供不同的備援回應
-            let personality_type = get_user_personality_type(rb.get_ref(), Some(user_id.clone())).await
+            let personality_type = get_user_personality_type(rb.get_ref(), user_id.clone()).await
                 .unwrap_or(CoachPersonalityType::EmotionalSupport);
-            
+
             match personality_type {
                 CoachPersonalityType::HarshCritic => {
                     format!("系統暫時有問題，但這不是你偷懶的藉口！先想想你的問題：「{}」，我一會兒就來好好「指導」你！", req.message)
@@ -3727,18 +3749,20 @@ pub async fn send_message_with_personality(
         }
     };
 
-    // 儲存AI回應到資料庫
-    let assistant_now = Utc::now();
-    let assistant_message = ChatMessage {
-        id: Some(Uuid::new_v4().to_string()),
-        user_id: Some(user_id.clone()),
-        role: Some("assistant".to_string()),
-        content: Some(ai_response.clone()),
-        created_at: Some(assistant_now),
-    };
+    // 如果有用戶ID，儲存AI回應到資料庫
+    if let Some(uid) = user_id.clone() {
+        let assistant_now = Utc::now();
+        let assistant_message = ChatMessage {
+            id: Some(Uuid::new_v4().to_string()),
+            user_id: Some(uid),
+            role: Some("assistant".to_string()),
+            content: Some(ai_response.clone()),
+            created_at: Some(assistant_now),
+        };
 
-    if let Err(e) = ChatMessage::insert(rb.get_ref(), &assistant_message).await {
-        log::error!("儲存AI回應失敗: {}", e);
+        if let Err(e) = ChatMessage::insert(rb.get_ref(), &assistant_message).await {
+            log::error!("儲存AI回應失敗: {}", e);
+        }
     }
 
     // 返回回應
@@ -3818,7 +3842,7 @@ async fn call_chatgpt_api_with_direct_personality(message: &str, personality_typ
     let client = reqwest::Client::new();
     
     let request_body = json!({
-        "model": "gpt-5-mini",
+        "model": "gpt-4o-mini",
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": message}

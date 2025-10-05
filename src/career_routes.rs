@@ -212,7 +212,12 @@ pub async fn generate_career_tasks(
             }));
         }
     };
-
+    // 將完整的 AI 回應輸出到 bug.json
+    if let Err(write_err) = std::fs::write("last.json", &ai_response) {
+        log::error!("❌ 寫入 last.json 失敗: {}", write_err);
+    } else {
+        log::info!("✅ 已將完整 AI 回應輸出到 last.json");
+    }
     let generation_time = generation_start.elapsed().as_millis();
     log::info!("🤖 AI 生成完成，耗時: {}ms", generation_time);
 
@@ -221,6 +226,9 @@ pub async fn generate_career_tasks(
         Ok(tasks) => tasks,
         Err(e) => {
             log::error!("解析 AI 回應失敗: {}", e);
+
+            
+
             return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
                 success: false,
                 data: None,
@@ -531,19 +539,19 @@ fn build_career_task_prompt(
 
 ## 任務生成要求
 
-請生成 15-18 個學習任務，分為三類：
+請生成學習任務，分為三類：
 
-### 1. 主線任務 (6-8個)
+### 1. 主線任務 (3個)
 - 核心技能學習，難度循序漸進
 - 每個任務都有明確的學習成果
 - 根據用戶個性特質調整學習方式
 
-### 2. 每日任務 (4-5個)  
+### 2. 每日任務 (1個)  
 - 培養職業相關的日常習慣
 - 每個任務15-30分鐘可完成
 - 重複執行有助於技能累積
 
-### 3. 項目任務 (4-5個)
+### 3. 項目任務 (1個)
 - 實戰練習和作品集建立
 - 難度較高，需要綜合運用所學
 - 有助於建立職業競爭力
@@ -671,6 +679,14 @@ fn parse_ai_tasks_response(ai_response: &str) -> Result<GeneratedTasksResponse, 
     if !cleaned_response.starts_with('{') {
         log::error!("❌ AI 回應不是有效的 JSON 格式，未以 {{ 開頭");
         log::error!("前 200 個字符: {}", &cleaned_response[..std::cmp::min(200, cleaned_response.len())]);
+
+        // 將錯誤 JSON 輸出到 bug.json
+        if let Err(e) = std::fs::write("bug.json", cleaned_response) {
+            log::error!("❌ 寫入 bug.json 失敗: {}", e);
+        } else {
+            log::info!("✅ 已將錯誤 JSON 輸出到 bug.json");
+        }
+
         return Err("AI 回應格式錯誤：不是有效的 JSON".into());
     }
     
@@ -701,7 +717,14 @@ fn parse_ai_tasks_response(ai_response: &str) -> Result<GeneratedTasksResponse, 
         Err(e) => {
             log::error!("❌ JSON 解析失敗: {}", e);
             log::error!("錯誤位置: {}", e.to_string());
-            
+
+            // 將錯誤 JSON 輸出到 bug.json
+            if let Err(write_err) = std::fs::write("bug.json", cleaned_response) {
+                log::error!("❌ 寫入 bug.json 失敗: {}", write_err);
+            } else {
+                log::info!("✅ 已將錯誤 JSON 輸出到 bug.json");
+            }
+
             // 記錄更多調試信息（安全截斷字符串）
             let response_len = cleaned_response.len();
             let first_500 = safe_substring(cleaned_response, 0, 500);
@@ -710,7 +733,7 @@ fn parse_ai_tasks_response(ai_response: &str) -> Result<GeneratedTasksResponse, 
             } else {
                 ""
             };
-            
+
             log::error!("回應長度: {} 字符", response_len);
             log::error!("前 500 字符: {}", first_500);
             if !last_500.is_empty() {
