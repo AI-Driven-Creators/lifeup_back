@@ -641,15 +641,33 @@ pub async fn update_user_experience(
 }
 
 // 聊天相關路由
-pub async fn get_chat_messages(rb: web::Data<RBatis>) -> Result<HttpResponse> {
-    // 修改為只獲取最後 30 條記錄
-    let sql = r#"
-        SELECT * FROM chat_message 
-        ORDER BY created_at DESC, role DESC 
-        LIMIT 30
-    "#;
-    
-    match rb.query_decode::<Vec<crate::models::ChatMessage>>(sql, vec![]).await {
+pub async fn get_chat_messages(
+    rb: web::Data<RBatis>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    let user_id = query.get("user_id").map(|s| s.as_str());
+
+    let (sql, params): (String, Vec<rbs::Value>) = if let Some(uid) = user_id {
+        (
+            r#"
+                SELECT * FROM chat_message
+                WHERE user_id = ?
+                ORDER BY created_at DESC, role DESC
+                LIMIT 30
+            "#.to_string(),
+            vec![rbs::Value::String(uid.to_string())]
+        )
+    } else {
+        log::warn!("獲取聊天記錄時未提供 user_id，返回空結果");
+        // 不提供 user_id 時返回空結果，避免洩露其他用戶的對話
+        return Ok(HttpResponse::Ok().json(ApiResponse {
+            success: true,
+            data: Some(Vec::<crate::models::ChatMessage>::new()),
+            message: "請提供 user_id 參數".to_string(),
+        }));
+    };
+
+    match rb.query_decode::<Vec<crate::models::ChatMessage>>(&sql, params).await {
         Ok(mut messages) => {
             // 反轉順序，讓最早的消息在前
             messages.reverse();
@@ -668,37 +686,51 @@ pub async fn get_chat_messages(rb: web::Data<RBatis>) -> Result<HttpResponse> {
 }
 
 // 獲取所有聊天記錄（用於下載）
-pub async fn get_all_chat_messages(rb: web::Data<RBatis>) -> Result<HttpResponse> {
-    match crate::models::ChatMessage::select_all(rb.get_ref()).await {
-        Ok(messages) => {
-            // UTF-8 BOM (Byte Order Mark) 用於確保正確編碼，特別是在 Windows 和手機上
-            let utf8_bom = "\u{FEFF}";
-            let mut text_content = String::from(utf8_bom);
-            text_content.push_str("=== AI 教練對話記錄 ===\n\n");
+pub async fn get_all_chat_messages(
+    rb: web::Data<RBatis>,
+    query: web::Query<std::collections::HashMap<String, String>>,
+) -> Result<HttpResponse> {
+    let user_id = query.get("user_id").map(|s| s.as_str());
 
-            for msg in messages {
-                let role = msg.role.unwrap_or_else(|| "unknown".to_string());
-                let content = msg.content.unwrap_or_else(|| "".to_string());
-                let time = msg.created_at
-                    .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
-                    .unwrap_or_else(|| "未知時間".to_string());
-
-                let role_display = if role == "user" { "用戶" } else { "AI教練" };
-                text_content.push_str(&format!("[{}] {} - {}\n{}\n\n", time, role_display, role, content));
+    let messages = if let Some(uid) = user_id {
+        // 只獲取指定用戶的聊天記錄
+        let sql = "SELECT * FROM chat_message WHERE user_id = ? ORDER BY created_at ASC";
+        match rb.query_decode::<Vec<crate::models::ChatMessage>>(sql, vec![rbs::Value::String(uid.to_string())]).await {
+            Ok(msgs) => msgs,
+            Err(e) => {
+                return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: format!("獲取聊天記錄失敗: {}", e),
+                }));
             }
+        }
+    } else {
+        log::warn!("下載聊天記錄時未提供 user_id，返回空結果");
+        Vec::new()
+    };
 
-            // 返回文本檔案，添加 UTF-8 BOM 確保編碼正確
-            Ok(HttpResponse::Ok()
-                .content_type("text/plain; charset=utf-8")
-                .insert_header(("Content-Disposition", "attachment; filename=\"chat_history.txt\""))
-                .body(text_content))
-        },
-        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
-            success: false,
-            data: None,
-            message: format!("獲取聊天記錄失敗: {}", e),
-        })),
+    // UTF-8 BOM (Byte Order Mark) 用於確保正確編碼，特別是在 Windows 和手機上
+    let utf8_bom = "\u{FEFF}";
+    let mut text_content = String::from(utf8_bom);
+    text_content.push_str("=== AI 教練對話記錄 ===\n\n");
+
+    for msg in messages {
+        let role = msg.role.unwrap_or_else(|| "unknown".to_string());
+        let content = msg.content.unwrap_or_else(|| "".to_string());
+        let time = msg.created_at
+            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+            .unwrap_or_else(|| "未知時間".to_string());
+
+        let role_display = if role == "user" { "用戶" } else { "AI教練" };
+        text_content.push_str(&format!("[{}] {} - {}\n{}\n\n", time, role_display, role, content));
     }
+
+    // 返回文本檔案，添加 UTF-8 BOM 確保編碼正確
+    Ok(HttpResponse::Ok()
+        .content_type("text/plain; charset=utf-8")
+        .insert_header(("Content-Disposition", "attachment; filename=\"chat_history.txt\""))
+        .body(text_content))
 }
 
 pub async fn send_message(
