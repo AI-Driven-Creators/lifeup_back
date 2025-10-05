@@ -643,6 +643,11 @@ pub struct UpdateSkillExperienceRequest {
     pub reason: Option<String>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UpdateUserExperienceRequest {
+    pub experience_gain: i32,
+}
+
 // AI and career
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GenerateTaskRequest {
