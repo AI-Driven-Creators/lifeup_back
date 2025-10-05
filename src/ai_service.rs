@@ -144,7 +144,7 @@ impl OpenAIService {
         let user_message = format!("請根據以下用戶行為數據生成合適的成就：{}", user_input);
 
         let request = OpenAIRequest {
-            model: "gpt-5-mini".to_string(),
+            model: "gpt-4o-mini".to_string(),
             messages: vec![
                 ChatMessage {
                     role: "system".to_string(),
@@ -224,7 +224,7 @@ impl OpenAIService {
     pub async fn generate_task_preview(&self, prompt: &str) -> Result<String> {
         // 使用不同的請求結構，因為我們不需要 JSON 格式
         let request = serde_json::json!({
-            "model": "gpt-5-mini",
+            "model": "gpt-4o-mini",
             "messages": [
                 {
                     "role": "system",
@@ -356,7 +356,7 @@ impl OpenAIService {
         let user_message = format!("請根據以下描述生成任務：{}", user_input);
 
         let request = OpenAIRequest {
-            model: "gpt-5-mini".to_string(),
+            model: "gpt-4o-mini".to_string(),
             messages: vec![
                 ChatMessage {
                     role: "system".to_string(),
