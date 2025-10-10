@@ -1,0 +1,135 @@
+```json
+{
+  "learning_summary": "基於用戶專業水準與轉換動機，設計專案導向學習路徑，強化實戰技能與作品集建立，兼顧技術深度與創意應用",
+  "estimated_months": 8,
+  "personality_insights": "缺乏個性測驗數據，假設用戶偏好實務導向學習與即時成果驗證，因此設計任務強調實作與作品集整合，並兼顧技術與軟技能平衡",
+  "main_tasks": [
+    {
+      "title": "設計原則與工具熟練",
+      "description": "掌握Adobe Creative Suite核心工具（Photoshop、Illustrator、InDesign），學習設計原則（對比、對齊、對稱）、色彩理論與排版基礎，透過小型專案實作",
+      "difficulty": 3,
+      "estimated_hours": 20,
+      "skill_tags": [
+        {"name": "Adobe Creative Suite操作", "category": "technical"},
+        {"name": "色彩理論應用", "category": "technical"},
+        {"name": "排版原則理解", "category": "technical"}
+      ],
+      "resources": ["Adobe官方教學影片", "《設計原則與應用》教材", "Canva設計課程"],
+      "personality_match": "專案導向學習方式符合用戶轉換動機，短期成果驗證有助於維持學習動力"
+    },
+    {
+      "title": "專業品牌設計能力",
+      "description": "學習品牌設計流程（調查、概念設計、執行）、品牌系統建立（logo、色彩系統、字體選擇），完成3個品牌設計案例",
+      "difficulty": 4,
+      "estimated_hours": 25,
+      "skill_tags": [
+        {"name": "品牌策略規劃", "category": "technical"},
+        {"name": "品牌系統整合", "category": "technical"},
+        {"name": "客戶溝通需求分析", "category": "soft"}
+      ],
+      "resources": ["品牌設計案例分析書", "Adobe Brand Kit教學", "自由職業者品牌案例參考"],
+      "personality_match": "專案導向學習符合用戶時間限制，品牌設計需求分析強化軟技能，符合實務需求"
+    },
+    {
+      "title": "數位媒體設計應用",
+      "description": "學習網頁設計基礎（HTML/CSS基礎）、動態設計（After Effects簡介）、社群媒體設計（Instagram、TikTok格式）",
+      "difficulty": 4,
+      "estimated_hours": 30,
+      "skill_tags": [
+        {"name": "HTML/CSS基礎", "category": "technical"},
+        {"name": "動態視覺效果", "category": "technical"},
+        {"name": "社群媒體設計規範", "category": "technical"}
+      ],
+      "resources": ["W3Schools HTML/CSS教學", "After Effects簡易教學", "社群媒體設計指南"],
+      "personality_match": "技術導向任務符合轉換需求，社群媒體設計符合現代市場需求"
+    },
+    {
+      "title": "作品集與職涯規劃",
+      "description": "整合前三任務學習成果，規劃個人作品集（線上與紙本），撰寫職涯規劃文件（簡歷、作品說明文件）",
+      "difficulty": 5,
+      "estimated_hours": 40,
+      "skill_tags": [
+        {"name": "作品集策劃", "category": "technical"},
+        {"name": "職涯規劃文件撰寫", "category": "soft"},
+        {"name": "自我品牌建立", "category": "soft"}
+      ],
+      "resources": ["作品集設計模板", "職涯規劃書寫指南", "自由職業者作品集參考"],
+      "personality_match": "結合實務與規劃，符合轉換目標，強化自我品牌建立符合個人價值觀"
+    }
+  ],
+  "daily_tasks": [
+    {
+      "title": "設計軟體練習",
+      "description": "每日15分鐘練習Adobe工具功能，例如Photoshop的選區工具或Illustrator的路徑操作",
+      "difficulty": 2,
+      "estimated_hours": 1,
+      "skill_tags": [
+        {"name": "工具熟練度提升", "category": "technical"}
+      ],
+      "resources": ["Adobe工具快捷鍵參考", "設計軟體練習影片"],
+      "personality_match": "短時間練習符合4-7小時時間限制，強化技術基礎"
+    },
+    {
+      "title": "設計靈感收集",
+      "description": "每日30分鐘收集設計靈感（Pinterest、Dribbble、 Behance），並記錄靈感來源與靈感轉化思路",
+      "difficulty": 2,
+      "estimated_hours": 0.5,
+      "skill_tags": [
+        {"name": "靈感整合能力", "category": "soft"}
+      ],
+      "resources": ["Pinterest設計靈感板", "Dribbble每日推薦"],
+      "personality_match": "符合專案導向學習，靈感收集有助於後續專案靈感發展"
+    },
+    {
+      "title": "作品集整理",
+      "description": "每日15分鐘更新作品集內容，新增學習成果或修改現有作品說明",
+      "difficulty": 2,
+      "estimated_hours": 0.5,
+      "skill_tags": [
+        {"name": "作品集維護", "category": "technical"}
+      ],
+      "resources": ["作品集模板軟體", "作品說明文件範本"],
+      "personality_match": "定期整理符合專案導向學習，強化作品集即時更新習慣"
+    }
+  ],
+  "project_tasks": [
+    {
+      "title": "個人品牌設計專案",
+      "description": "規劃並完成個人品牌設計（包括logo、簡報、社群媒體資料），並整合至作品集",
+      "difficulty": 5,
+      "estimated_hours": 40,
+      "skill_tags": [
+        {"name": "個人品牌規劃", "category": "technical"},
+        {"name": "多媒體整合設計", "category": "technical"},
+        {"name": "自我品牌表達", "category": "soft"}
+      ],
+      "resources": ["個人品牌設計指南", "作品集整合工具", "自由職業者品牌案例"],
+      "personality_match": "專案導向且實際應用，符合轉換需求，強化個人品牌建立"
+    },
+    {
+      "title": "開源設計貢獻",
+      "description": "參與開源設計專案（如GNOME主題設計、開源軟體UI/UX設計），完成至少2個貢獻",
+      "difficulty": 5,
+      "estimated_hours": 35,
+      "skill_tags": [
+        {"name": "開源設計流程", "category": "technical"},
+        {"name": "團隊協作能力", "category": "soft"}
+      ],
+      "resources": ["開源設計指南", "開源專案平台（GitHub）", "團隊協作工具"],
+      "personality_match": "符合專案導向學習，團隊協作強化軟技能，符合現代設計市場需求"
+    },
+    {
+      "title": "專業作品集發布",
+      "description": "發布個人作品集至線上平台（如Behance、Dribbble），並規劃職涯發展路徑（自由職業、設計公司等）",
+      "difficulty": 5,
+      "estimated_hours": 45,
+      "skill_tags": [
+        {"name": "線上作品集發布", "category": "technical"},
+        {"name": "職涯規劃策略", "category": "soft"}
+      ],
+      "resources": ["作品集發布平台教學", "職涯規劃策略書", "自由職業者發布案例"],
+      "personality_match": "結合實務與規劃，符合轉換目標，強化專業形象建立"
+    }
+  ]
+}
+```

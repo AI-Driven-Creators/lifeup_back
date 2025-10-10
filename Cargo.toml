@@ -2,6 +2,7 @@
 name = "lifeup_back"
 version = "0.1.0"
 edition = "2021"
+default-run = "lifeup_back"
 
 # 隱藏所有編譯器警告
 [lints.rust]

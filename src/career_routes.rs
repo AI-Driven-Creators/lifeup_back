@@ -196,6 +196,13 @@ pub async fn generate_career_tasks(
     let ai_prompt = build_career_task_prompt(&quiz_result, &request.selected_career, &request.survey_answers);
     log::debug!("AI 提示詞: {}", ai_prompt);
 
+    // 將提示詞保存到 last_prompt.md
+    if let Err(e) = std::fs::write("last_prompt.md", &ai_prompt) {
+        log::error!("❌ 寫入 last_prompt.md 失敗: {}", e);
+    } else {
+        log::info!("✅ 已將 AI 提示詞保存到 last_prompt.md");
+    }
+
     // 3. 調用 AI 服務生成任務
     let generation_start = std::time::Instant::now();
     let api_key = std::env::var("OPENAI_API_KEY")
@@ -664,7 +671,7 @@ fn extract_quiz_summary(quiz_json: &Option<String>) -> String {
     }
 }
 
-fn parse_ai_tasks_response(ai_response: &str) -> Result<GeneratedTasksResponse, Box<dyn std::error::Error>> {
+pub fn parse_ai_tasks_response(ai_response: &str) -> Result<GeneratedTasksResponse, Box<dyn std::error::Error>> {
     // 清理 AI 回應，移除可能的 markdown 標記和多餘空白
     let cleaned_response = ai_response
         .trim()
@@ -831,6 +838,197 @@ async fn create_subtask_from_ai_data(
     Ok(task)
 }
 
+// ============= 匯入職涯任務（由已產生的 JSON） =============
+
+#[derive(serde::Deserialize)]
+pub struct ImportCareerTasksRequest {
+    pub selected_career: Option<String>,
+    pub user_id: Option<String>,
+    pub raw_json: String,
+}
+
+pub async fn import_career_tasks(
+    rb: web::Data<RBatis>,
+    req: web::Json<ImportCareerTasksRequest>
+) -> Result<HttpResponse> {
+    // 1) 解析 JSON
+    let generated_tasks = match parse_ai_tasks_response(&req.raw_json) {
+        Ok(tasks) => tasks,
+        Err(e) => {
+            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("JSON 解析失敗: {}", e),
+            }));
+        }
+    };
+
+    // 2) 準備 user_id（沿用 create-from-json 的策略：若未提供，使用/建立測試用戶）
+    let user_id = if let Some(uid) = req.user_id.clone().filter(|s| !s.trim().is_empty()) {
+        uid
+    } else {
+        match crate::models::User::select_by_map(rb.get_ref(), value!{"email": "test@lifeup.com"}).await {
+            Ok(users) if !users.is_empty() => users[0].id.clone().unwrap_or_default(),
+            _ => {
+                let test_user = crate::models::User {
+                    id: Some(uuid::Uuid::new_v4().to_string()),
+                    name: Some("測試用戶".to_string()),
+                    email: Some("test@lifeup.com".to_string()),
+                    password_hash: Some("".to_string()),
+                    created_at: Some(Utc::now()),
+                    updated_at: Some(Utc::now()),
+                };
+                match crate::models::User::insert(rb.get_ref(), &test_user).await {
+                    Ok(_) => test_user.id.unwrap(),
+                    Err(e) => {
+                        return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                            success: false,
+                            data: None,
+                            message: format!("建立預設用戶失敗: {}", e),
+                        }));
+                    }
+                }
+            }
+        }
+    };
+
+    // 3) 建立一筆 quiz_results（作為主線外鍵）
+    let quiz_id = Uuid::new_v4().to_string();
+    let quiz = crate::models::QuizResults {
+        id: Some(quiz_id.clone()),
+        user_id: Some(user_id.clone()),
+        values_results: Some("{}".to_string()),
+        interests_results: Some("{}".to_string()),
+        talents_results: Some("{}".to_string()),
+        workstyle_results: Some("{}".to_string()),
+        completed_at: Some(Utc::now()),
+        is_active: Some(1),
+        created_at: Some(Utc::now()),
+        updated_at: Some(Utc::now()),
+    };
+    if let Err(e) = crate::models::QuizResults::insert(rb.get_ref(), &quiz).await {
+        log::error!("插入 quiz_results 失敗: {}", e);
+        return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: "建立主線前置資料失敗".to_string(),
+        }));
+    }
+
+    // 4) 建立 career_mainlines 記錄
+    let mainline_id = Uuid::new_v4().to_string();
+    let total_tasks = generated_tasks.main_tasks.len() + generated_tasks.daily_tasks.len() + generated_tasks.project_tasks.len();
+    let career_name = req.selected_career.clone().unwrap_or_else(|| "CLI 導入主線".to_string());
+
+    let career_mainline = crate::models::CareerMainlines {
+        id: Some(mainline_id.clone()),
+        user_id: Some(user_id.clone()),
+        quiz_result_id: Some(quiz_id.clone()),
+        selected_career: Some(career_name.clone()),
+        survey_answers: None,
+        total_tasks_generated: Some(total_tasks as i32),
+        estimated_completion_months: Some(generated_tasks.estimated_months),
+        status: Some("active".to_string()),
+        progress_percentage: Some(0.0),
+        created_at: Some(Utc::now()),
+        updated_at: Some(Utc::now()),
+    };
+    if let Err(e) = crate::models::CareerMainlines::insert(rb.get_ref(), &career_mainline).await {
+        log::error!("創建職業主線失敗: {}", e);
+        return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: "創建主線失敗".to_string(),
+        }));
+    }
+
+    // 5) 建立父任務
+    let parent_task_id = Uuid::new_v4().to_string();
+    let now = Utc::now();
+    let parent_task = Task {
+        id: Some(parent_task_id.clone()),
+        user_id: Some(user_id.clone()),
+        title: Some(format!("職業主線：{}", career_name)),
+        description: Some(format!("{}\n\n📋 包含 {} 個子任務，完成後將掌握相關職業技能。\n\n🎯 預計學習時程：{} 個月",
+            generated_tasks.learning_summary,
+            total_tasks,
+            generated_tasks.estimated_months)),
+        status: Some(0),
+        priority: Some(2),
+        task_type: Some("main".to_string()),
+        difficulty: Some(3),
+        experience: Some(100),
+        career_mainline_id: Some(mainline_id.clone()),
+        task_category: Some("career_mainline".to_string()),
+        is_parent_task: Some(1),
+        task_order: Some(0),
+        created_at: Some(now),
+        updated_at: Some(now),
+        parent_task_id: None,
+        due_date: None,
+        is_recurring: Some(0),
+        recurrence_pattern: None,
+        start_date: None,
+        end_date: None,
+        completion_target: Some(1.0),
+        completion_rate: Some(0.0),
+        task_date: None,
+        cancel_count: Some(0),
+        last_cancelled_at: None,
+        skill_tags: {
+            let mut all = std::collections::HashSet::new();
+            for t in &generated_tasks.main_tasks { for s in &t.skill_tags { all.insert(s.name.clone()); } }
+            for t in &generated_tasks.daily_tasks { for s in &t.skill_tags { all.insert(s.name.clone()); } }
+            for t in &generated_tasks.project_tasks { for s in &t.skill_tags { all.insert(s.name.clone()); } }
+            if all.is_empty() { None } else { Some(all.into_iter().collect()) }
+        },
+    };
+    if let Err(e) = Task::insert(rb.get_ref(), &parent_task).await {
+        log::error!("創建父任務失敗: {}", e);
+        return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: "創建父任務失敗".to_string(),
+        }));
+    }
+
+    // 6) 逐一建立子任務
+    let mut created_tasks = Vec::new();
+    let mut task_order = 1;
+    for ai_task in &generated_tasks.main_tasks {
+        if let Ok(task) = create_subtask_from_ai_data(&rb, &user_id, &mainline_id, &parent_task_id, ai_task, "career_subtask", task_order).await {
+            created_tasks.push(task);
+            task_order += 1;
+        }
+    }
+    for ai_task in &generated_tasks.daily_tasks {
+        if let Ok(task) = create_subtask_from_ai_data(&rb, &user_id, &mainline_id, &parent_task_id, ai_task, "career_subtask", task_order).await {
+            created_tasks.push(task);
+            task_order += 1;
+        }
+    }
+    for ai_task in &generated_tasks.project_tasks {
+        if let Ok(task) = create_subtask_from_ai_data(&rb, &user_id, &mainline_id, &parent_task_id, ai_task, "career_subtask", task_order).await {
+            created_tasks.push(task);
+            task_order += 1;
+        }
+    }
+
+    // 7) 更新父任務經驗值
+    let _ = crate::routes::update_parent_task_experience(rb.get_ref(), &parent_task_id).await;
+
+    Ok(HttpResponse::Ok().json(ApiResponse {
+        success: true,
+        data: Some(serde_json::json!({
+            "mainline_id": mainline_id,
+            "parent_task_id": parent_task_id,
+            "subtasks_created": created_tasks.len(),
+            "estimated_months": generated_tasks.estimated_months,
+        })),
+        message: format!("成功匯入 {} 個子任務", created_tasks.len()),
+    }))
+}
+
 // 輔助函數：確保技能存在於技能表中
 async fn ensure_skills_exist(rb: &RBatis, user_id: &str, skill_tags: &[SkillTag]) -> Result<(), Box<dyn std::error::Error>> {
     use crate::models::Skill;
@@ -878,3 +1076,50 @@ async fn ensure_skills_exist(rb: &RBatis, user_id: &str, skill_tags: &[SkillTag]
     Ok(())
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn validate_career_json_file() {
+        // 讀取專案根目錄下的 career.json（測試時工作目錄為 crate 根目錄）
+        let path = "career.json";
+        let content = fs::read_to_string(path).expect("無法讀取 career.json，請確認檔案位於 crate 根目錄");
+
+        // 使用既有的解析函數（可處理 ```json 包裹的內容）
+        let parsed = parse_ai_tasks_response(&content).expect("career.json 解析失敗，請檢查 JSON 結構");
+
+        // 基本內容檢查
+        let total = parsed.main_tasks.len() + parsed.daily_tasks.len() + parsed.project_tasks.len();
+        assert!(total > 0, "必須至少包含一個任務（main/daily/project 任一類）");
+
+        // 檢查每個任務必要欄位與數值範圍
+        for task in parsed
+            .main_tasks
+            .iter()
+            .chain(parsed.daily_tasks.iter())
+            .chain(parsed.project_tasks.iter())
+        {
+            assert!(!task.title.trim().is_empty(), "title 不可為空");
+            assert!(!task.description.trim().is_empty(), "description 不可為空");
+            assert!((1..=5).contains(&task.difficulty), "difficulty 必須在 1..=5 範圍內: {}", task.difficulty);
+            assert!(task.estimated_hours > 0, "estimated_hours 必須為正整數（小數會四捨五入）: {}", task.estimated_hours);
+            assert!(!task.skill_tags.is_empty(), "skill_tags 不可為空");
+            for tag in &task.skill_tags {
+                assert!(!tag.name.trim().is_empty(), "skill_tags.name 不可為空");
+                assert!(tag.category == "technical" || tag.category == "soft", "skill_tags.category 僅能為 technical/soft: {}", tag.category);
+            }
+        }
+
+        println!(
+            "career.json 驗證通過：main={} daily={} project={}，estimated_months={}，summary_len={}",
+            parsed.main_tasks.len(),
+            parsed.daily_tasks.len(),
+            parsed.project_tasks.len(),
+            parsed.estimated_months,
+            parsed.learning_summary.len()
+        );
+    }
+}
