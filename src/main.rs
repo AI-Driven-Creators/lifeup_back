@@ -190,6 +190,7 @@ async fn main() -> std::io::Result<()> {
             // 職業主線任務系統路由
             .route("/api/quiz/save-results", web::post().to(crate::career_routes::save_quiz_results))
             .route("/api/career/generate-tasks", web::post().to(crate::career_routes::generate_career_tasks))
+            .route("/api/career/import", web::post().to(crate::career_routes::import_career_tasks))
             // 用戶數據重置路由
             .route("/api/users/{user_id}/reset", web::delete().to(reset_user_data))
             .route("/api/users/{user_id}/reset", web::post().to(reset_user_data_selective))

@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
 use crate::models::{Task, User, GenerateTaskRequest, TaskStatus, Achievement, UserAchievement};
+use crate::career_routes::parse_ai_tasks_response;
 use crate::ai_service::{OpenAIService, convert_to_achievement_model};
 use crate::achievement_service::AchievementService;
 
