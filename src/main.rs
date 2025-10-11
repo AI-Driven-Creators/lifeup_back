@@ -165,6 +165,7 @@ async fn main() -> std::io::Result<()> {
             // 遊戲化數據相關路由
             .route("/api/users/{id}/gamified", web::get().to(get_gamified_user_data))
             .route("/api/users/{id}/experience", web::post().to(update_user_experience))
+            .route("/api/users/{id}/attributes", web::post().to(update_user_attributes))
             // 成就相關路由
             .route("/api/achievements", web::get().to(get_achievements))
             .route("/api/achievements/{id}", web::get().to(get_achievement_details))
@@ -190,6 +191,7 @@ async fn main() -> std::io::Result<()> {
             // 職業主線任務系統路由
             .route("/api/quiz/save-results", web::post().to(crate::career_routes::save_quiz_results))
             .route("/api/career/generate-tasks", web::post().to(crate::career_routes::generate_career_tasks))
+            .route("/api/career/accept-tasks", web::post().to(crate::career_routes::accept_career_tasks))
             .route("/api/career/import", web::post().to(crate::career_routes::import_career_tasks))
             // 用戶數據重置路由
             .route("/api/users/{user_id}/reset", web::delete().to(reset_user_data))
@@ -242,6 +244,9 @@ async fn create_tables(rb: &RBatis) {
             cancel_count INTEGER DEFAULT 0,
             last_cancelled_at TEXT,
             skill_tags TEXT,
+            career_mainline_id TEXT,
+            task_category TEXT,
+            attributes TEXT,
             FOREIGN KEY (user_id) REFERENCES user (id),
             FOREIGN KEY (parent_task_id) REFERENCES task (id)
         )

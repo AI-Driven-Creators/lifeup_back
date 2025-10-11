@@ -351,6 +351,7 @@ pub async fn create_task(
         skill_tags: req.skill_tags.clone(),
         career_mainline_id: None,
         task_category: None,
+        attributes: req.attributes.clone(),
     };
 
     match crate::models::Task::insert(rb.get_ref(), &new_task).await {
@@ -637,6 +638,134 @@ pub async fn update_user_experience(
             data: None,
             message: format!("查詢使用者資料失敗: {}", e),
         }))
+    }
+}
+
+// 更新使用者屬性 API
+#[derive(serde::Deserialize)]
+pub struct UpdateUserAttributesRequest {
+    pub attributes: std::collections::HashMap<String, i32>,  // {"intelligence": 5, "creativity": -3}
+}
+
+pub async fn update_user_attributes(
+    rb: web::Data<RBatis>,
+    path: web::Path<String>,
+    req: web::Json<UpdateUserAttributesRequest>,
+) -> Result<HttpResponse> {
+    let user_id = path.into_inner();
+
+    // 查詢或創建使用者屬性記錄
+    match crate::models::UserAttributes::select_by_map(rb.get_ref(), value!{"user_id": user_id.clone()}).await {
+        Ok(mut attributes_list) => {
+            let mut user_attrs = if let Some(attrs) = attributes_list.pop() {
+                attrs
+            } else {
+                // 創建新的屬性記錄，初始值為 50
+                crate::models::UserAttributes {
+                    id: Some(Uuid::new_v4().to_string()),
+                    user_id: Some(user_id.clone()),
+                    intelligence: Some(50),
+                    endurance: Some(50),
+                    creativity: Some(50),
+                    social: Some(50),
+                    focus: Some(50),
+                    adaptability: Some(50),
+                    created_at: Some(Utc::now()),
+                    updated_at: Some(Utc::now()),
+                }
+            };
+
+            // 更新屬性值（支援增加或減少）
+            let mut updated_attrs: std::collections::HashMap<String, (i32, i32)> = std::collections::HashMap::new();
+
+            for (attr_name, change) in &req.attributes {
+                match attr_name.as_str() {
+                    "intelligence" => {
+                        let old_val = user_attrs.intelligence.unwrap_or(50);
+                        let new_val = (old_val + change).max(0).min(100);  // 限制在 0-100 之間
+                        user_attrs.intelligence = Some(new_val);
+                        updated_attrs.insert("intelligence".to_string(), (old_val, new_val));
+                    },
+                    "endurance" => {
+                        let old_val = user_attrs.endurance.unwrap_or(50);
+                        let new_val = (old_val + change).max(0).min(100);
+                        user_attrs.endurance = Some(new_val);
+                        updated_attrs.insert("endurance".to_string(), (old_val, new_val));
+                    },
+                    "creativity" => {
+                        let old_val = user_attrs.creativity.unwrap_or(50);
+                        let new_val = (old_val + change).max(0).min(100);
+                        user_attrs.creativity = Some(new_val);
+                        updated_attrs.insert("creativity".to_string(), (old_val, new_val));
+                    },
+                    "social" => {
+                        let old_val = user_attrs.social.unwrap_or(50);
+                        let new_val = (old_val + change).max(0).min(100);
+                        user_attrs.social = Some(new_val);
+                        updated_attrs.insert("social".to_string(), (old_val, new_val));
+                    },
+                    "focus" => {
+                        let old_val = user_attrs.focus.unwrap_or(50);
+                        let new_val = (old_val + change).max(0).min(100);
+                        user_attrs.focus = Some(new_val);
+                        updated_attrs.insert("focus".to_string(), (old_val, new_val));
+                    },
+                    "adaptability" => {
+                        let old_val = user_attrs.adaptability.unwrap_or(50);
+                        let new_val = (old_val + change).max(0).min(100);
+                        user_attrs.adaptability = Some(new_val);
+                        updated_attrs.insert("adaptability".to_string(), (old_val, new_val));
+                    },
+                    _ => {
+                        log::warn!("未知的屬性名稱: {}", attr_name);
+                    }
+                }
+            }
+
+            user_attrs.updated_at = Some(Utc::now());
+
+            // 更新或插入資料庫
+            let db_result = if user_attrs.id.is_some() {
+                crate::models::UserAttributes::update_by_map(
+                    rb.get_ref(),
+                    &user_attrs,
+                    value!{"user_id": user_id.clone()}
+                ).await
+            } else {
+                crate::models::UserAttributes::insert(rb.get_ref(), &user_attrs).await
+            };
+
+            match db_result {
+                Ok(_) => {
+                    log::info!("使用者 {} 屬性更新成功: {:?}", user_id, updated_attrs);
+
+                    Ok(HttpResponse::Ok().json(ApiResponse {
+                        success: true,
+                        data: Some(json!({
+                            "attributes": user_attrs,
+                            "changes": updated_attrs
+                        })),
+                        message: "屬性更新成功".to_string(),
+                    }))
+                },
+                Err(e) => {
+                    log::error!("更新使用者屬性失敗: {}", e);
+                    Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                        success: false,
+                        data: None,
+                        message: format!("更新使用者屬性失敗: {}", e),
+                    }))
+                }
+            }
+        },
+        Err(e) => {
+            log::error!("查詢使用者屬性失敗: {}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("查詢使用者屬性失敗: {}", e),
+            }))
+        }
     }
 }
 
@@ -1307,6 +1436,7 @@ pub async fn start_task(
                                         skill_tags: task.skill_tags.clone(), // 子任務繼承父任務的技能標籤
                                         career_mainline_id: None,
                                         task_category: None,
+                                        attributes: None,
                                     };
                                     
                                     if let Err(e) = crate::models::Task::insert(rb.get_ref(), &subtask).await {
@@ -1811,6 +1941,7 @@ pub async fn create_recurring_task(
         skill_tags: None, // 重複性任務預設無技能標籤
         career_mainline_id: None,
         task_category: None,
+        attributes: None,
     };
 
     // 插入父任務
@@ -1910,6 +2041,7 @@ pub async fn generate_daily_tasks(
                     skill_tags: None, // 每日重複任務預設無技能標籤
                     career_mainline_id: None,
                     task_category: None,
+                    attributes: None,
                 };
                 
                 if let Ok(_) = crate::models::Task::insert(rb.get_ref(), &daily_task).await {

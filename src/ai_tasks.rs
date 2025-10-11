@@ -244,6 +244,7 @@ pub async fn insert_task_from_json(
         skill_tags: None,
         career_mainline_id: None,
         task_category: None,
+        attributes: None,
     };
     
     // 儲存主任務到資料庫
@@ -335,8 +336,9 @@ pub async fn insert_task_from_json(
                             cancel_count: Some(0),
                             last_cancelled_at: None,
                             skill_tags: None,
-        career_mainline_id: None,
-        task_category: None,
+                            career_mainline_id: None,
+                            task_category: None,
+                            attributes: None,
                         };
                         
                         tasks_to_insert.push(daily_task);
