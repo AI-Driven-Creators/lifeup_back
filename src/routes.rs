@@ -3734,13 +3734,93 @@ async fn call_ai_api_with_personality(rb: &RBatis, message: &str, user_id: Optio
     };
     
     // 獲取用戶的教練個性
-    let personality_type = get_user_personality_type(rb, user_id).await?;
+    let personality_type = get_user_personality_type(rb, user_id.clone()).await?;
     let system_prompt = personality_type.system_prompt();
     
     log::info!("使用教練個性: {:?}", personality_type);
     
-    let prompt = format!("{}\n\n用戶訊息：{}", system_prompt, message);
-
+    // 獲取上一次的對話內容（用戶問題和AI回答）
+    let mut prompt = system_prompt.to_string();
+    
+    if let Some(uid) = user_id {
+        log::info!("嘗試獲取用戶 {} 的聊天記錄", uid);
+        // 獲取最近的兩條聊天記錄（用戶問題和AI回答）
+        // 創建一個簡化的 ChatMessage 結構來處理序列化問題
+        #[derive(serde::Deserialize)]
+        struct SimpleChatMessage {
+            id: Option<String>,
+            user_id: Option<String>,
+            role: Option<String>,
+            content: Option<serde_json::Value>, // 使用 serde_json::Value 來處理可能的 JSON 格式
+            created_at: Option<String>,
+        }
+        
+        let sql = format!("SELECT * FROM chat_message WHERE user_id = '{}' ORDER BY created_at DESC LIMIT 10", uid);
+        match rb.query_decode::<Vec<SimpleChatMessage>>(&sql, vec![]).await {
+            Ok(messages) => {
+                log::info!("找到 {} 條聊天記錄", messages.len());
+                
+                // 獲取最新的用戶問題和AI回答
+                let mut last_user_message = None;
+                let mut last_ai_message = None;
+                
+                for (i, msg) in messages.iter().take(4).enumerate() { // 檢查最近4條記錄
+                    log::info!("處理記錄 {}: role={:?}, content={:?}", i, msg.role, msg.content);
+                    if let Some(role) = &msg.role {
+                        // 處理 content 字段，可能是字符串或 JSON 對象
+                        let content_str = match &msg.content {
+                            Some(serde_json::Value::String(s)) => Some(s.clone()),
+                            Some(serde_json::Value::Object(obj)) => {
+                                // 如果是 JSON 對象，嘗試提取 text 字段
+                                obj.get("text").and_then(|v| v.as_str()).map(|s| s.to_string())
+                            },
+                            _ => None,
+                        };
+                        
+                        if role == "user" && last_user_message.is_none() {
+                            last_user_message = content_str;
+                            log::info!("找到用戶訊息: {:?}", last_user_message);
+                        } else if role == "assistant" && last_ai_message.is_none() {
+                            last_ai_message = content_str;
+                            log::info!("找到AI訊息: {:?}", last_ai_message);
+                        }
+                    }
+                }
+                
+                // 如果有上一次的對話，準備歷史對話數據
+                let history = match (&last_user_message, &last_ai_message) {
+                    (Some(user_msg), Some(ai_msg)) => {
+                        log::info!("包含上一次對話內容");
+                        vec![(user_msg.clone(), ai_msg.clone())]
+                    },
+                    _ => {
+                        log::info!("沒有找到完整的上一次對話 - 用戶訊息: {:?}, AI訊息: {:?}", last_user_message, last_ai_message);
+                        vec![]
+                    }
+                };
+                
+                // 使用帶歷史對話的方法
+                match ai_service.generate_task_preview_with_history(&system_prompt, &history, &message).await {
+                    Ok(response) => {
+                        log::info!("成功獲取個性化AI回應");
+                        return Ok(response);
+                    },
+                    Err(e) => {
+                        log::error!("個性化AI API 調用失敗: {}", e);
+                        return Err(format!("AI API 調用失敗: {}", e).into());
+                    }
+                }
+            },
+            Err(e) => {
+                log::warn!("獲取聊天記錄失敗: {}", e);
+                log::warn!("錯誤詳情: {:?}", e);
+            }
+        }
+    } else {
+        log::info!("沒有用戶ID，跳過聊天記錄查詢");
+    }
+    
+    // 如果沒有用戶ID或查詢失敗，使用原始方法
     log::info!("準備發送個性化請求到AI API");
     
     match ai_service.generate_task_preview(&prompt).await {

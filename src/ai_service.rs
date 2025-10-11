@@ -72,6 +72,7 @@ pub struct AIGeneratedAchievement {
 pub trait AIService {
     async fn generate_achievement_from_text(&self, user_input: &str) -> Result<AIGeneratedAchievement>;
     async fn generate_task_preview(&self, prompt: &str) -> Result<String>;
+    async fn generate_task_preview_with_history(&self, system_prompt: &str, history: &[(String, String)], current_message: &str) -> Result<String>;
     async fn generate_task_from_text(&self, user_input: &str) -> Result<AIGeneratedTask>;
 }
 
@@ -265,6 +266,62 @@ impl AIService for OpenAIService {
                     "content": prompt
                 }
             ],
+            "max_completion_tokens": 4000
+        });
+
+        let response = self.client
+            .post("https://api.openai.com/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&request)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await?;
+            return Err(anyhow::anyhow!("OpenAI API 錯誤: {}", error_text));
+        }
+
+        let openai_response: OpenAIResponse = response.json().await?;
+        
+        if let Some(choice) = openai_response.choices.first() {
+            Ok(choice.message.content.clone())
+        } else {
+            Err(anyhow::anyhow!("OpenAI 未返回有效回應"))
+        }
+    }
+
+    async fn generate_task_preview_with_history(&self, system_prompt: &str, history: &[(String, String)], current_message: &str) -> Result<String> {
+        // 構建 messages 數組
+        let mut messages = vec![];
+
+        // 先添加歷史對話
+        for (user_msg, assistant_msg) in history {
+            messages.push(serde_json::json!({
+                "role": "user",
+                "content": user_msg
+            }));
+            messages.push(serde_json::json!({
+                "role": "assistant",
+                "content": assistant_msg
+            }));
+        }
+
+        // 然後添加系統提示詞
+        messages.push(serde_json::json!({
+            "role": "system",
+            "content": system_prompt
+        }));
+
+        // 最後添加當前用戶訊息
+        messages.push(serde_json::json!({
+            "role": "user",
+            "content": current_message
+        }));
+
+        let request = serde_json::json!({
+            "model": self.model.clone(),
+            "messages": messages,
             "max_completion_tokens": 4000
         });
 
@@ -609,6 +666,66 @@ impl AIService for OpenRouterService {
             "max_completion_tokens": 4000
         });
         log::info!("OpenRouter Request: {}", serde_json::to_string_pretty(&request).unwrap());
+        let response = self.client
+            .post("https://openrouter.ai/api/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .header("HTTP-Referer", "https://openrouter.ai")
+            .header("X-Title", "LifeUp Backend")
+            .json(&request)
+            .send()
+            .await?;
+        
+        if !response.status().is_success() {
+            let error_text = response.text().await?;
+            return Err(anyhow::anyhow!("OpenRouter API 錯誤: {}", error_text));
+        }
+
+        let openrouter_response: OpenRouterResponse = response.json().await?;
+        
+        if let Some(choice) = openrouter_response.choices.first() {
+            Ok(choice.message.content.clone())
+        } else {
+            Err(anyhow::anyhow!("OpenRouter 未返回有效回應"))
+        }
+    }
+
+    async fn generate_task_preview_with_history(&self, system_prompt: &str, history: &[(String, String)], current_message: &str) -> Result<String> {
+        // 構建 messages 數組
+        let mut messages = vec![];
+
+        // 先添加歷史對話
+        for (user_msg, assistant_msg) in history {
+            messages.push(serde_json::json!({
+                "role": "user",
+                "content": user_msg
+            }));
+            messages.push(serde_json::json!({
+                "role": "assistant",
+                "content": assistant_msg
+            }));
+        }
+
+        // 然後添加系統提示詞
+        messages.push(serde_json::json!({
+            "role": "system",
+            "content": system_prompt
+        }));
+
+        // 最後添加當前用戶訊息
+        messages.push(serde_json::json!({
+            "role": "user",
+            "content": current_message
+        }));
+
+        let request = serde_json::json!({
+            "model": self.model,
+            "messages": messages,
+            "max_completion_tokens": 4000
+        });
+        
+        log::info!("OpenRouter Request with History: {}", serde_json::to_string_pretty(&request).unwrap());
+        
         let response = self.client
             .post("https://openrouter.ai/api/v1/chat/completions")
             .header("Authorization", format!("Bearer {}", self.api_key))
