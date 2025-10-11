@@ -3199,15 +3199,9 @@ pub async fn send_message_to_chatgpt(
         log::info!("訪客模式，不保存AI回覆");
     }
     
-    let response_data = json!({
-        "output": [{
-            "content": [{
-                "text": ai_response
-            }]
-        }]
-    });
-    
-    Ok(HttpResponse::Ok().json(response_data))
+    Ok(HttpResponse::Ok().json(json!({
+        "text": ai_response
+    })))
 }
 
 // 簡單的測試端點

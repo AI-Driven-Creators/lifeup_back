@@ -606,16 +606,11 @@ impl AIService for OpenRouterService {
                     "content": prompt
                 }
             ],
-            "temperature": 0.8,
-            "response_format": {
-                "type": "json_object"
-            },
             "max_completion_tokens": 4000
         });
         log::info!("OpenRouter Request: {}", serde_json::to_string_pretty(&request).unwrap());
         let response = self.client
             .post("https://openrouter.ai/api/v1/chat/completions")
-            .header("Host", "openrouter.ai")
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
             .header("HTTP-Referer", "https://openrouter.ai")
@@ -623,7 +618,7 @@ impl AIService for OpenRouterService {
             .json(&request)
             .send()
             .await?;
-
+        
         if !response.status().is_success() {
             let error_text = response.text().await?;
             return Err(anyhow::anyhow!("OpenRouter API 錯誤: {}", error_text));
@@ -744,7 +739,7 @@ impl AIService for OpenRouterService {
                     content: user_message,
                 },
             ],
-            max_completion_tokens: 500,
+            max_completion_tokens: 1000,
             response_format: ResponseFormat {
                 format_type: "json_object".to_string(),
             },
