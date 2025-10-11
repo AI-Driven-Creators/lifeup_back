@@ -48,6 +48,16 @@ async fn main() -> std::io::Result<()> {
     ).expect("日誌初始化失敗");
     log::info!("LifeUp Backend 啟動中...");
     log::info!("配置: {:?}", config);
+    
+    // AI 配置調試日誌
+    log::info!("AI 配置載入: API_OPTION={}", config.app.ai.api_option);
+    log::info!("OpenAI API Key 存在: {}", config.app.ai.openai_api_key.is_some());
+    log::info!("OpenRouter API Key 存在: {}", config.app.ai.openrouter_api_key.is_some());
+    if let Some(key) = &config.app.ai.openrouter_api_key {
+        log::info!("OpenRouter API Key 前綴: {}", &key[..std::cmp::min(10, key.len())]);
+    }
+    log::info!("OpenAI 模型: {}", config.app.ai.openai_model);
+    log::info!("OpenRouter 模型: {}", config.app.ai.openrouter_model);
 
     // 初始化 rbatis
     let rb = RBatis::new();

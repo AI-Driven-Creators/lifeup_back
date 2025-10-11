@@ -12,7 +12,6 @@ use crate::models::{
     GeneratedTasksResponse, GeneratedTask, SurveyAnswers, SkillTag
 };
 use crate::ai_tasks::ApiResponse;
-use crate::ai_service::OpenAIService;
 
 // ============= 測驗結果相關 API =============
 
@@ -205,9 +204,18 @@ pub async fn generate_career_tasks(
 
     // 3. 調用 AI 服務生成任務
     let generation_start = std::time::Instant::now();
-    let api_key = std::env::var("OPENAI_API_KEY")
-        .unwrap_or_else(|_| "dummy-key-for-demo".to_string());
-    let ai_service = OpenAIService::new(api_key);
+    let config = crate::config::Config::from_env();
+    let ai_service = match crate::ai_service::create_ai_service(&config.app.ai) {
+        Ok(service) => service,
+        Err(e) => {
+            log::error!("AI 服務初始化失敗: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("AI 服務初始化失敗: {}", e),
+            }));
+        }
+    };
     let ai_response = match ai_service.generate_task_preview(&ai_prompt).await {
         Ok(response) => response,
         Err(e) => {

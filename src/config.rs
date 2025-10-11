@@ -23,6 +23,16 @@ pub struct ServerConfig {
 pub struct AppConfig {
     pub environment: String,
     pub log_level: String,
+    pub ai: AIConfig,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct AIConfig {
+    pub api_option: String,
+    pub openai_api_key: Option<String>,
+    pub openai_model: String,
+    pub openrouter_api_key: Option<String>,
+    pub openrouter_model: String,
 }
 
 impl Config {
@@ -36,6 +46,18 @@ impl Config {
         let environment = env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string());
         let log_level = env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
 
+        // AI 配置
+        let api_option = env::var("API_OPTION").unwrap_or_else(|_| "OpenRouter".to_string());
+        let openai_api_key = env::var("OPENAI_API_KEY").ok();
+        let openai_model = env::var("OPENAI_MODEL")
+            .unwrap_or_else(|_| "gpt-4o-mini".to_string());
+        let openrouter_api_key = env::var("OPENROUTER_API_KEY").ok();
+        let openrouter_model = env::var("OPENROUTER_MODEL")
+            .unwrap_or_else(|_| "openrouter.ai/google/gemma-3n-e4b-it".to_string());
+
+        // 調試日誌 - 注意：此時日誌系統可能還未初始化
+        // 這些日誌會在 main.rs 中重新顯示
+
         Config {
             database: DatabaseConfig { url: database_url },
             server: ServerConfig {
@@ -45,6 +67,13 @@ impl Config {
             app: AppConfig {
                 environment,
                 log_level,
+                ai: AIConfig {
+                    api_option,
+                    openai_api_key,
+                    openai_model,
+                    openrouter_api_key,
+                    openrouter_model,
+                },
             },
         }
     }

@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use chrono::Utc;
 use crate::models::AchievementRequirementType;
+use crate::config::AIConfig;
 
 // OpenAI API 請求結構
 #[derive(Serialize)]
@@ -66,20 +67,49 @@ pub struct AIGeneratedAchievement {
     pub experience_reward: i32,
 }
 
+// AI 服務 trait
+#[async_trait::async_trait]
+pub trait AIService {
+    async fn generate_achievement_from_text(&self, user_input: &str) -> Result<AIGeneratedAchievement>;
+    async fn generate_task_preview(&self, prompt: &str) -> Result<String>;
+    async fn generate_task_from_text(&self, user_input: &str) -> Result<AIGeneratedTask>;
+}
+
+// OpenRouter API 請求結構
+#[derive(Serialize)]
+struct OpenRouterRequest {
+    model: String,
+    messages: Vec<ChatMessage>,
+    max_completion_tokens: i32,
+    response_format: ResponseFormat,
+}
+
+// OpenRouter API 回應結構
+#[derive(Deserialize)]
+struct OpenRouterResponse {
+    choices: Vec<Choice>,
+}
+
 pub struct OpenAIService {
     api_key: String,
+    model: String,
     client: reqwest::Client,
 }
 
 impl OpenAIService {
-    pub fn new(api_key: String) -> Self {
+    pub fn new(api_key: String, model: String) -> Self {
         Self {
             api_key,
+            model,
             client: reqwest::Client::new(),
         }
     }
+}
 
-    pub async fn generate_achievement_from_text(&self, user_input: &str) -> Result<AIGeneratedAchievement> {
+#[async_trait::async_trait]
+impl AIService for OpenAIService {
+
+    async fn generate_achievement_from_text(&self, user_input: &str) -> Result<AIGeneratedAchievement> {
         let system_prompt = r#"你是一個成就設計助手。根據用戶的行為數據分析，生成個性化且具有激勵性的成就。
 
 請仔細分析用戶的：
@@ -144,7 +174,7 @@ impl OpenAIService {
         let user_message = format!("請根據以下用戶行為數據生成合適的成就：{}", user_input);
 
         let request = OpenAIRequest {
-            model: "gpt-4o-mini".to_string(),
+            model: self.model.clone().to_string(),
             messages: vec![
                 ChatMessage {
                     role: "system".to_string(),
@@ -221,10 +251,10 @@ impl OpenAIService {
         }
     }
 
-    pub async fn generate_task_preview(&self, prompt: &str) -> Result<String> {
+    async fn generate_task_preview(&self, prompt: &str) -> Result<String> {
         // 使用不同的請求結構，因為我們不需要 JSON 格式
         let request = serde_json::json!({
-            "model": "gpt-4o-mini",
+            "model": self.model.clone(),
             "messages": [
                 {
                     "role": "system",
@@ -260,7 +290,7 @@ impl OpenAIService {
         }
     }
 
-    pub async fn generate_task_from_text(&self, user_input: &str) -> Result<AIGeneratedTask> {
+    async fn generate_task_from_text(&self, user_input: &str) -> Result<AIGeneratedTask> {
         // 獲取當前時間並格式化
         let now = Utc::now();
         let current_time_str = now.to_rfc3339(); // e.g., "2025-08-17T12:00:00Z"
@@ -356,7 +386,7 @@ impl OpenAIService {
         let user_message = format!("請根據以下描述生成任務：{}", user_input);
 
         let request = OpenAIRequest {
-            model: "gpt-4o-mini".to_string(),
+            model: self.model.clone().to_string(),
             messages: vec![
                 ChatMessage {
                     role: "system".to_string(),
@@ -399,6 +429,372 @@ impl OpenAIService {
         } else {
             Err(anyhow::anyhow!("OpenAI 未返回有效回應"))
         }
+    }
+}
+
+// OpenRouter 服務實現
+pub struct OpenRouterService {
+    api_key: String,
+    model: String,
+    client: reqwest::Client,
+}
+
+impl OpenRouterService {
+    pub fn new(api_key: String, model: String) -> Self {
+        Self {
+            api_key,
+            model,
+            client: reqwest::Client::new(),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl AIService for OpenRouterService {
+    async fn generate_achievement_from_text(&self, user_input: &str) -> Result<AIGeneratedAchievement> {
+        let system_prompt = r#"你是一個成就設計助手。根據用戶的行為數據分析，生成個性化且具有激勵性的成就。
+
+請仔細分析用戶的：
+1. 已有成就列表
+2. 任務完成狀況
+3. 任務取消/失敗狀況
+4. 待完成任務
+
+**設計原則：**
+- 成就名稱要幽默且具體，如「成為英語字典」「跑火入魔」
+- 基於用戶實際行為模式生成，不要憑空想像
+- 如果用戶在某領域已有基礎成就且表現優秀，可考慮升級版成就
+- 避免與現有成就重複
+
+**成就分類：**
+- task_mastery: 任務精通類
+- consistency: 持續性類  
+- challenge_overcome: 克服挑戰類
+- skill_development: 技能發展類
+
+**達成條件類型：**
+- consecutive_days: 連續天數
+- total_completions: 總完成次數  
+- task_complete: 完成任務總數
+- streak_recovery: 從失敗中恢復
+- skill_level: 技能等級
+- learning_task_complete: 學習任務完成
+- intelligence_attribute: 智力屬性達成
+- endurance_attribute: 毅力屬性達成  
+- creativity_attribute: 創造力屬性達成
+- social_attribute: 社交力屬性達成
+- focus_attribute: 專注力屬性達成
+- adaptability_attribute: 適應力屬性達成
+
+**經驗值獎勵計算：**
+- 基於難度：簡單成就 50-100，中等 100-200，困難 200-500
+
+請以 JSON 格式回應：
+{
+  "name": "成就名稱（幽默且具體）",
+  "description": "成就描述（選填）", 
+  "icon": "圖標名稱（選填）",
+  "category": "成就分類",
+  "requirement_type": "達成條件類型",
+  "requirement_value": 數值,
+  "experience_reward": 經驗值獎勵
+}
+
+範例：
+輸入：使用者連續完成「背英語單字」30天，但經常取消「運動」任務
+輸出：
+{
+  "name": "成為英語字典",
+  "description": "連續30天完成背英語單字，詞彙量已經超越一般字典",
+  "icon": "📖",
+  "category": "task_mastery",
+  "requirement_type": "consecutive_days", 
+  "requirement_value": 30,
+  "experience_reward": 300
+}"#;
+
+        let user_message = format!("請根據以下用戶行為數據生成合適的成就：{}", user_input);
+
+        let request = OpenRouterRequest {
+            model: self.model.clone(),
+            messages: vec![
+                ChatMessage {
+                    role: "system".to_string(),
+                    content: system_prompt.to_string(),
+                },
+                ChatMessage {
+                    role: "user".to_string(),
+                    content: user_message,
+                },
+            ],
+            max_completion_tokens: 4000,
+            response_format: ResponseFormat {
+                format_type: "json_object".to_string(),
+            },
+        };
+
+        let response = self.client
+            .post("https://openrouter.ai/api/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .header("HTTP-Referer", "https://openrouter.ai")
+            .header("X-Title", "LifeUp Backend")
+            .json(&request)
+            .send()
+            .await?;
+
+        let status = response.status();
+        log::info!("OpenRouter API 響應狀態: {}", status);
+
+        if !status.is_success() {
+            let error_text = response.text().await?;
+            log::error!("OpenRouter API 錯誤響應: {}", error_text);
+            return Err(anyhow::anyhow!("OpenRouter API 錯誤 ({}): {}", status, error_text));
+        }
+
+        let response_text = response.text().await?;
+        log::info!("OpenRouter API 響應長度: {} bytes", response_text.len());
+
+        if response_text.is_empty() {
+            log::error!("OpenRouter API 返回空響應");
+            return Err(anyhow::anyhow!("OpenRouter API 返回空響應"));
+        }
+
+        log::info!("OpenRouter 完整響應: {}", &response_text);
+
+        let openrouter_response: OpenRouterResponse = serde_json::from_str(&response_text)
+            .map_err(|e| {
+                log::error!("解析 OpenRouter 響應失敗: {}. 響應內容: {}", e, &response_text[..std::cmp::min(200, response_text.len())]);
+                anyhow::anyhow!("解析 OpenRouter 響應失敗: {}", e)
+            })?;
+
+        if let Some(choice) = openrouter_response.choices.first() {
+            let achievement_json = &choice.message.content;
+            log::info!("AI 返回的成就 JSON 長度: {} 字符", achievement_json.len());
+            log::debug!("AI 返回的成就 JSON 內容: {}", achievement_json);
+
+            if achievement_json.trim().is_empty() {
+                log::error!("AI 返回的 content 為空");
+                return Err(anyhow::anyhow!("AI 返回的內容為空"));
+            }
+
+            let generated_achievement: AIGeneratedAchievement = serde_json::from_str(achievement_json)
+                .map_err(|e| {
+                    log::error!("解析成就 JSON 失敗: {}. JSON 內容: {}", e, achievement_json);
+                    anyhow::anyhow!("解析成就 JSON 失敗: {}", e)
+                })?;
+
+            validate_generated_achievement(&generated_achievement)?;
+
+            Ok(generated_achievement)
+        } else {
+            log::error!("OpenRouter 響應中沒有 choices");
+            Err(anyhow::anyhow!("OpenRouter 未返回有效回應"))
+        }
+    }
+
+    async fn generate_task_preview(&self, prompt: &str) -> Result<String> {
+        let request = serde_json::json!({
+            "model": self.model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "你是一個充滿活力和鼓勵的任務助手。用積極正面的語氣為用戶介紹任務，讓他們感到興奮和有動力去完成。"
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            "temperature": 0.8,
+            "response_format": {
+                "type": "json_object"
+            },
+            "max_completion_tokens": 4000
+        });
+        log::info!("OpenRouter Request: {}", serde_json::to_string_pretty(&request).unwrap());
+        let response = self.client
+            .post("https://openrouter.ai/api/v1/chat/completions")
+            .header("Host", "openrouter.ai")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .header("HTTP-Referer", "https://openrouter.ai")
+            .header("X-Title", "LifeUp Backend")
+            .json(&request)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await?;
+            return Err(anyhow::anyhow!("OpenRouter API 錯誤: {}", error_text));
+        }
+
+        let openrouter_response: OpenRouterResponse = response.json().await?;
+        
+        if let Some(choice) = openrouter_response.choices.first() {
+            Ok(choice.message.content.clone())
+        } else {
+            Err(anyhow::anyhow!("OpenRouter 未返回有效回應"))
+        }
+    }
+
+    async fn generate_task_from_text(&self, user_input: &str) -> Result<AIGeneratedTask> {
+        let now = Utc::now();
+        let current_time_str = now.to_rfc3339();
+
+        let system_prompt = format!(
+            r#"你是一個任務規劃助手。根據用戶的自然語言描述，生成結構化的任務資料。
+
+**重要：現在的時間是 {}。** 在生成任何與日期相關的欄位（如 start_date, due_date）時，請以此時間為基準進行推算。
+
+**截止日期生成規則：**
+- 對於大部分任務，你都應該設定一個合理的截止日期
+- 短期任務（1-3天內完成）：設定1-3天後的截止日期
+- 中期任務（1-2週完成）：設定1-2週後的截止日期
+- 長期任務（1個月以上）：設定1-3個月後的截止日期
+- 只有對於沒有明確時間限制的習慣類任務才設定 due_date 為 null
+- 如果用戶明確提到時間（如"明天"、"下週"、"月底"），一定要根據當前時間計算對應的截止日期
+
+任務類型說明：
+- main: 主要任務（重要的長期目標，通常設定較長的截止日期）
+- side: 副線任務（次要的短期任務，通常設定較短的截止日期）
+- challenge: 挑戰任務（困難且有成就感的任務，根據具體內容設定截止日期）
+- daily: 日常任務（例行性任務，重複性任務通常不設定截止日期）
+
+優先級：0=低, 1=中, 2=高
+難度：1-5（1=非常簡單, 5=非常困難）
+經驗值：根據難度和重要性計算，通常是 difficulty * 20 + priority * 10
+
+重複模式（僅限日常任務）：
+- daily: 每天
+- weekdays: 工作日
+- weekends: 週末
+- weekly: 每週
+
+請以 JSON 格式回應，包含以下欄位：
+{{
+  "title": "任務標題",
+  "description": "任務描述（選填）",
+  "task_type": "main/side/challenge/daily",
+  "priority": 0-2,
+  "difficulty": 1-5,
+  "experience": 經驗值,
+  "due_date": "截止日期（ISO 8601格式，大多數情況下都應該設定）",
+  "is_recurring": false,
+  "recurrence_pattern": null,
+  "start_date": null,
+  "end_date": null,
+  "completion_target": null
+}}
+
+如果是重複性任務，請設置：
+- is_recurring: true
+- recurrence_pattern: "daily/weekdays/weekends/weekly"
+- start_date: 開始日期（ISO 8601格式）
+- completion_target: 0.8（預設80%完成率目標）
+- due_date: null（重複性任務通常不設定單一截止日期）
+
+範例輸入："學習Python程式設計"
+範例輸出：
+{{
+  "title": "學習Python程式設計",
+  "description": "系統性學習Python程式語言基礎知識",
+  "task_type": "main",
+  "priority": 2,
+  "difficulty": 3,
+  "experience": 80,
+  "due_date": "2024-02-15T23:59:59Z",
+  "is_recurring": false,
+  "recurrence_pattern": null,
+  "start_date": null,
+  "end_date": null,
+  "completion_target": null
+}}
+
+範例輸入："明天交報告"
+範例輸出：
+{{
+  "title": "完成並提交報告",
+  "description": "整理資料並完成報告撰寫",
+  "task_type": "side",
+  "priority": 2,
+  "difficulty": 2,
+  "experience": 60,
+  "due_date": "2024-01-02T18:00:00Z",
+  "is_recurring": false,
+  "recurrence_pattern": null,
+  "start_date": null,
+  "end_date": null,
+  "completion_target": null
+}}"#,
+            current_time_str
+        );
+
+        let user_message = format!("請根據以下描述生成任務：{}", user_input);
+
+        let request = OpenRouterRequest {
+            model: self.model.clone(),
+            messages: vec![
+                ChatMessage {
+                    role: "system".to_string(),
+                    content: system_prompt,
+                },
+                ChatMessage {
+                    role: "user".to_string(),
+                    content: user_message,
+                },
+            ],
+            max_completion_tokens: 500,
+            response_format: ResponseFormat {
+                format_type: "json_object".to_string(),
+            },
+        };
+        log::info!("OpenRouter Request: {}", serde_json::to_string_pretty(&request).unwrap());
+
+        let response = self.client
+            .post("https://openrouter.ai/api/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .header("HTTP-Referer", "https://openrouter.ai")
+            .header("X-Title", "LifeUp Backend")
+            .json(&request)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await?;
+            return Err(anyhow::anyhow!("OpenRouter API 錯誤: {}", error_text));
+        }
+
+        let openrouter_response: OpenRouterResponse = response.json().await?;
+        
+        if let Some(choice) = openrouter_response.choices.first() {
+            let task_json = &choice.message.content;
+            let generated_task: AIGeneratedTask = serde_json::from_str(task_json)?;
+            
+            validate_generated_task(&generated_task)?;
+            
+            Ok(generated_task)
+        } else {
+            Err(anyhow::anyhow!("OpenRouter 未返回有效回應"))
+        }
+    }
+}
+
+// AI 服務工廠函數
+pub fn create_ai_service(config: &AIConfig) -> Result<Box<dyn AIService + Send + Sync>> {
+    match config.api_option.as_str() {
+        "OpenAI" => {
+            let api_key = config.openai_api_key.as_ref()
+                .ok_or_else(|| anyhow::anyhow!("OpenAI API key 未設定"))?;
+            Ok(Box::new(OpenAIService::new(api_key.clone(), config.openai_model.clone())))
+        }
+        "OpenRouter" => {
+            let api_key = config.openrouter_api_key.as_ref()
+                .ok_or_else(|| anyhow::anyhow!("OpenRouter API key 未設定"))?;
+            Ok(Box::new(OpenRouterService::new(api_key.clone(), config.openrouter_model.clone())))
+        }
+        _ => Err(anyhow::anyhow!("不支援的 AI 服務選項: {}", config.api_option))
     }
 }
 

@@ -3,7 +3,7 @@ use rbatis::RBatis;
 use uuid::Uuid;
 use chrono::{Utc, Datelike};
 use crate::models::*;
-use crate::ai_service::{OpenAIService, convert_to_achievement_model};
+use crate::ai_service::convert_to_achievement_model;
 use rbs::{Value, value};
 use bcrypt::{hash, verify, DEFAULT_COST};
 use serde_json::json;
@@ -3016,23 +3016,23 @@ pub async fn generate_achievement_with_ai(
     rb: web::Data<RBatis>,
     req: web::Json<GenerateAchievementRequest>,
 ) -> Result<HttpResponse> {
-    // 檢查 OpenAI API Key 是否存在
-    let api_key = match std::env::var("OPENAI_API_KEY") {
-        Ok(key) => key,
-        Err(_) => {
+    // 載入配置
+    let config = crate::config::Config::from_env();
+    
+    // 創建 AI 服務
+    let ai_service = match crate::ai_service::create_ai_service(&config.app.ai) {
+        Ok(service) => service,
+        Err(e) => {
             return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
                 success: false,
                 data: None,
-                message: "OPENAI_API_KEY 環境變數未設置".to_string(),
+                message: format!("AI 服務初始化失敗: {}", e),
             }));
         }
     };
 
-    // 創建 OpenAI 服務
-    let openai_service = OpenAIService::new(api_key);
-
     // 生成成就
-    match openai_service.generate_achievement_from_text(&req.user_input).await {
+    match ai_service.generate_achievement_from_text(&req.user_input).await {
         Ok(ai_achievement) => {
             // 轉換為資料庫模型
             let achievement_model = convert_to_achievement_model(ai_achievement.clone());
@@ -3219,73 +3219,34 @@ pub async fn test_endpoint() -> Result<HttpResponse> {
 }
 
 async fn call_chatgpt_api(message: &str) -> Result<String, Box<dyn std::error::Error>> {
-    log::info!("開始呼叫ChatGPT API");
+    log::info!("開始呼叫AI API");
     
-    let api_key = match std::env::var("OPENAI_API_KEY") {
-        Ok(key) => {
-            log::info!("找到OPENAI_API_KEY環境變數");
-            key
-        },
-        Err(_) => {
-            log::warn!("OPENAI_API_KEY 環境變數未設置");
-            return Err("OPENAI_API_KEY 環境變數未設置".into());
+    // 載入配置
+    let config = crate::config::Config::from_env();
+    
+    // 創建 AI 服務
+    let ai_service = match crate::ai_service::create_ai_service(&config.app.ai) {
+        Ok(service) => service,
+        Err(e) => {
+            log::error!("AI 服務初始化失敗: {}", e);
+            return Err(format!("AI 服務初始化失敗: {}", e).into());
         }
     };
     
-    let client = reqwest::Client::new();
-    let prompt = "你是一位專業的教練，請根據給定的訊息提供建議。一律使用繁體中文回答。\n\n重要提示：如果使用者的訊息中包含以下任何意圖，請提醒他們使用任務創建模式：\n- 想要建立、創建、新增、設定任務\n- 提到「我要做...」、「我想要...」、「幫我規劃...」、「提醒我...」\n- 描述具體的待辦事項或目標\n- 想要安排時間或設定提醒\n\n當偵測到這些意圖時，請回覆：「我注意到您想要創建任務！建議您切換到『任務創建模式』（在輸入框上方的下拉選單中選擇），這樣我可以更精準地幫您生成結構化的任務。在任務創建模式下，您只需描述任務內容，系統就會自動生成完整的任務資料。」\n\n如果使用者只是想討論、詢問建議或聊天，則正常回應即可。";
-    
-    let request_body = json!({
-        "model": "gpt-4o-mini",
-        "messages": [
-            {"role": "system", "content": prompt},
-            {"role": "user", "content": message}
-        ]
-    });
+    let prompt = format!("你是一位專業的教練，請根據給定的訊息提供建議。一律使用繁體中文回答。\n\n重要提示：如果使用者的訊息中包含以下任何意圖，請提醒他們使用任務創建模式：\n- 想要建立、創建、新增、設定任務\n- 提到「我要做...」、「我想要...」、「幫我規劃...」、「提醒我...」\n- 描述具體的待辦事項或目標\n- 想要安排時間或設定提醒\n\n當偵測到這些意圖時，請回覆：「我注意到您想要創建任務！建議您切換到『任務創建模式』（在輸入框上方的下拉選單中選擇），這樣我可以更精準地幫您生成結構化的任務。在任務創建模式下，您只需描述任務內容，系統就會自動生成完整的任務資料。」\n\n如果使用者只是想討論、詢問建議或聊天，則正常回應即可。\n\n用戶訊息：{}", message);
 
-    log::info!("準備發送請求到OpenAI API");
+    log::info!("準備發送請求到AI API");
     
-    let response = client
-        .post("https://api.openai.com/v1/chat/completions")
-        .header("Authorization", format!("Bearer {}", api_key))
-        .header("Content-Type", "application/json")
-        .json(&request_body)
-        .send()
-        .await
-        .map_err(|e| {
-            log::error!("發送請求到OpenAI API失敗: {}", e);
-            format!("網路請求失敗: {}", e)
-        })?;
-
-    let status = response.status();
-    log::info!("收到OpenAI API回應，狀態碼: {}", status);
-    if !status.is_success() {
-        let error_text = response.text().await.unwrap_or_default();
-        log::error!("OpenAI API 錯誤回應: {}", error_text);
-        return Err(format!("ChatGPT API 錯誤 ({}): {}", status, error_text).into());
+    match ai_service.generate_task_preview(&prompt).await {
+        Ok(response) => {
+            log::info!("成功從AI API獲取回應");
+            Ok(response)
+        },
+        Err(e) => {
+            log::error!("AI API 調用失敗: {}", e);
+            Err(format!("AI API 調用失敗: {}", e).into())
+        }
     }
-
-    let response_json: serde_json::Value = response.json().await
-        .map_err(|e| {
-            log::error!("解析OpenAI API回應JSON失敗: {}", e);
-            format!("解析回應失敗: {}", e)
-        })?;
-    
-    log::debug!("OpenAI API回應JSON: {}", response_json);
-    
-    let content = response_json
-        .get("choices")
-        .and_then(|choices| choices.get(0))
-        .and_then(|choice| choice.get("message"))
-        .and_then(|message| message.get("content"))
-        .and_then(|content| content.as_str())
-        .ok_or_else(|| {
-            log::error!("無法從OpenAI API回應中提取內容");
-            "無法解析ChatGPT回應"
-        })?;
-
-    log::info!("成功獲取ChatGPT回應");
-    Ok(content.to_string())
 }
 
 // 檢查並更新父任務狀態
@@ -3762,18 +3723,19 @@ async fn get_user_personality_type(rb: &RBatis, user_id: Option<String>) -> Resu
     Ok(CoachPersonalityType::EmotionalSupport)
 }
 
-// 帶個性的ChatGPT API呼叫
-async fn call_chatgpt_api_with_personality(rb: &RBatis, message: &str, user_id: Option<String>) -> Result<String, Box<dyn std::error::Error>> {
-    log::info!("開始呼叫個性化ChatGPT API");
+// 帶個性的AI API呼叫
+async fn call_ai_api_with_personality(rb: &RBatis, message: &str, user_id: Option<String>) -> Result<String, Box<dyn std::error::Error>> {
+    log::info!("開始呼叫個性化AI API");
     
-    let api_key = match std::env::var("OPENAI_API_KEY") {
-        Ok(key) => {
-            log::info!("找到OPENAI_API_KEY環境變數");
-            key
-        },
-        Err(_) => {
-            log::warn!("OPENAI_API_KEY 環境變數未設置");
-            return Err("OPENAI_API_KEY 環境變數未設置".into());
+    // 載入配置
+    let config = crate::config::Config::from_env();
+    
+    // 創建 AI 服務
+    let ai_service = match crate::ai_service::create_ai_service(&config.app.ai) {
+        Ok(service) => service,
+        Err(e) => {
+            log::error!("AI 服務初始化失敗: {}", e);
+            return Err(format!("AI 服務初始化失敗: {}", e).into());
         }
     };
     
@@ -3783,59 +3745,20 @@ async fn call_chatgpt_api_with_personality(rb: &RBatis, message: &str, user_id: 
     
     log::info!("使用教練個性: {:?}", personality_type);
     
-    let client = reqwest::Client::new();
-    
-    let request_body = json!({
-        "model": "gpt-4o-mini",
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": message}
-        ]
-    });
+    let prompt = format!("{}\n\n用戶訊息：{}", system_prompt, message);
 
-    log::info!("準備發送個性化請求到OpenAI API");
+    log::info!("準備發送個性化請求到AI API");
     
-    let response = client
-        .post("https://api.openai.com/v1/chat/completions")
-        .header("Authorization", format!("Bearer {}", api_key))
-        .header("Content-Type", "application/json")
-        .json(&request_body)
-        .send()
-        .await
-        .map_err(|e| {
-            log::error!("發送個性化請求到OpenAI API失敗: {}", e);
-            format!("網路請求失敗: {}", e)
-        })?;
-
-    let status = response.status();
-    log::info!("收到個性化OpenAI API回應，狀態碼: {}", status);
-    if !status.is_success() {
-        let error_text = response.text().await.unwrap_or_default();
-        log::error!("個性化OpenAI API 錯誤回應: {}", error_text);
-        return Err(format!("ChatGPT API 錯誤 ({}): {}", status, error_text).into());
+    match ai_service.generate_task_preview(&prompt).await {
+        Ok(response) => {
+            log::info!("成功獲取個性化AI回應");
+            Ok(response)
+        },
+        Err(e) => {
+            log::error!("個性化AI API 調用失敗: {}", e);
+            Err(format!("AI API 調用失敗: {}", e).into())
+        }
     }
-
-    let response_json: serde_json::Value = response.json().await
-        .map_err(|e| {
-            log::error!("解析個性化OpenAI API回應JSON失敗: {}", e);
-            format!("解析回應失敗: {}", e)
-        })?;
-    
-    log::debug!("個性化OpenAI API回應JSON: {}", response_json);
-    
-    let content = response_json
-        .get("choices")
-        .and_then(|choices| choices.get(0))
-        .and_then(|choice| choice.get("message"))
-        .and_then(|message| message.get("content"))
-        .and_then(|content| content.as_str())
-        .ok_or_else(|| {
-            log::error!("無法從個性化OpenAI API回應中提取內容");
-            "無法解析ChatGPT回應"
-        })?;
-
-    log::info!("成功獲取個性化ChatGPT回應");
-    Ok(content.to_string())
 }
 
 // 新增：帶個性的聊天API
@@ -3845,7 +3768,7 @@ pub async fn send_message_with_personality(
 ) -> Result<HttpResponse> {
     // 先記錄原始請求體
     let body_str = String::from_utf8_lossy(&body);
-    log::info!("收到帶個性的ChatGPT API請求，原始body: {}", body_str);
+    log::info!("收到帶個性的AI API請求，原始body: {}", body_str);
 
     // 嘗試解析 JSON
     let req: ChatWithPersonalityRequest = match serde_json::from_slice(&body) {
@@ -3914,14 +3837,14 @@ pub async fn send_message_with_personality(
         log::info!("訪客模式，不保存聊天記錄");
     }
 
-    // 呼叫帶個性的ChatGPT API
-    let ai_response = match call_chatgpt_api_with_personality(rb.get_ref(), &req.message, user_id.clone()).await {
+    // 呼叫帶個性的AI API
+    let ai_response = match call_ai_api_with_personality(rb.get_ref(), &req.message, user_id.clone()).await {
         Ok(response) => {
-            log::info!("成功獲取個性化ChatGPT回應");
+            log::info!("成功獲取個性化AI回應");
             response
         }
         Err(e) => {
-            log::warn!("個性化ChatGPT API呼叫失敗，使用本地回應: {}", e);
+            log::warn!("個性化AI API呼叫失敗，使用本地回應: {}", e);
             // 根據用戶個性提供不同的備援回應
             let personality_type = get_user_personality_type(rb.get_ref(), user_id.clone()).await
                 .unwrap_or(CoachPersonalityType::EmotionalSupport);
@@ -3967,7 +3890,7 @@ pub async fn send_message_with_direct_personality(
     rb: web::Data<RBatis>,
     req: web::Json<DirectPersonalityChatRequest>,
 ) -> Result<HttpResponse> {
-    log::info!("收到直接指定個性的ChatGPT API請求: {} (個性: {})", req.message, req.personality_type);
+    log::info!("收到直接指定個性的AI API請求: {} (個性: {})", req.message, req.personality_type);
     
     // 解析個性類型
     let personality_type = match CoachPersonalityType::from_string(&req.personality_type) {
@@ -3982,13 +3905,13 @@ pub async fn send_message_with_direct_personality(
     };
 
     // 直接使用指定的個性呼叫AI服務
-    let ai_response = match call_chatgpt_api_with_direct_personality(&req.message, personality_type.clone()).await {
+    let ai_response = match call_ai_api_with_direct_personality(&req.message, personality_type.clone()).await {
         Ok(response) => {
-            log::info!("成功獲取指定個性的ChatGPT回應");
+            log::info!("成功獲取指定個性的AI回應");
             response
         }
         Err(e) => {
-            log::warn!("指定個性的ChatGPT API呼叫失敗，使用備援回應: {}", e);
+            log::warn!("指定個性的AI API呼叫失敗，使用備援回應: {}", e);
             // 根據指定個性提供備援回應
             match personality_type {
                 CoachPersonalityType::HarshCritic => {
@@ -4012,72 +3935,38 @@ pub async fn send_message_with_direct_personality(
     })))
 }
 
-// 直接使用指定個性呼叫ChatGPT API
-async fn call_chatgpt_api_with_direct_personality(message: &str, personality_type: CoachPersonalityType) -> Result<String, Box<dyn std::error::Error>> {
-    log::info!("開始呼叫指定個性的ChatGPT API: {:?}", personality_type);
+// 直接使用指定個性呼叫AI API
+async fn call_ai_api_with_direct_personality(message: &str, personality_type: CoachPersonalityType) -> Result<String, Box<dyn std::error::Error>> {
+    log::info!("開始呼叫指定個性的AI API: {:?}", personality_type);
     
-    let api_key = match std::env::var("OPENAI_API_KEY") {
-        Ok(key) => {
-            log::info!("找到OPENAI_API_KEY環境變數");
-            key
-        },
-        Err(_) => {
-            log::warn!("OPENAI_API_KEY 環境變數未設置");
-            return Err("OPENAI_API_KEY 環境變數未設置".into());
+    // 載入配置
+    let config = crate::config::Config::from_env();
+    
+    // 創建 AI 服務
+    let ai_service = match crate::ai_service::create_ai_service(&config.app.ai) {
+        Ok(service) => service,
+        Err(e) => {
+            log::error!("AI 服務初始化失敗: {}", e);
+            return Err(format!("AI 服務初始化失敗: {}", e).into());
         }
     };
     
     let system_prompt = personality_type.system_prompt();
     log::info!("使用系統提示詞: {}", system_prompt);
     
-    let client = reqwest::Client::new();
+    let prompt = format!("{}\n\n用戶訊息：{}", system_prompt, message);
+
+    log::info!("準備發送指定個性請求到AI API");
     
-    let request_body = json!({
-        "model": "gpt-4o-mini",
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": message}
-        ]
-    });
-
-    log::info!("準備發送指定個性請求到OpenAI API");
-    
-    let response = client
-        .post("https://api.openai.com/v1/chat/completions")
-        .header("Authorization", format!("Bearer {}", api_key))
-        .header("Content-Type", "application/json")
-        .json(&request_body)
-        .send()
-        .await
-        .map_err(|e| {
-            log::error!("發送指定個性請求到OpenAI API失敗: {}", e);
-            format!("網路請求失敗: {}", e)
-        })?;
-
-    let status = response.status();
-    log::info!("收到指定個性OpenAI API回應，狀態碼: {}", status);
-    
-    if !status.is_success() {
-        let error_text = response.text().await.unwrap_or_default();
-        log::error!("指定個性OpenAI API 錯誤回應: {}", error_text);
-        return Err(format!("ChatGPT API 錯誤 ({}): {}", status, error_text).into());
-    }
-
-    let response_json: serde_json::Value = response.json().await
-        .map_err(|e| {
-            log::error!("解析指定個性OpenAI API回應JSON失敗: {}", e);
-            format!("解析JSON回應失敗: {}", e)
-        })?;
-
-    log::info!("成功解析指定個性OpenAI API回應JSON");
-
-    if let Some(content) = response_json["choices"][0]["message"]["content"].as_str() {
-        log::info!("成功提取指定個性ChatGPT回應內容");
-        Ok(content.to_string())
-    } else {
-        log::error!("無法從指定個性OpenAI API回應中提取內容");
-        log::debug!("回應JSON: {}", serde_json::to_string_pretty(&response_json).unwrap_or_default());
-        Err("無法提取AI回應內容".into())
+    match ai_service.generate_task_preview(&prompt).await {
+        Ok(response) => {
+            log::info!("成功提取指定個性AI回應內容");
+            Ok(response)
+        },
+        Err(e) => {
+            log::error!("指定個性AI API 調用失敗: {}", e);
+            Err(format!("AI API 調用失敗: {}", e).into())
+        }
     }
 }
 

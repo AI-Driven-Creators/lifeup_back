@@ -8,7 +8,7 @@ use serde_json::Value as JsonValue;
 
 use crate::models::{Task, User, GenerateTaskRequest, TaskStatus, Achievement, UserAchievement};
 use crate::career_routes::parse_ai_tasks_response;
-use crate::ai_service::{OpenAIService, convert_to_achievement_model};
+use crate::ai_service::convert_to_achievement_model;
 use crate::achievement_service::AchievementService;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -63,23 +63,24 @@ pub struct CreateTaskFromJsonRequest {
 pub async fn generate_task_json(
     req: web::Json<GenerateTaskJsonRequest>,
 ) -> Result<HttpResponse> {
-    // 從環境變數獲取 OpenAI API Key
-    let api_key = match std::env::var("OPENAI_API_KEY") {
-        Ok(key) => key,
-        Err(_) => {
-            log::error!("未設置 OPENAI_API_KEY 環境變數");
+    // 載入配置
+    let config = crate::config::Config::from_env();
+    
+    // 創建 AI 服務
+    let ai_service = match crate::ai_service::create_ai_service(&config.app.ai) {
+        Ok(service) => service,
+        Err(e) => {
+            log::error!("AI 服務初始化失敗: {}", e);
             return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
                 success: false,
                 data: None,
-                message: "未配置 OpenAI API Key，請聯繫管理員".to_string(),
+                message: format!("AI 服務初始化失敗: {}", e),
             }));
         }
     };
     
-    let openai_service = OpenAIService::new(api_key);
-    
     // 使用 AI 生成任務 JSON
-    match openai_service.generate_task_from_text(&req.description).await {
+    match ai_service.generate_task_from_text(&req.description).await {
         Ok(ai_task) => {
             log::info!("AI 成功生成任務 JSON: {:?}", ai_task);
             
@@ -472,23 +473,24 @@ pub async fn generate_task_with_ai(
         description: req.description.clone(),
     };
     
-    // 從環境變數獲取 OpenAI API Key
-    let api_key = match std::env::var("OPENAI_API_KEY") {
-        Ok(key) => key,
-        Err(_) => {
-            log::error!("未設置 OPENAI_API_KEY 環境變數");
+    // 載入配置
+    let config = crate::config::Config::from_env();
+    
+    // 創建 AI 服務
+    let ai_service = match crate::ai_service::create_ai_service(&config.app.ai) {
+        Ok(service) => service,
+        Err(e) => {
+            log::error!("AI 服務初始化失敗: {}", e);
             return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
                 success: false,
                 data: None,
-                message: "未配置 OpenAI API Key，請聯繫管理員".to_string(),
+                message: format!("AI 服務初始化失敗: {}", e),
             }));
         }
     };
     
-    let openai_service = OpenAIService::new(api_key);
-    
     // 使用 AI 生成任務
-    match openai_service.generate_task_from_text(&req.description).await {
+    match ai_service.generate_task_from_text(&req.description).await {
         Ok(ai_task) => {
             // 轉換為 CreateTaskInput
             let task_input = CreateTaskInput {
@@ -656,9 +658,9 @@ pub async fn validate_and_preview_task(
             }
         }
         
-        // 如果有 OpenAI API Key，嘗試使用 AI 生成更豐富的預覽
-        if let Ok(api_key) = std::env::var("OPENAI_API_KEY") {
-            let openai_service = OpenAIService::new(api_key);
+        // 嘗試使用 AI 生成更豐富的預覽
+        let config = crate::config::Config::from_env();
+        if let Ok(ai_service) = crate::ai_service::create_ai_service(&config.app.ai) {
             
             // 建構提示詞
             let prompt = format!(
@@ -679,7 +681,7 @@ pub async fn validate_and_preview_task(
             );
             
             // 使用 AI 生成預覽
-            match openai_service.generate_task_preview(&prompt).await {
+            match ai_service.generate_task_preview(&prompt).await {
                 Ok(ai_preview) => Some(ai_preview),
                 Err(_) => Some(simple_preview), // 如果 AI 生成失敗，使用簡單預覽
             }
@@ -715,25 +717,26 @@ pub struct GenerateTaskFromChatRequest {
 pub async fn generate_task_from_chat(
     req: web::Json<GenerateTaskFromChatRequest>,
 ) -> Result<HttpResponse> {
-    // 從環境變數獲取 OpenAI API Key
-    let api_key = match std::env::var("OPENAI_API_KEY") {
-        Ok(key) => key,
-        Err(_) => {
+    // 載入配置
+    let config = crate::config::Config::from_env();
+    
+    // 創建 AI 服務
+    let ai_service = match crate::ai_service::create_ai_service(&config.app.ai) {
+        Ok(service) => service,
+        Err(e) => {
             return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
                 success: false,
                 data: None,
-                message: "未配置 OpenAI API Key".to_string(),
+                message: format!("AI 服務初始化失敗: {}", e),
             }));
         }
     };
-    
-    let openai_service = OpenAIService::new(api_key);
     
     // 將聊天記錄組合成描述
     let description = req.chat_history.join("\n");
     
     // 使用 AI 生成任務
-    match openai_service.generate_task_from_text(&description).await {
+    match ai_service.generate_task_from_text(&description).await {
         Ok(ai_task) => {
             let task_json = CreateTaskInput {
                 title: ai_task.title,
@@ -916,21 +919,20 @@ pub async fn generate_achievement_from_tasks(
     log::info!("生成的 AI 提示長度: {} 字符", ai_prompt.len());
     
     // 4. 調用 AI 生成成就
-    let api_key = match std::env::var("OPENAI_API_KEY") {
-        Ok(key) => key,
-        Err(_) => {
-            log::error!("未設置 OPENAI_API_KEY 環境變數");
+    let config = crate::config::Config::from_env();
+    let ai_service = match crate::ai_service::create_ai_service(&config.app.ai) {
+        Ok(service) => service,
+        Err(e) => {
+            log::error!("AI 服務初始化失敗: {}", e);
             return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
                 success: false,
                 data: None,
-                message: "未配置 OpenAI API Key，請聯繫管理員".to_string(),
+                message: format!("AI 服務初始化失敗: {}", e),
             }));
         }
     };
     
-    let openai_service = OpenAIService::new(api_key);
-    
-    let ai_achievement = match openai_service.generate_achievement_from_text(&ai_prompt).await {
+    let ai_achievement = match ai_service.generate_achievement_from_text(&ai_prompt).await {
         Ok(achievement) => achievement,
         Err(e) => {
             log::error!("AI 生成成就失敗: {}", e);

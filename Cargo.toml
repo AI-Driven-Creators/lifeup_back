@@ -69,3 +69,6 @@ reqwest = { version = "0.11", features = ["json"] }
 
 # JSON Schema 驗證
 jsonschema = "0.17"
+
+# Async trait 支援
+async-trait = "0.1"

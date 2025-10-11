@@ -1750,6 +1750,7 @@ dependencies = [
  "actix-session",
  "actix-web",
  "anyhow",
+ "async-trait",
  "bcrypt",
  "chrono",
  "config",
