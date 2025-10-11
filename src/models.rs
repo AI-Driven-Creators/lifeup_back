@@ -326,6 +326,7 @@ pub struct Task {
     pub skill_tags: Option<Vec<String>>,
     pub career_mainline_id: Option<String>,
     pub task_category: Option<String>,
+    pub attributes: Option<serde_json::Value>,  // 任務完成時獲得的屬性獎勵 {"intelligence": 5, "creativity": 3}
 }
 crud!(Task{});
 
@@ -609,6 +610,7 @@ pub struct CreateTaskRequest {
     pub end_date: Option<DateTime<Utc>>,
     pub completion_target: Option<f64>,
     pub skill_tags: Option<Vec<String>>,
+    pub attributes: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -663,11 +665,15 @@ pub struct SaveQuizResultsRequest {
     pub workstyle_results: serde_json::Value,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct SurveyAnswers {
+    #[serde(default)]
     pub current_level: String,
+    #[serde(default)]
     pub available_time: String,
+    #[serde(default)]
     pub learning_styles: Vec<String>,
+    #[serde(default)]
     pub timeline: String,
     pub motivation: Option<String>,
 }
@@ -718,6 +724,8 @@ pub struct GeneratedTask {
     pub skill_tags: Vec<SkillTag>,
     pub resources: Vec<String>,
     pub personality_match: Option<String>,
+    #[serde(default)]
+    pub attributes: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

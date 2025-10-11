@@ -520,6 +520,7 @@ pub fn convert_to_task_model(
         skill_tags: None,
         career_mainline_id: None,
         task_category: None,
+        attributes: None,
     }
 }
 

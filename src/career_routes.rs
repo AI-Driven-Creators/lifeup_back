@@ -244,41 +244,125 @@ pub async fn generate_career_tasks(
         }
     };
 
-    // 檢查是否已經為此測驗結果和職業生成過任務
+    // 4.5. 處理預覽數據：添加經驗值
+    log::info!("✅ 任務生成完成，處理預覽數據（添加經驗值）");
+
+    // 為每個任務添加經驗值（根據難度計算）
+    let process_task = |task: GeneratedTask| -> serde_json::Value {
+        let experience = match task.difficulty {
+            1 => 15,
+            2 => 25,
+            3 => 35,
+            4 => 50,
+            5 => 75,
+            _ => 25,
+        };
+
+        // 將 GeneratedTask 轉換為 JSON，並添加 experience 欄位
+        let mut task_json = serde_json::to_value(&task).unwrap_or(serde_json::json!({}));
+        task_json["experience"] = serde_json::json!(experience);
+        task_json
+    };
+
+    // 處理所有任務類型
+    let processed_main_tasks: Vec<serde_json::Value> = generated_tasks.main_tasks
+        .into_iter()
+        .map(process_task)
+        .collect();
+
+    let processed_daily_tasks: Vec<serde_json::Value> = generated_tasks.daily_tasks
+        .into_iter()
+        .map(process_task)
+        .collect();
+
+    let processed_project_tasks: Vec<serde_json::Value> = generated_tasks.project_tasks
+        .into_iter()
+        .map(process_task)
+        .collect();
+
+    let total_tasks = processed_main_tasks.len() +
+                     processed_daily_tasks.len() +
+                     processed_project_tasks.len();
+
+    log::info!("✅ 預覽數據處理完成，共 {} 個任務", total_tasks);
+
+    // 返回預覽數據供前端顯示
+    return Ok(HttpResponse::Ok().json(ApiResponse {
+        success: true,
+        data: Some(serde_json::json!({
+            "preview_mode": true,
+            "quiz_result_id": request.quiz_result_id,
+            "selected_career": request.selected_career,
+            "user_id": user_id,
+            "survey_answers": request.survey_answers,
+            "learning_summary": generated_tasks.learning_summary,
+            "personality_insights": generated_tasks.personality_insights,
+            "estimated_months": generated_tasks.estimated_months,
+            "total_tasks": total_tasks,
+            "main_tasks": processed_main_tasks,
+            "daily_tasks": processed_daily_tasks,
+            "project_tasks": processed_project_tasks,
+        })),
+        message: "任務預覽生成成功，請確認是否接受".to_string(),
+    }));
+}
+
+// 新增：接受並保存職業任務的 API
+pub async fn accept_career_tasks(
+    rb: web::Data<RBatis>,
+    request: web::Json<serde_json::Value>
+) -> Result<HttpResponse> {
+    log::info!("用戶接受職業任務，開始保存到資料庫");
+
+    // 解析請求數據
+    let quiz_result_id = request["quiz_result_id"].as_str().unwrap_or_default().to_string();
+    let selected_career = request["selected_career"].as_str().unwrap_or_default().to_string();
+    let user_id = request["user_id"].as_str().unwrap_or_default().to_string();
+
+    let survey_answers: SurveyAnswers = serde_json::from_value(request["survey_answers"].clone())
+        .unwrap_or_default();
+
+    let learning_summary = request["learning_summary"].as_str().unwrap_or_default().to_string();
+    let estimated_months = request["estimated_months"].as_i64().unwrap_or(6) as i32;
+
+    let main_tasks: Vec<GeneratedTask> = serde_json::from_value(request["main_tasks"].clone()).unwrap_or_default();
+    let daily_tasks: Vec<GeneratedTask> = serde_json::from_value(request["daily_tasks"].clone()).unwrap_or_default();
+    let project_tasks: Vec<GeneratedTask> = serde_json::from_value(request["project_tasks"].clone()).unwrap_or_default();
+
+    let total_tasks = main_tasks.len() + daily_tasks.len() + project_tasks.len();
+
+    // 檢查是否已經為此測驗結果和職業生成過任務 - 如果有則先刪除
     let existing_check = rb.query_decode::<Vec<CareerMainlines>>(
-        "SELECT * FROM career_mainlines WHERE quiz_result_id = ? AND selected_career = ? LIMIT 1",
+        "SELECT * FROM career_mainlines WHERE quiz_result_id = ? AND selected_career = ?",
         vec![
-            rbs::to_value!(request.quiz_result_id.clone()),
-            rbs::to_value!(request.selected_career.clone()),
+            rbs::to_value!(quiz_result_id.clone()),
+            rbs::to_value!(selected_career.clone()),
         ],
     ).await;
 
     if let Ok(existing) = existing_check {
-        if !existing.is_empty() {
-            log::warn!("檢測到重複的任務生成請求: quiz_result_id={}, career={}",
-                      request.quiz_result_id, request.selected_career);
-            return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
-                success: false,
-                data: None,
-                message: "該職業主線已經生成過，請勿重複創建".to_string(),
-            }));
+        for old_mainline in existing {
+            if let Some(old_id) = &old_mainline.id {
+                log::info!("刪除舊的職業主線任務: {}", old_id);
+                // 刪除關聯的任務
+                let _ = rb.exec("DELETE FROM task WHERE career_mainline_id = ?", vec![rbs::to_value!(old_id.clone())]).await;
+                // 刪除職業主線記錄
+                let _ = rb.exec("DELETE FROM career_mainlines WHERE id = ?", vec![rbs::to_value!(old_id.clone())]).await;
+            }
         }
     }
 
     // 5. 創建職業主線記錄
     let mainline_id = Uuid::new_v4().to_string();
-    let total_tasks = generated_tasks.main_tasks.len() + 
-                     generated_tasks.daily_tasks.len() + 
-                     generated_tasks.project_tasks.len();
 
     let career_mainline = CareerMainlines {
         id: Some(mainline_id.clone()),
         user_id: Some(user_id.clone()),
-        quiz_result_id: Some(request.quiz_result_id.clone()),
-        selected_career: Some(request.selected_career.clone()),
-        survey_answers: Some(serde_json::to_string(&request.survey_answers)?),
+        quiz_result_id: Some(quiz_result_id.clone()),
+        selected_career: Some(selected_career.clone()),
+        survey_answers: Some(serde_json::to_string(&survey_answers)?),
         total_tasks_generated: Some(total_tasks as i32),
-        estimated_completion_months: Some(generated_tasks.estimated_months),
+        estimated_completion_months: Some(estimated_months),
         status: Some("active".to_string()),
         progress_percentage: Some(0.0),
         created_at: Some(Utc::now()),
@@ -301,11 +385,11 @@ pub async fn generate_career_tasks(
     let parent_task = Task {
         id: Some(parent_task_id.clone()),
         user_id: Some(user_id.clone()),
-        title: Some(format!("職業主線：{}", request.selected_career)),
+        title: Some(format!("職業主線：{}", selected_career)),
         description: Some(format!("{}\n\n📋 包含 {} 個子任務，完成後將掌握相關職業技能。\n\n🎯 預計學習時程：{} 個月",
-                                generated_tasks.learning_summary,
+                                learning_summary,
                                 total_tasks,
-                                generated_tasks.estimated_months)),
+                                estimated_months)),
         status: Some(0), // pending
         priority: Some(2), // 高優先級
         task_type: Some("main".to_string()),
@@ -332,17 +416,17 @@ pub async fn generate_career_tasks(
         skill_tags: {
             // 聚合所有子任務的技能標籤（只取名稱）
             let mut all_skills: std::collections::HashSet<String> = std::collections::HashSet::new();
-            for task in &generated_tasks.main_tasks {
+            for task in &main_tasks {
                 for skill in &task.skill_tags {
                     all_skills.insert(skill.name.clone());
                 }
             }
-            for task in &generated_tasks.daily_tasks {
+            for task in &daily_tasks {
                 for skill in &task.skill_tags {
                     all_skills.insert(skill.name.clone());
                 }
             }
-            for task in &generated_tasks.project_tasks {
+            for task in &project_tasks {
                 for skill in &task.skill_tags {
                     all_skills.insert(skill.name.clone());
                 }
@@ -353,6 +437,7 @@ pub async fn generate_career_tasks(
                 Some(all_skills.into_iter().collect())
             }
         },
+        attributes: None,
     };
 
     // 保存父任務
@@ -374,7 +459,7 @@ pub async fn generate_career_tasks(
     // 統一創建所有子任務為同一類型，確保循序漸進的學習體驗
 
     // 創建主要任務（作為子任務）
-    for ai_task in &generated_tasks.main_tasks {
+    for ai_task in &main_tasks {
         match create_subtask_from_ai_data(&rb, &user_id, &mainline_id, &parent_task_id, ai_task, "career_subtask", task_order).await {
             Ok(task) => {
                 created_tasks.push(task);
@@ -385,7 +470,7 @@ pub async fn generate_career_tasks(
     }
 
     // 創建每日任務（作為子任務）
-    for ai_task in &generated_tasks.daily_tasks {
+    for ai_task in &daily_tasks {
         match create_subtask_from_ai_data(&rb, &user_id, &mainline_id, &parent_task_id, ai_task, "career_subtask", task_order).await {
             Ok(task) => {
                 created_tasks.push(task);
@@ -396,7 +481,7 @@ pub async fn generate_career_tasks(
     }
 
     // 創建項目任務（作為子任務）
-    for ai_task in &generated_tasks.project_tasks {
+    for ai_task in &project_tasks {
         match create_subtask_from_ai_data(&rb, &user_id, &mainline_id, &parent_task_id, ai_task, "career_subtask", task_order).await {
             Ok(task) => {
                 created_tasks.push(task);
@@ -416,12 +501,12 @@ pub async fn generate_career_tasks(
     // 7. 記錄到聊天記錄（作為 AI 互動記錄）
     let chat_message = crate::models::ChatMessage {
         id: Some(Uuid::new_v4().to_string()),
-        user_id: Some(user_id),
+        user_id: Some(user_id.clone()),
         role: Some("assistant".to_string()),
-        content: Some(format!("為您的「{}」職業規劃生成了 {} 個學習任務：\n\n{}", 
-                             request.selected_career, 
+        content: Some(format!("為您的「{}」職業規劃生成了 {} 個學習任務：\n\n{}",
+                             selected_career,
                              created_tasks.len(),
-                             generated_tasks.learning_summary)),
+                             learning_summary)),
         created_at: Some(Utc::now()),
     };
 
@@ -437,18 +522,17 @@ pub async fn generate_career_tasks(
             "parent_task_id": parent_task_id,
             "parent_task": {
                 "id": parent_task_id,
-                "title": format!("職業主線：{}", request.selected_career),
+                "title": format!("職業主線：{}", selected_career),
                 "description": format!("{}\n\n📋 包含 {} 個子任務，完成後將掌握相關職業技能。",
-                                     generated_tasks.learning_summary, total_tasks),
+                                     learning_summary, total_tasks),
                 "subtasks_count": created_tasks.len()
             },
             "subtasks_created": created_tasks.len(),
-            "learning_summary": generated_tasks.learning_summary,
-            "estimated_months": generated_tasks.estimated_months,
-            "personality_insights": generated_tasks.personality_insights,
+            "learning_summary": learning_summary,
+            "estimated_months": estimated_months,
             "subtasks": created_tasks
         })),
-        message: format!("🎉 成功創建職業主線「{}」，包含 {} 個子任務！", request.selected_career, created_tasks.len()),
+        message: format!("🎉 成功創建職業主線「{}」，包含 {} 個子任務！", selected_career, created_tasks.len()),
     }))
 }
 
@@ -546,22 +630,25 @@ fn build_career_task_prompt(
 
 ## 任務生成要求
 
-請生成學習任務，分為三類：
+請生成學習任務，分為三類，總共 12 個任務：
 
-### 1. 主線任務 (3個)
+### 1. 主線任務 (8個)
 - 核心技能學習，難度循序漸進
 - 每個任務都有明確的學習成果
 - 根據用戶個性特質調整學習方式
+- 從基礎到進階，形成完整的學習路徑
 
-### 2. 每日任務 (1個)  
+### 2. 每日任務 (2個)
 - 培養職業相關的日常習慣
 - 每個任務15-30分鐘可完成
 - 重複執行有助於技能累積
+- 涵蓋不同方面的日常練習
 
-### 3. 項目任務 (1個)
+### 3. 項目任務 (2個)
 - 實戰練習和作品集建立
 - 難度較高，需要綜合運用所學
 - 有助於建立職業競爭力
+- 提供不同類型的實戰經驗
 
 ## 個性化調整原則
 - 根據**價值觀**調整任務方向和重點
@@ -570,16 +657,39 @@ fn build_career_task_prompt(
 - 根據**工作風格**設計獨立/協作學習比例
 - 根據**時間限制**調整任務粒度
 
+## 屬性值分配原則
+
+每個任務必須分配屬性獎勵，根據任務類型和難度：
+
+### 六大屬性
+- **intelligence** (智力): 學習、分析、理論研究相關任務
+- **creativity** (創造力): 設計、創新、解決方案相關任務
+- **focus** (專注力): 需要長時間專注的技術任務
+- **endurance** (毅力): 長期、重複性、需要堅持的任務
+- **social** (社交力): 團隊協作、溝通、人際互動任務
+- **adaptability** (適應力): 學習新技術、應對變化的任務
+
+### 分配規則
+1. **每個任務選擇 1-2 個最相關的屬性**
+2. **屬性值根據難度計算**（注意：使用者屬性滿分為 100，請謹慎分配）：
+   - 難度 1: 單個屬性值 1-2
+   - 難度 2: 單個屬性值 2-3
+   - 難度 3: 單個屬性值 3-4
+   - 難度 4: 單個屬性值 4-5
+   - 難度 5: 單個屬性值 5-6
+3. **一個任務的所有屬性值總和不應超過 8**
+
 ## 嚴格 JSON 格式要求
 
 **重要：**
 1. 回應必須是有效的JSON格式，不包含額外文字
-2. 所有字符串必須用雙引號包圍  
+2. 所有字符串必須用雙引號包圍
 3. 不能有尾隨逗號
 4. 所有必需字段都必須存在
 5. difficulty 必須是 1-5 的整數
 6. estimated_hours 必須是正整數
 7. skill_tags 和 resources 必須是字符串陣列
+8. **attributes 必須是物件，包含 1-2 個屬性及其數值**
 
 ```json
 {{
@@ -589,57 +699,69 @@ fn build_career_task_prompt(
   "main_tasks": [
     {{
       "title": "主線任務標題1",
-      "description": "詳細說明任務內容和學習目標",
+      "description": "任務總體說明。\\n\\n【學習目標】\\n具體要達成的學習目標。\\n\\n【執行步驟】\\n1. 第一步具體要做什麼\\n2. 第二步具體要做什麼\\n3. 第三步具體要做什麼\\n\\n【完成標準】\\n如何判斷任務完成。",
       "difficulty": 3,
       "estimated_hours": 20,
       "skill_tags": [{{"name": "核心技能1", "category": "technical"}}, {{"name": "核心技能2", "category": "soft"}}],
       "resources": ["學習資源1", "學習資源2"],
-      "personality_match": "為什麼這個任務適合用戶的個性特質"
+      "attributes": {{"intelligence": 3, "focus": 2}}
     }},
     {{
       "title": "主線任務標題2",
-      "description": "詳細說明任務內容和學習目標",
+      "description": "任務總體說明。\\n\\n【學習目標】\\n具體要達成的學習目標。\\n\\n【執行步驟】\\n1. 第一步具體要做什麼\\n2. 第二步具體要做什麼\\n3. 第三步具體要做什麼\\n\\n【完成標準】\\n如何判斷任務完成。",
       "difficulty": 4,
       "estimated_hours": 25,
       "skill_tags": [{{"name": "核心技能3", "category": "technical"}}, {{"name": "核心技能4", "category": "soft"}}],
       "resources": ["學習資源3", "學習資源4"],
-      "personality_match": "個性化匹配說明"
+      "attributes": {{"creativity": 4, "adaptability": 3}}
     }}
   ],
   "daily_tasks": [
     {{
       "title": "每日任務標題1",
-      "description": "每日執行的習慣性任務說明",
+      "description": "任務總體說明。\\n\\n【學習目標】\\n具體要達成的學習目標。\\n\\n【執行步驟】\\n1. 第一步具體要做什麼\\n2. 第二步具體要做什麼\\n\\n【完成標準】\\n如何判斷任務完成。",
       "difficulty": 2,
       "estimated_hours": 1,
       "skill_tags": [{{"name": "日常技能1", "category": "soft"}}],
       "resources": ["資源1"],
-      "personality_match": "個性化匹配說明"
+      "attributes": {{"endurance": 2, "focus": 1}}
     }}
   ],
   "project_tasks": [
     {{
       "title": "項目任務標題1",
-      "description": "實戰項目的具體要求和目標",
+      "description": "任務總體說明。\\n\\n【學習目標】\\n具體要達成的學習目標。\\n\\n【執行步驟】\\n1. 第一步具體要做什麼\\n2. 第二步具體要做什麼\\n3. 第三步具體要做什麼\\n4. 第四步具體要做什麼\\n\\n【完成標準】\\n如何判斷任務完成。",
       "difficulty": 5,
       "estimated_hours": 40,
       "skill_tags": [{{"name": "實戰技能1", "category": "technical"}}, {{"name": "綜合技能2", "category": "soft"}}],
       "resources": ["項目資源1", "項目資源2"],
-      "personality_match": "個性化匹配說明"
+      "attributes": {{"creativity": 5, "social": 3}}
     }}
   ]
 }}
 ```
 
-**請嚴格按照上述JSON格式回應，確保每個任務對象都包含所有必需字段：title, description, difficulty, estimated_hours, skill_tags, resources, personality_match。
+**請嚴格按照上述JSON格式回應，確保每個任務對象都包含所有必需字段：title, description, difficulty, estimated_hours, skill_tags, resources, attributes。
+
+**description 欄位要求：**
+- 必須包含詳細的執行說明，讓使用者清楚知道「要做什麼」和「怎麼做」
+- 必須使用以下格式（使用 \\n 換行符號）：
+  "任務總體說明。\\n\\n【學習目標】\\n具體要達成的學習目標。\\n\\n【執行步驟】\\n1. 第一步\\n2. 第二步\\n3. 第三步\\n\\n【完成標準】\\n如何判斷任務完成。"
+- 執行步驟要具體且可操作，避免空泛的描述
+- 每個段落之間使用 \\n\\n 分隔，每個步驟使用 \\n 分隔
 
 重要提醒：
+- **attributes 欄位是必需的**，必須包含 1-2 個屬性及其數值（根據上述分配規則）
 - skill_tags 現在必須是物件陣列格式，每個技能包含 name（技能名稱）和 category（分類）
 - category 只能是 "technical"（技術技能）或 "soft"（軟技能）
 - 技術技能包括：程式語言、開發工具、技術操作、硬體知識、數學概念等
 - 軟技能包括：溝通、領導、分析思考、時間管理、創意思維等
+- **每個任務都必須有 estimated_hours 欄位**，用於計算經驗值
 
-使用繁體中文內容，但JSON結構必須完全符合格式要求。**
+**語言要求：**
+- **必須使用繁體中文**，絕對不可以出現任何簡體字
+- 所有內容包括：title、description、skill_tags、resources 等都必須是繁體中文
+- JSON 結構必須完全符合格式要求**
 "#, 
         career = selected_career,
         values = extract_quiz_summary(&quiz_result.values_results),
@@ -791,10 +913,7 @@ async fn create_subtask_from_ai_data(
         id: Some(task_id),
         user_id: Some(user_id.to_string()),
         title: Some(ai_task.title.clone()),
-        description: Some(format!("{}\n\n💡 個性化說明：{}\n\n📚 推薦資源：\n{}", 
-                                ai_task.description,
-                                ai_task.personality_match.as_ref().unwrap_or(&"".to_string()),
-                                ai_task.resources.join("\n"))),
+        description: Some(ai_task.description.clone()),
         status: Some(0), // pending
         priority: Some(ai_task.difficulty),
         task_type: Some(task_category.to_string()),
@@ -823,6 +942,7 @@ async fn create_subtask_from_ai_data(
         task_date: None,
         cancel_count: Some(0),
         last_cancelled_at: None,
+        attributes: None,
     };
 
     // 在保存任務之前，先確保所有技能標籤都存在於技能表中
@@ -982,6 +1102,7 @@ pub async fn import_career_tasks(
             for t in &generated_tasks.project_tasks { for s in &t.skill_tags { all.insert(s.name.clone()); } }
             if all.is_empty() { None } else { Some(all.into_iter().collect()) }
         },
+        attributes: None,
     };
     if let Err(e) = Task::insert(rb.get_ref(), &parent_task).await {
         log::error!("創建父任務失敗: {}", e);
