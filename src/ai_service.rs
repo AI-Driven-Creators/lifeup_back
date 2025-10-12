@@ -2,8 +2,10 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use chrono::Utc;
+use rbatis::RBatis;
 use crate::models::AchievementRequirementType;
 use crate::config::AIConfig;
+use crate::behavior_analytics::{UserBehaviorSummary, BehaviorAnalytics};
 
 // OpenAI API 請求結構
 #[derive(Serialize)]
@@ -67,10 +69,133 @@ pub struct AIGeneratedAchievement {
     pub experience_reward: i32,
 }
 
+// ===== 辅助函数：构建基于统计摘要的 Prompt =====
+
+/// 根据用户行为摘要构建成就生成的 prompt
+fn build_achievement_prompt_from_summary(summary: &UserBehaviorSummary) -> String {
+    // 格式化分类统计
+    let top_categories: Vec<String> = summary.top_categories
+        .iter()
+        .map(|c| format!(
+            "{}（完成{}次，完成率{:.0}%，平均难度{:.1}）",
+            c.category,
+            c.completed_count,
+            c.completion_rate * 100.0,
+            c.avg_difficulty
+        ))
+        .collect();
+
+    // 格式化最近完成的任务
+    let recent_tasks: Vec<String> = summary.recent_completions
+        .iter()
+        .take(10)
+        .map(|t| format!("  - {}: {}", t.completion_date.split('T').next().unwrap_or(&t.completion_date), t.title))
+        .collect();
+
+    // 格式化最近取消的任务
+    let recent_cancellations: Vec<String> = summary.recent_cancellations
+        .iter()
+        .take(5)
+        .map(|t| format!("  - {}: {}", t.completion_date.split('T').next().unwrap_or(&t.completion_date), t.title))
+        .collect();
+
+    // 格式化里程碑
+    let milestones: Vec<String> = summary.milestone_events
+        .iter()
+        .map(|m| format!("  - {}: {}", m.event_type, m.description))
+        .collect();
+
+    format!(
+        r#"你是一個成就設計助手。根據用戶的行為數據分析，生成個性化且具有激勵性的成就。
+
+【用戶統計數據】
+- 總完成任務：{total_completed} 次
+- 總取消任務：{total_cancelled} 次
+- 待處理任務：{total_pending} 個
+- 最長連續記錄：{longest_streak} 天（{streak_task}）
+- 當前連續：{current_streak} 天
+- 近 30 天活躍：{active_30} 天
+- 總經驗值：{total_exp}
+
+【任務分類分布】（Top {cat_count}）
+{categories}
+
+【最近完成任務】（最近 {recent_count} 條樣本）
+{recent_tasks}
+
+【最近取消任務】（最近 {cancel_count} 條樣本）
+{recent_cancellations}
+
+【里程碑事件】
+{milestones}
+
+【已解鎖成就】
+{achievements}
+
+**設計原則：**
+- 成就名稱要幽默且具體，如「成為英語字典」「跑火入魔」
+- 基於用戶實際行為模式生成，不要憑空想像
+- 考慮用戶的優勢領域（完成率高的分類）和潛力領域
+- 避免與現有成就重複
+- 如果有明顯的連續記錄，可以考慮相關的持續性成就
+
+**成就分類：**
+- task_mastery: 任務精通類
+- consistency: 持續性類
+- challenge_overcome: 克服挑戰類
+- skill_development: 技能發展類
+
+**達成條件類型：**
+- consecutive_days: 連續天數
+- total_completions: 總完成次數
+- task_complete: 完成任務總數
+- streak_recovery: 從失敗中恢復
+- skill_level: 技能等級
+- learning_task_complete: 學習任務完成
+- intelligence_attribute: 智力屬性達成
+- endurance_attribute: 毅力屬性達成
+- creativity_attribute: 創造力屬性達成
+- social_attribute: 社交力屬性達成
+- focus_attribute: 專注力屬性達成
+- adaptability_attribute: 適應力屬性達成
+
+**經驗值獎勵計算：**
+- 基於難度：簡單成就 50-100，中等 100-200，困難 200-500
+
+請以 JSON 格式回應：
+{{
+  "name": "成就名稱（幽默且具體）",
+  "description": "成就描述（選填）",
+  "icon": "圖標名稱（選填）",
+  "category": "成就分類",
+  "requirement_type": "達成條件類型",
+  "requirement_value": 數值,
+  "experience_reward": 經驗值獎勵
+}}"#,
+        total_completed = summary.total_tasks_completed,
+        total_cancelled = summary.total_tasks_cancelled,
+        total_pending = summary.total_tasks_pending,
+        longest_streak = summary.longest_streak.days,
+        streak_task = summary.longest_streak.task_title,
+        current_streak = summary.current_streak.days,
+        active_30 = summary.active_days_last_30,
+        total_exp = summary.total_experience,
+        cat_count = summary.top_categories.len(),
+        categories = if top_categories.is_empty() { "  （暫無數據）".to_string() } else { top_categories.join("\n") },
+        recent_count = summary.recent_completions.len().min(10),
+        recent_tasks = if recent_tasks.is_empty() { "  （暫無數據）".to_string() } else { recent_tasks.join("\n") },
+        cancel_count = summary.recent_cancellations.len().min(5),
+        recent_cancellations = if recent_cancellations.is_empty() { "  （暫無數據）".to_string() } else { recent_cancellations.join("\n") },
+        milestones = if milestones.is_empty() { "  （暫無數據）".to_string() } else { milestones.join("\n") },
+        achievements = if summary.unlocked_achievements.is_empty() { "（暫無）".to_string() } else { summary.unlocked_achievements.join("、") },
+    )
+}
+
 // AI 服務 trait
 #[async_trait::async_trait]
 pub trait AIService {
     async fn generate_achievement_from_text(&self, user_input: &str) -> Result<AIGeneratedAchievement>;
+    async fn generate_achievement_from_user_id(&self, rb: &RBatis, user_id: &str) -> Result<AIGeneratedAchievement>;
     async fn generate_task_preview(&self, prompt: &str) -> Result<String>;
     async fn generate_task_preview_with_history(&self, system_prompt: &str, history: &[(String, String)], current_message: &str) -> Result<String>;
     async fn generate_task_from_text(&self, user_input: &str) -> Result<AIGeneratedTask>;
@@ -487,6 +612,85 @@ impl AIService for OpenAIService {
             Err(anyhow::anyhow!("OpenAI 未返回有效回應"))
         }
     }
+
+    // 新方法：基于用户 ID 生成成就（使用统计摘要）
+    async fn generate_achievement_from_user_id(&self, rb: &RBatis, user_id: &str) -> Result<AIGeneratedAchievement> {
+        // 1. 生成用户行为摘要
+        log::info!("为用户 {} 生成行为摘要...", user_id);
+        let summary = BehaviorAnalytics::generate_summary(rb, user_id).await?;
+        log::info!("行为摘要生成完成：完成{}个任务，最长连续{}天", summary.total_tasks_completed, summary.longest_streak.days);
+
+        // 2. 构建基于摘要的 prompt
+        let system_prompt = build_achievement_prompt_from_summary(&summary);
+
+        // 3. 调用 AI 生成成就
+        let request = OpenAIRequest {
+            model: self.model.clone().to_string(),
+            messages: vec![
+                ChatMessage {
+                    role: "system".to_string(),
+                    content: system_prompt,
+                },
+                ChatMessage {
+                    role: "user".to_string(),
+                    content: "請基於以上用戶數據，生成一個最合適的成就。".to_string(),
+                },
+            ],
+            max_completion_tokens: 4000,
+            response_format: ResponseFormat {
+                format_type: "json_object".to_string(),
+            },
+        };
+
+        let response = self.client
+            .post("https://api.openai.com/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&request)
+            .send()
+            .await?;
+
+        let status = response.status();
+        log::info!("OpenAI API 響應狀態: {}", status);
+
+        if !status.is_success() {
+            let error_text = response.text().await?;
+            log::error!("OpenAI API 錯誤響應: {}", error_text);
+            return Err(anyhow::anyhow!("OpenAI API 錯誤 ({}): {}", status, error_text));
+        }
+
+        let response_text = response.text().await?;
+        log::info!("OpenAI API 響應長度: {} bytes", response_text.len());
+
+        if response_text.is_empty() {
+            log::error!("OpenAI API 返回空響應");
+            return Err(anyhow::anyhow!("OpenAI API 返回空響應"));
+        }
+
+        let openai_response: OpenAIResponse = serde_json::from_str(&response_text)
+            .map_err(|e| {
+                log::error!("解析 OpenAI 響應失敗: {}. 響應內容: {}", e, &response_text[..std::cmp::min(200, response_text.len())]);
+                anyhow::anyhow!("解析 OpenAI 響應失敗: {}", e)
+            })?;
+
+        if let Some(choice) = openai_response.choices.first() {
+            let achievement_json = &choice.message.content;
+            log::info!("AI 返回的成就 JSON 長度: {} 字符", achievement_json.len());
+
+            let generated_achievement: AIGeneratedAchievement = serde_json::from_str(achievement_json)
+                .map_err(|e| {
+                    log::error!("解析成就 JSON 失敗: {}. JSON 內容: {}", e, achievement_json);
+                    anyhow::anyhow!("解析成就 JSON 失敗: {}", e)
+                })?;
+
+            validate_generated_achievement(&generated_achievement)?;
+
+            Ok(generated_achievement)
+        } else {
+            log::error!("OpenAI 響應中沒有 choices");
+            Err(anyhow::anyhow!("OpenAI 未返回有效回應"))
+        }
+    }
 }
 
 // OpenRouter 服務實現
@@ -888,6 +1092,87 @@ impl AIService for OpenRouterService {
             
             Ok(generated_task)
         } else {
+            Err(anyhow::anyhow!("OpenRouter 未返回有效回應"))
+        }
+    }
+
+    // 新方法：基于用户 ID 生成成就（使用统计摘要）
+    async fn generate_achievement_from_user_id(&self, rb: &RBatis, user_id: &str) -> Result<AIGeneratedAchievement> {
+        // 1. 生成用户行为摘要
+        log::info!("为用户 {} 生成行为摘要...", user_id);
+        let summary = BehaviorAnalytics::generate_summary(rb, user_id).await?;
+        log::info!("行为摘要生成完成：完成{}个任务，最长连续{}天", summary.total_tasks_completed, summary.longest_streak.days);
+
+        // 2. 构建基于摘要的 prompt
+        let system_prompt = build_achievement_prompt_from_summary(&summary);
+
+        // 3. 调用 AI 生成成就
+        let request = OpenRouterRequest {
+            model: self.model.clone(),
+            messages: vec![
+                ChatMessage {
+                    role: "system".to_string(),
+                    content: system_prompt,
+                },
+                ChatMessage {
+                    role: "user".to_string(),
+                    content: "請基於以上用戶數據，生成一個最合適的成就。".to_string(),
+                },
+            ],
+            max_completion_tokens: 4000,
+            response_format: ResponseFormat {
+                format_type: "json_object".to_string(),
+            },
+        };
+
+        let response = self.client
+            .post("https://openrouter.ai/api/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .header("HTTP-Referer", "https://openrouter.ai")
+            .header("X-Title", "LifeUp Backend")
+            .json(&request)
+            .send()
+            .await?;
+
+        let status = response.status();
+        log::info!("OpenRouter API 響應狀態: {}", status);
+
+        if !status.is_success() {
+            let error_text = response.text().await?;
+            log::error!("OpenRouter API 錯誤響應: {}", error_text);
+            return Err(anyhow::anyhow!("OpenRouter API 錯誤 ({}): {}", status, error_text));
+        }
+
+        let response_text = response.text().await?;
+        log::info!("OpenRouter API 響應長度: {} bytes", response_text.len());
+
+        if response_text.is_empty() {
+            log::error!("OpenRouter API 返回空響應");
+            return Err(anyhow::anyhow!("OpenRouter API 返回空響應"));
+        }
+
+        let openrouter_response: OpenRouterResponse = serde_json::from_str(&response_text)
+            .map_err(|e| {
+                log::error!("解析 OpenRouter 響應失敗: {}. 響應內容: {}", e, &response_text[..std::cmp::min(200, response_text.len())]);
+                anyhow::anyhow!("解析 OpenRouter 響應失敗: {}", e)
+            })?;
+
+        if let Some(choice) = openrouter_response.choices.first() {
+            let achievement_json = &choice.message.content;
+            log::info!("AI 返回的成就 JSON 長度: {} 字符", achievement_json.len());
+
+            let generated_achievement: AIGeneratedAchievement = serde_json::from_str(achievement_json)
+                .map_err(|e| {
+                    log::error!("解析成就 JSON 失敗: {}. JSON 內容: {}", e, achievement_json);
+                    anyhow::anyhow!("解析成就 JSON 失敗: {}", e)
+                })?;
+
+            validate_generated_achievement(&generated_achievement)?;
+
+            Ok(generated_achievement)
+        } else {
+            log::error!("OpenRouter 響應中沒有 choices");
             Err(anyhow::anyhow!("OpenRouter 未返回有效回應"))
         }
     }

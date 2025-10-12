@@ -7,6 +7,7 @@ mod ai_service;
 mod ai_tasks;
 mod achievement_service;
 mod career_routes;
+mod behavior_analytics;
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
 use actix_web::middleware::Logger;

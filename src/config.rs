@@ -33,6 +33,23 @@ pub struct AIConfig {
     pub openai_model: String,
     pub openrouter_api_key: Option<String>,
     pub openrouter_model: String,
+
+    // Token 预算控制
+    pub max_prompt_tokens: usize,
+    pub max_completion_tokens: i32,
+
+    // 数据采样配置
+    pub recent_tasks_sample_size: usize,
+    pub recent_cancellations_sample_size: usize,
+    pub top_categories_limit: usize,
+
+    // 时间窗口配置
+    pub analysis_window_days: i64,
+    pub recent_activity_days: i64,
+
+    // 特征开关
+    pub enable_milestone_detection: bool,
+    pub enable_streak_analysis: bool,
 }
 
 impl Config {
@@ -55,6 +72,50 @@ impl Config {
         let openrouter_model = env::var("OPENROUTER_MODEL")
             .unwrap_or_else(|_| "openrouter.ai/google/gemma-3n-e4b-it".to_string());
 
+        // Token 预算控制
+        let max_prompt_tokens = env::var("AI_MAX_PROMPT_TOKENS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(2000);
+        let max_completion_tokens = env::var("AI_MAX_COMPLETION_TOKENS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(4000);
+
+        // 数据采样配置
+        let recent_tasks_sample_size = env::var("AI_RECENT_TASKS_SAMPLE_SIZE")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(20);
+        let recent_cancellations_sample_size = env::var("AI_RECENT_CANCELLATIONS_SAMPLE_SIZE")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(10);
+        let top_categories_limit = env::var("AI_TOP_CATEGORIES_LIMIT")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(5);
+
+        // 时间窗口配置
+        let analysis_window_days = env::var("AI_ANALYSIS_WINDOW_DAYS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(90);
+        let recent_activity_days = env::var("AI_RECENT_ACTIVITY_DAYS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(30);
+
+        // 特征开关
+        let enable_milestone_detection = env::var("AI_ENABLE_MILESTONE_DETECTION")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(true);
+        let enable_streak_analysis = env::var("AI_ENABLE_STREAK_ANALYSIS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(true);
+
         // 調試日誌 - 注意：此時日誌系統可能還未初始化
         // 這些日誌會在 main.rs 中重新顯示
 
@@ -73,6 +134,15 @@ impl Config {
                     openai_model,
                     openrouter_api_key,
                     openrouter_model,
+                    max_prompt_tokens,
+                    max_completion_tokens,
+                    recent_tasks_sample_size,
+                    recent_cancellations_sample_size,
+                    top_categories_limit,
+                    analysis_window_days,
+                    recent_activity_days,
+                    enable_milestone_detection,
+                    enable_streak_analysis,
                 },
             },
         }
