@@ -11,8 +11,6 @@ pub enum AchievementRequirementType {
     ConsecutiveDays,        // 連續天數
     #[serde(rename = "skill_level")]
     SkillLevel,             // 技能等級達成
-    #[serde(rename = "total_completions")]
-    TotalCompletions,       // 總完成次數
     #[serde(rename = "streak_recovery")]
     StreakRecovery,         // 從失敗中恢復
     #[serde(rename = "learning_task_complete")]
@@ -38,7 +36,6 @@ impl AchievementRequirementType {
             "task_complete" => Some(AchievementRequirementType::TaskComplete),
             "consecutive_days" => Some(AchievementRequirementType::ConsecutiveDays),
             "skill_level" => Some(AchievementRequirementType::SkillLevel),
-            "total_completions" => Some(AchievementRequirementType::TotalCompletions),
             "streak_recovery" => Some(AchievementRequirementType::StreakRecovery),
             "learning_task_complete" => Some(AchievementRequirementType::LearningTaskComplete),
             "intelligence_attribute" => Some(AchievementRequirementType::IntelligenceAttribute),
@@ -57,7 +54,6 @@ impl AchievementRequirementType {
             AchievementRequirementType::TaskComplete => "task_complete",
             AchievementRequirementType::ConsecutiveDays => "consecutive_days",
             AchievementRequirementType::SkillLevel => "skill_level",
-            AchievementRequirementType::TotalCompletions => "total_completions",
             AchievementRequirementType::StreakRecovery => "streak_recovery",
             AchievementRequirementType::LearningTaskComplete => "learning_task_complete",
             AchievementRequirementType::IntelligenceAttribute => "intelligence_attribute",
@@ -75,7 +71,6 @@ impl AchievementRequirementType {
             "task_complete",
             "consecutive_days",
             "skill_level",
-            "total_completions",
             "streak_recovery",
             "learning_task_complete",
             "intelligence_attribute",

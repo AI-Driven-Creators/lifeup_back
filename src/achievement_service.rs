@@ -32,13 +32,6 @@ impl AchievementService {
                     let count: u64 = rb.query_decode(sql, args).await?;
                     count >= requirement_value as u64
                 },
-                Some(AchievementRequirementType::TotalCompletions) => {
-                    // 與 TaskComplete 類似，但可以有不同的邏輯
-                    let sql = "SELECT COUNT(*) FROM task WHERE user_id = ? AND status = ?";
-                    let args = vec![user_id.into(), TaskStatus::Completed.to_i32().into()];
-                    let count: u64 = rb.query_decode(sql, args).await?;
-                    count >= requirement_value as u64
-                },
                 Some(AchievementRequirementType::LearningTaskComplete) => {
                     let sql = "SELECT COUNT(*) FROM task WHERE user_id = ? AND status = ? AND skill_tags LIKE ?";
                     let args = vec![user_id.into(), TaskStatus::Completed.to_i32().into(), rbs::Value::String("%智慧%".to_string())];
