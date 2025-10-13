@@ -431,6 +431,7 @@ pub async fn create_skill(
         name: Some(req.name.clone()),
         description: req.description.clone(),
         category: req.category.clone(),
+        attribute: req.attribute.clone(),
         level: req.level,
         experience: req.experience,
         max_experience: req.max_experience,

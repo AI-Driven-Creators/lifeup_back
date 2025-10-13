@@ -1180,6 +1180,7 @@ async fn ensure_skills_exist(rb: &RBatis, user_id: &str, skill_tags: &[SkillTag]
                 name: Some(skill_name.clone()),
                 description: Some(format!("通過任務自動創建的技能：{}", skill_name)),
                 category: Some(skill_category.clone()),
+                attribute: Some("intelligence".to_string()), // 默認屬性為智力
                 level: Some(1),
                 experience: Some(0),
                 max_experience: Some(100),
