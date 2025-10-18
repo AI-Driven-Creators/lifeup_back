@@ -193,6 +193,7 @@ async fn main() -> std::io::Result<()> {
             .route("/api/tasks/create-from-json", web::post().to(crate::ai_tasks::create_task_from_json))
             .route("/api/tasks/validate-preview", web::post().to(crate::ai_tasks::validate_and_preview_task))
             .route("/api/tasks/generate-from-chat", web::post().to(crate::ai_tasks::generate_task_from_chat))
+            .route("/api/tasks/generate-with-expert", web::post().to(crate::ai_tasks::generate_task_with_expert))
             // AI 成就生成路由
             .route("/api/achievements/generate", web::post().to(generate_achievement_with_ai))
             .route(

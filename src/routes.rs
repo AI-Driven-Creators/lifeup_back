@@ -3232,13 +3232,54 @@ async fn call_chatgpt_api(message: &str) -> Result<String, Box<dyn std::error::E
         }
     };
     
-    let prompt = format!("你是一位專業的教練，請根據給定的訊息提供建議。一律使用繁體中文回答。\n\n重要提示：如果使用者的訊息中包含以下任何意圖，請提醒他們使用任務創建模式：\n- 想要建立、創建、新增、設定任務\n- 提到「我要做...」、「我想要...」、「幫我規劃...」、「提醒我...」\n- 描述具體的待辦事項或目標\n- 想要安排時間或設定提醒\n\n當偵測到這些意圖時，請回覆：「我注意到您想要創建任務！建議您切換到『任務創建模式』（在輸入框上方的下拉選單中選擇），這樣我可以更精準地幫您生成結構化的任務。在任務創建模式下，您只需描述任務內容，系統就會自動生成完整的任務資料。」\n\n如果使用者只是想討論、詢問建議或聊天，則正常回應即可。\n\n用戶訊息：{}", message);
+    // 使用專家系統匹配最適合的專家
+    log::info!("開始為訊息匹配專家: {}", message);
+    let expert_match = match ai_service.match_expert_for_task(message).await {
+        Ok(match_result) => {
+            log::info!("成功匹配專家: {} (信心度: {:.2})", 
+                match_result.expert.name, match_result.confidence);
+            match_result
+        }
+        Err(e) => {
+            log::warn!("專家匹配失敗，使用通用教練: {}", e);
+            // 如果專家匹配失敗，使用通用教練
+            return call_chatgpt_api_fallback(message, ai_service).await;
+        }
+    };
+    
+    // 使用專家的專業知識構建提示詞
+    let prompt = format!(
+        "你是{}，{}。請根據你的專業知識為用戶提供建議。一律使用繁體中文回答。\n\n用戶訊息：{}", 
+        expert_match.expert.name,
+        expert_match.expert.description,
+        message
+    );
 
-    log::info!("準備發送請求到AI API");
+    log::info!("準備發送請求到AI API，使用專家: {}", expert_match.expert.name);
     
     match ai_service.generate_task_preview(&prompt).await {
         Ok(response) => {
             log::info!("成功從AI API獲取回應");
+            // 在回應前加上專家信息
+            let expert_response = format!("[{}] {}", expert_match.expert.emoji, response);
+            Ok(expert_response)
+        },
+        Err(e) => {
+            log::error!("AI API 調用失敗: {}", e);
+            Err(format!("AI API 調用失敗: {}", e).into())
+        }
+    }
+}
+
+// 備用函數：當專家匹配失敗時使用
+async fn call_chatgpt_api_fallback(message: &str, ai_service: Box<dyn crate::ai_service::AIService + Send + Sync>) -> Result<String, Box<dyn std::error::Error>> {
+    let prompt = format!("你是一位專業的教練，請根據給定的訊息提供建議。一律使用繁體中文回答。\n\n用戶訊息：{}", message);
+
+    log::info!("使用備用通用教練模式");
+    
+    match ai_service.generate_task_preview(&prompt).await {
+        Ok(response) => {
+            log::info!("成功從AI API獲取回應（備用模式）");
             Ok(response)
         },
         Err(e) => {
@@ -3738,11 +3779,39 @@ async fn call_ai_api_with_personality(rb: &RBatis, message: &str, user_id: Optio
         }
     };
     
+    // 使用專家系統匹配最適合的專家
+    log::info!("開始為訊息匹配專家: {}", message);
+    let expert_match = match ai_service.match_expert_for_task(message).await {
+        Ok(match_result) => {
+            log::info!("成功匹配專家: {} (信心度: {:.2})", 
+                match_result.expert.name, match_result.confidence);
+            Some(match_result)
+        }
+        Err(e) => {
+            log::warn!("專家匹配失敗，將使用通用個性化教練: {}", e);
+            None
+        }
+    };
+    
     // 獲取用戶的教練個性
     let personality_type = get_user_personality_type(rb, user_id.clone()).await?;
-    let system_prompt = personality_type.system_prompt();
+    let base_system_prompt = personality_type.system_prompt();
     
-    log::info!("使用教練個性: {:?}", personality_type);
+    // 結合專家和個性化系統
+    let system_prompt = if let Some(expert) = &expert_match {
+        format!(
+            "你是{}，{}。同時，你具有{}的教練個性。請結合你的專業知識和個性特質為用戶提供建議。一律使用繁體中文回答。\n\n{}",
+            expert.expert.name,
+            expert.expert.description,
+            personality_type.display_name(),
+            base_system_prompt
+        )
+    } else {
+        base_system_prompt.to_string()
+    };
+    
+    log::info!("使用教練個性: {:?}, 專家: {:?}", personality_type, 
+        expert_match.as_ref().map(|e| &e.expert.name));
     
     // 獲取上一次的對話內容（用戶問題和AI回答）
     let mut prompt = system_prompt.to_string();
@@ -3808,7 +3877,13 @@ async fn call_ai_api_with_personality(rb: &RBatis, message: &str, user_id: Optio
                 match ai_service.generate_task_preview_with_history(&system_prompt, &history, &message).await {
                     Ok(response) => {
                         log::info!("成功獲取個性化AI回應");
-                        return Ok(response);
+                        // 如果有專家匹配，在回應前加上專家信息
+                        let final_response = if let Some(expert) = &expert_match {
+                            format!("[{}] {}", expert.expert.emoji, response)
+                        } else {
+                            response
+                        };
+                        return Ok(final_response);
                     },
                     Err(e) => {
                         log::error!("個性化AI API 調用失敗: {}", e);
@@ -3831,7 +3906,13 @@ async fn call_ai_api_with_personality(rb: &RBatis, message: &str, user_id: Optio
     match ai_service.generate_task_preview(&prompt).await {
         Ok(response) => {
             log::info!("成功獲取個性化AI回應");
-            Ok(response)
+            // 如果有專家匹配，在回應前加上專家信息
+            let final_response = if let Some(expert) = &expert_match {
+                format!("[{}] {}", expert.expert.emoji, response)
+            } else {
+                response
+            };
+            Ok(final_response)
         },
         Err(e) => {
             log::error!("個性化AI API 調用失敗: {}", e);
@@ -4030,8 +4111,37 @@ async fn call_ai_api_with_direct_personality(message: &str, personality_type: Co
         }
     };
     
-    let system_prompt = personality_type.system_prompt();
-    log::info!("使用系統提示詞: {}", system_prompt);
+    // 使用專家系統匹配最適合的專家
+    log::info!("開始為訊息匹配專家: {}", message);
+    let expert_match = match ai_service.match_expert_for_task(message).await {
+        Ok(match_result) => {
+            log::info!("成功匹配專家: {} (信心度: {:.2})", 
+                match_result.expert.name, match_result.confidence);
+            Some(match_result)
+        }
+        Err(e) => {
+            log::warn!("專家匹配失敗，將使用通用指定個性教練: {}", e);
+            None
+        }
+    };
+    
+    let base_system_prompt = personality_type.system_prompt();
+    
+    // 結合專家和指定個性
+    let system_prompt = if let Some(expert) = &expert_match {
+        format!(
+            "你是{}，{}。同時，你具有{}的教練個性。請結合你的專業知識和個性特質為用戶提供建議。一律使用繁體中文回答。\n\n{}",
+            expert.expert.name,
+            expert.expert.description,
+            personality_type.display_name(),
+            base_system_prompt
+        )
+    } else {
+        base_system_prompt.to_string()
+    };
+    
+    log::info!("使用指定個性: {:?}, 專家: {:?}", personality_type, 
+        expert_match.as_ref().map(|e| &e.expert.name));
     
     let prompt = format!("{}\n\n用戶訊息：{}", system_prompt, message);
 
@@ -4040,7 +4150,13 @@ async fn call_ai_api_with_direct_personality(message: &str, personality_type: Co
     match ai_service.generate_task_preview(&prompt).await {
         Ok(response) => {
             log::info!("成功提取指定個性AI回應內容");
-            Ok(response)
+            // 如果有專家匹配，在回應前加上專家信息
+            let final_response = if let Some(expert) = &expert_match {
+                format!("[{}] {}", expert.expert.emoji, response)
+            } else {
+                response
+            };
+            Ok(final_response)
         },
         Err(e) => {
             log::error!("指定個性AI API 調用失敗: {}", e);

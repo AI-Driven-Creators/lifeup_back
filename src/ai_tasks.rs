@@ -1408,3 +1408,109 @@ fn calculate_value_similarity_threshold(requirement_type: &str, existing_value: 
         _ => existing_value / 4, // 默認25%差距
     }
 }
+
+// ============= 專家系統 API =============
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GenerateTaskWithExpertRequest {
+    pub description: String,
+    pub user_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ExpertTaskResponse {
+    pub expert_match: crate::ai_service::ExpertMatch,
+    pub task_json: CreateTaskInput,
+    pub expert_message: String,
+}
+
+// API: 使用專家系統生成任務
+pub async fn generate_task_with_expert(
+    req: web::Json<GenerateTaskWithExpertRequest>,
+) -> Result<HttpResponse> {
+    // 載入配置
+    let config = crate::config::Config::from_env();
+    
+    // 創建 AI 服務
+    let ai_service = match crate::ai_service::create_ai_service(&config.app.ai) {
+        Ok(service) => service,
+        Err(e) => {
+            log::error!("AI 服務初始化失敗: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("AI 服務初始化失敗: {}", e),
+            }));
+        }
+    };
+    
+    // 第一步：匹配專家
+    log::info!("開始為任務描述匹配專家: {}", req.description);
+    let expert_match = match ai_service.match_expert_for_task(&req.description).await {
+        Ok(match_result) => {
+            log::info!("成功匹配專家: {} (信心度: {:.2})", 
+                match_result.expert.name, match_result.confidence);
+            match_result
+        }
+        Err(e) => {
+            log::error!("專家匹配失敗: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("專家匹配失敗: {}", e),
+            }));
+        }
+    };
+    
+    // 第二步：使用專家生成任務
+    log::info!("使用專家 {} 生成任務", expert_match.expert.name);
+    let ai_task = match ai_service.generate_task_with_expert(&req.description, &expert_match.expert).await {
+        Ok(task) => {
+            log::info!("專家成功生成任務: {}", task.title);
+            task
+        }
+        Err(e) => {
+            log::error!("專家生成任務失敗: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("專家生成任務失敗: {}", e),
+            }));
+        }
+    };
+    
+    // 轉換為 CreateTaskInput 格式
+    let task_json = CreateTaskInput {
+        title: ai_task.title,
+        description: ai_task.description,
+        task_type: Some(ai_task.task_type),
+        priority: Some(ai_task.priority),
+        difficulty: Some(ai_task.difficulty),
+        experience: Some(ai_task.experience),
+        due_date: ai_task.due_date,
+        is_recurring: Some(ai_task.is_recurring),
+        recurrence_pattern: ai_task.recurrence_pattern,
+        start_date: ai_task.start_date,
+        end_date: ai_task.end_date,
+        completion_target: ai_task.completion_target,
+    };
+    
+    // 生成專家回應訊息
+    let expert_message = format!(
+        "使用{}回應：{}",
+        expert_match.expert.name,
+        expert_match.reasoning
+    );
+    
+    let response = ExpertTaskResponse {
+        expert_match,
+        task_json,
+        expert_message,
+    };
+    
+    Ok(HttpResponse::Ok().json(ApiResponse {
+        success: true,
+        data: Some(response),
+        message: "專家系統成功生成任務".to_string(),
+    }))
+}
