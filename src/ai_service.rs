@@ -8,74 +8,64 @@ use crate::config::AIConfig;
 use crate::behavior_analytics::{UserBehaviorSummary, BehaviorAnalytics};
 
 // 專家數據庫
-fn get_expert_database() -> Vec<Expert> {
+pub fn get_expert_database() -> Vec<Expert> {
     vec![
         Expert {
             name: "資深英文教學老師".to_string(),
-            title: "英語教育專家".to_string(),
             description: "擁有15年英語教學經驗，專精於語言學習方法和技巧".to_string(),
             expertise_areas: vec!["英語學習".to_string(), "語言教學".to_string(), "口語練習".to_string(), "文法學習".to_string()],
             emoji: "📚".to_string(),
         },
         Expert {
             name: "程式設計導師".to_string(),
-            title: "軟體開發專家".to_string(),
             description: "資深軟體工程師，專精於多種程式語言和開發框架".to_string(),
             expertise_areas: vec!["程式設計".to_string(), "軟體開發".to_string(), "演算法".to_string(), "系統設計".to_string()],
             emoji: "💻".to_string(),
         },
         Expert {
             name: "健身教練".to_string(),
-            title: "體能訓練專家".to_string(),
             description: "專業健身教練，專精於運動訓練和健康管理".to_string(),
             expertise_areas: vec!["健身訓練".to_string(), "運動計劃".to_string(), "健康管理".to_string(), "營養搭配".to_string()],
             emoji: "💪".to_string(),
         },
         Expert {
             name: "理財規劃師".to_string(),
-            title: "財務管理專家".to_string(),
             description: "專業理財顧問，專精於投資理財和財務規劃".to_string(),
             expertise_areas: vec!["理財規劃".to_string(), "投資策略".to_string(), "財務管理".to_string(), "儲蓄計劃".to_string()],
             emoji: "💰".to_string(),
         },
         Expert {
             name: "時間管理顧問".to_string(),
-            title: "效率提升專家".to_string(),
             description: "專業時間管理顧問，專精於效率提升和目標達成".to_string(),
             expertise_areas: vec!["時間管理".to_string(), "效率提升".to_string(), "目標設定".to_string(), "習慣養成".to_string()],
             emoji: "⏰".to_string(),
         },
         Expert {
             name: "創意設計師".to_string(),
-            title: "設計思維專家".to_string(),
             description: "資深設計師，專精於創意思維和視覺設計".to_string(),
             expertise_areas: vec!["創意設計".to_string(), "視覺設計".to_string(), "品牌設計".to_string(), "UI/UX設計".to_string()],
             emoji: "🎨".to_string(),
         },
         Expert {
             name: "心理諮商師".to_string(),
-            title: "心理健康專家".to_string(),
             description: "專業心理諮商師，專精於情緒管理和心理調適".to_string(),
             expertise_areas: vec!["心理諮商".to_string(), "情緒管理".to_string(), "壓力調適".to_string(), "人際關係".to_string()],
             emoji: "🧠".to_string(),
         },
         Expert {
             name: "廚藝導師".to_string(),
-            title: "烹飪專家".to_string(),
             description: "專業廚師，專精於各種料理技巧和營養搭配".to_string(),
             expertise_areas: vec!["烹飪技巧".to_string(), "料理製作".to_string(), "營養搭配".to_string(), "食材選擇".to_string()],
             emoji: "👨‍🍳".to_string(),
         },
         Expert {
             name: "音樂老師".to_string(),
-            title: "音樂教育專家".to_string(),
             description: "專業音樂教師，專精於樂器演奏和音樂理論".to_string(),
             expertise_areas: vec!["音樂學習".to_string(), "樂器演奏".to_string(), "音樂理論".to_string(), "聲樂訓練".to_string()],
             emoji: "🎵".to_string(),
         },
         Expert {
             name: "學習方法顧問".to_string(),
-            title: "學習策略專家".to_string(),
             description: "教育心理學專家，專精於學習方法和記憶技巧".to_string(),
             expertise_areas: vec!["學習方法".to_string(), "記憶技巧".to_string(), "考試準備".to_string(), "知識管理".to_string()],
             emoji: "📖".to_string(),
@@ -120,7 +110,6 @@ struct Choice {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Expert {
     pub name: String,
-    pub title: String,
     pub description: String,
     pub expertise_areas: Vec<String>,
     pub emoji: String,
@@ -131,7 +120,8 @@ pub struct Expert {
 pub struct ExpertMatch {
     pub expert: Expert,
     pub confidence: f64,
-    pub reasoning: String,
+    pub ai_expert_name: String,
+    pub ai_expert_description: String,
 }
 
 // AI 生成的任務結構（簡化版）
@@ -294,7 +284,8 @@ pub trait AIService {
     async fn generate_task_preview_with_history(&self, system_prompt: &str, history: &[(String, String)], current_message: &str) -> Result<String>;
     async fn generate_task_from_text(&self, user_input: &str) -> Result<AIGeneratedTask>;
     async fn match_expert_for_task(&self, user_input: &str) -> Result<ExpertMatch>;
-    async fn generate_task_with_expert(&self, user_input: &str, expert: &Expert) -> Result<AIGeneratedTask>;
+    async fn generate_task_with_expert(&self, user_input: &str, expert_match: &ExpertMatch) -> Result<AIGeneratedTask>;
+    async fn analyze_with_expert(&self, user_input: &str, expert_name: &str, expert_description: &str, analysis_type: &str) -> Result<String>;
 }
 
 // OpenRouter API 請求結構
@@ -815,9 +806,9 @@ impl AIService for OpenAIService {
 
 回應格式（JSON）：
 {{
-  "expert_index": 專家在列表中的索引（從0開始）,
-  "confidence": 匹配信心度（0.0-1.0）,
-  "reasoning": "選擇理由的詳細說明"
+  "expert_name": "專家的完整名稱",
+  "expert_description": "專家的詳細描述",
+  "confidence": 匹配信心度（0.0-1.0）
 }}
 
 選擇原則：
@@ -864,32 +855,40 @@ impl AIService for OpenAIService {
         let openai_response: OpenAIResponse = response.json().await?;
         
         if let Some(choice) = openai_response.choices.first() {
+            // 印出AI的原始回應
+            log::info!("AI原始回應: {}", choice.message.content);
+            
             let match_result: serde_json::Value = serde_json::from_str(&choice.message.content)?;
             
-            let expert_index = match_result["expert_index"].as_u64()
-                .ok_or_else(|| anyhow::anyhow!("無效的專家索引"))? as usize;
+            let expert_name = match_result["expert_name"].as_str()
+                .ok_or_else(|| anyhow::anyhow!("無效的專家名稱"))?.to_string();
+            
+            let expert_description = match_result["expert_description"].as_str()
+                .ok_or_else(|| anyhow::anyhow!("無效的專家描述"))?.to_string();
             
             let confidence = match_result["confidence"].as_f64()
                 .ok_or_else(|| anyhow::anyhow!("無效的信心度"))?;
-            
-            let reasoning = match_result["reasoning"].as_str()
-                .ok_or_else(|| anyhow::anyhow!("無效的推理"))?.to_string();
 
-            if expert_index >= experts.len() {
-                return Err(anyhow::anyhow!("專家索引超出範圍"));
-            }
+            // 直接使用AI返回的專家信息，創建虛擬專家對象
+            let virtual_expert = Expert {
+                name: expert_name.clone(),
+                description: expert_description.clone(),
+                expertise_areas: vec!["AI匹配".to_string()],
+                emoji: "🤖".to_string(),
+            };
 
             Ok(ExpertMatch {
-                expert: experts[expert_index].clone(),
+                expert: virtual_expert,
                 confidence,
-                reasoning,
+                ai_expert_name: expert_name,
+                ai_expert_description: expert_description,
             })
         } else {
             Err(anyhow::anyhow!("OpenAI 未返回有效回應"))
         }
     }
 
-    async fn generate_task_with_expert(&self, user_input: &str, expert: &Expert) -> Result<AIGeneratedTask> {
+    async fn generate_task_with_expert(&self, user_input: &str, expert_match: &ExpertMatch) -> Result<AIGeneratedTask> {
         let now = Utc::now();
         let current_time_str = now.to_rfc3339();
 
@@ -946,8 +945,8 @@ impl AIService for OpenAIService {
 - due_date: null（重複性任務通常不設定單一截止日期）
 
 請基於你的專業知識和經驗，為用戶生成最適合的任務規劃。"#,
-            expert.name,
-            expert.description,
+            expert_match.ai_expert_name,
+            expert_match.ai_expert_description,
             current_time_str
         );
 
@@ -994,6 +993,89 @@ impl AIService for OpenAIService {
             validate_generated_task(&generated_task)?;
             
             Ok(generated_task)
+        } else {
+            Err(anyhow::anyhow!("OpenAI 未返回有效回應"))
+        }
+    }
+
+    async fn analyze_with_expert(&self, user_input: &str, expert_name: &str, expert_description: &str, analysis_type: &str) -> Result<String> {
+        let analysis_prompts = match analysis_type {
+            "analyze" => format!(
+                r#"你是{}，{}
+
+請根據用戶的需求分析出3-6個適合的加強方向。
+
+用戶需求：{}
+
+請以JSON格式回應，格式如下：
+{{
+  "directions": [
+    {{"title": "方向標題", "description": "簡短描述"}},
+    {{"title": "方向標題", "description": "簡短描述"}}
+  ]
+}}
+
+每個方向標題要簡潔明確，描述要簡短（不超過20字）。"#,
+                expert_name, expert_description, user_input
+            ),
+            "goals" => format!(
+                r#"你是{}，{}
+
+請根據用戶的需求生成3-5個明確、可衡量的學習目標。目標應該具體、可達成、有時間性。
+
+用戶需求：{}
+
+請以清晰的格式回應，每個目標用編號列出，並說明如何衡量達成情況。"#,
+                expert_name, expert_description, user_input
+            ),
+            "resources" => format!(
+                r#"你是{}，{}
+
+請根據用戶的需求推薦3-5個優質的學習資源，包括書籍、課程、網站、工具等。
+
+用戶需求：{}
+
+請以清晰的格式回應，每個資源用編號列出，並簡要說明為什麼推薦這個資源。"#,
+                expert_name, expert_description, user_input
+            ),
+            _ => return Err(anyhow::anyhow!("不支援的分析類型: {}", analysis_type)),
+        };
+
+        let request = OpenAIRequest {
+            model: self.model.clone(),
+            messages: vec![
+                ChatMessage {
+                    role: "system".to_string(),
+                    content: analysis_prompts,
+                },
+            ],
+            max_completion_tokens: 1000,
+            response_format: ResponseFormat {
+                format_type: "json_object".to_string(),
+            },
+        };
+
+        let response = self.client
+            .post("https://api.openai.com/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&request)
+            .send()
+            .await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response.text().await?;
+            log::error!("OpenAI API 錯誤: {} - {}", status, error_text);
+            return Err(anyhow::anyhow!("OpenAI API 錯誤: {}", status));
+        }
+
+        let openai_response: OpenAIResponse = response.json().await?;
+        
+        if let Some(choice) = openai_response.choices.first() {
+            // 印出AI的原始回應
+            log::info!("AI原始回應: {}", choice.message.content);
+            Ok(choice.message.content.clone())
         } else {
             Err(anyhow::anyhow!("OpenAI 未返回有效回應"))
         }
@@ -1509,18 +1591,24 @@ impl AIService for OpenRouterService {
 
 請分析用戶的任務描述，選擇最適合的專家，並提供匹配理由。
 
+重要提示：
+- 程式語言（如C++、Python、Java、JavaScript等）應該匹配「程式設計導師」
+- 程式設計、軟體開發、編程相關的任務都應該匹配「程式設計導師」
+- 健身、運動、體能訓練相關的任務才匹配「健身教練」
+
 回應格式（JSON）：
 {{
-  "expert_index": 專家在列表中的索引（從0開始）,
-  "confidence": 匹配信心度（0.0-1.0）,
-  "reasoning": "選擇理由的詳細說明"
+  "expert_name": "專家的完整名稱",
+  "expert_description": "專家的詳細描述",
+  "confidence": 匹配信心度（0.0-1.0）
 }}
 
 選擇原則：
 1. 根據任務的核心領域選擇專家
 2. 考慮專家的專業領域是否與任務匹配
-3. 如果沒有完全匹配的專家，選擇最接近的
-4. 信心度基於匹配程度：完全匹配=1.0，部分匹配=0.6-0.8，勉強匹配=0.3-0.5"#,
+3. 程式語言學習明確屬於程式設計領域
+4. 如果沒有完全匹配的專家，選擇最接近的
+5. 信心度基於匹配程度：完全匹配=1.0，部分匹配=0.6-0.8，勉強匹配=0.3-0.5"#,
             expert_list
         );
 
@@ -1562,32 +1650,40 @@ impl AIService for OpenRouterService {
         let openrouter_response: OpenRouterResponse = response.json().await?;
         
         if let Some(choice) = openrouter_response.choices.first() {
+            // 印出AI的原始回應
+            log::info!("AI原始回應: {}", choice.message.content);
+            
             let match_result: serde_json::Value = serde_json::from_str(&choice.message.content)?;
             
-            let expert_index = match_result["expert_index"].as_u64()
-                .ok_or_else(|| anyhow::anyhow!("無效的專家索引"))? as usize;
+            let expert_name = match_result["expert_name"].as_str()
+                .ok_or_else(|| anyhow::anyhow!("無效的專家名稱"))?.to_string();
+            
+            let expert_description = match_result["expert_description"].as_str()
+                .ok_or_else(|| anyhow::anyhow!("無效的專家描述"))?.to_string();
             
             let confidence = match_result["confidence"].as_f64()
                 .ok_or_else(|| anyhow::anyhow!("無效的信心度"))?;
-            
-            let reasoning = match_result["reasoning"].as_str()
-                .ok_or_else(|| anyhow::anyhow!("無效的推理"))?.to_string();
 
-            if expert_index >= experts.len() {
-                return Err(anyhow::anyhow!("專家索引超出範圍"));
-            }
+            // 直接使用AI返回的專家信息，創建虛擬專家對象
+            let virtual_expert = Expert {
+                name: expert_name.clone(),
+                description: expert_description.clone(),
+                expertise_areas: vec!["AI匹配".to_string()],
+                emoji: "🤖".to_string(),
+            };
 
             Ok(ExpertMatch {
-                expert: experts[expert_index].clone(),
+                expert: virtual_expert,
                 confidence,
-                reasoning,
+                ai_expert_name: expert_name,
+                ai_expert_description: expert_description,
             })
         } else {
             Err(anyhow::anyhow!("OpenRouter 未返回有效回應"))
         }
     }
 
-    async fn generate_task_with_expert(&self, user_input: &str, expert: &Expert) -> Result<AIGeneratedTask> {
+    async fn generate_task_with_expert(&self, user_input: &str, expert_match: &ExpertMatch) -> Result<AIGeneratedTask> {
         let now = Utc::now();
         let current_time_str = now.to_rfc3339();
 
@@ -1644,8 +1740,8 @@ impl AIService for OpenRouterService {
 - due_date: null（重複性任務通常不設定單一截止日期）
 
 請基於你的專業知識和經驗，為用戶生成最適合的任務規劃。"#,
-            expert.name,
-            expert.description,
+            expert_match.ai_expert_name,
+            expert_match.ai_expert_description,
             current_time_str
         );
 
@@ -1694,6 +1790,89 @@ impl AIService for OpenRouterService {
             validate_generated_task(&generated_task)?;
             
             Ok(generated_task)
+        } else {
+            Err(anyhow::anyhow!("OpenRouter 未返回有效回應"))
+        }
+    }
+
+    async fn analyze_with_expert(&self, user_input: &str, expert_name: &str, expert_description: &str, analysis_type: &str) -> Result<String> {
+        let analysis_prompts = match analysis_type {
+            "analyze" => format!(
+                r#"你是{}，{}
+
+請根據用戶的需求分析出3-6個適合的加強方向。
+
+用戶需求：{}
+
+請以JSON格式回應，格式如下：
+{{
+  "directions": [
+    {{"title": "方向標題", "description": "簡短描述"}},
+    {{"title": "方向標題", "description": "簡短描述"}}
+  ]
+}}
+
+每個方向標題要簡潔明確，描述要簡短（不超過20字）。"#,
+                expert_name, expert_description, user_input
+            ),
+            "goals" => format!(
+                r#"你是{}，{}
+
+請根據用戶的需求生成3-5個明確、可衡量的學習目標。目標應該具體、可達成、有時間性。
+
+用戶需求：{}
+
+請以清晰的格式回應，每個目標用編號列出，並說明如何衡量達成情況。"#,
+                expert_name, expert_description, user_input
+            ),
+            "resources" => format!(
+                r#"你是{}，{}
+
+請根據用戶的需求推薦3-5個優質的學習資源，包括書籍、課程、網站、工具等。
+
+用戶需求：{}
+
+請以清晰的格式回應，每個資源用編號列出，並簡要說明為什麼推薦這個資源。"#,
+                expert_name, expert_description, user_input
+            ),
+            _ => return Err(anyhow::anyhow!("不支援的分析類型: {}", analysis_type)),
+        };
+
+        let request = OpenRouterRequest {
+            model: self.model.clone(),
+            messages: vec![
+                ChatMessage {
+                    role: "system".to_string(),
+                    content: analysis_prompts,
+                },
+            ],
+            max_completion_tokens: 1000,
+            response_format: ResponseFormat {
+                format_type: "json_object".to_string(),
+            },
+        };
+
+        let response = self.client
+            .post("https://openrouter.ai/api/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&request)
+            .send()
+            .await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response.text().await?;
+            log::error!("OpenRouter API 錯誤: {} - {}", status, error_text);
+            return Err(anyhow::anyhow!("OpenRouter API 錯誤: {}", status));
+        }
+
+        let openrouter_response: OpenRouterResponse = response.json().await?;
+        
+        if let Some(choice) = openrouter_response.choices.first() {
+            // 印出AI的原始回應
+            log::info!("AI原始回應: {}", choice.message.content);
+            Ok(choice.message.content.clone())
         } else {
             Err(anyhow::anyhow!("OpenRouter 未返回有效回應"))
         }

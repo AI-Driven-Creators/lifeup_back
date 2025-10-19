@@ -1415,13 +1415,45 @@ fn calculate_value_similarity_threshold(requirement_type: &str, existing_value: 
 pub struct GenerateTaskWithExpertRequest {
     pub description: String,
     pub user_id: Option<String>,
+    pub expert_name: String,
+    pub expert_description: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ExpertTaskResponse {
     pub expert_match: crate::ai_service::ExpertMatch,
     pub task_json: CreateTaskInput,
-    pub expert_message: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MatchExpertRequest {
+    pub description: String,
+    pub user_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ExpertMatchResponse {
+    pub expert_match: crate::ai_service::ExpertMatch,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ExpertAnalysisRequest {
+    pub description: String,
+    pub expert_name: String,
+    pub analysis_type: String, // "analyze", "goals", "resources"
+    pub user_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ExpertAnalysisResponse {
+    pub analysis_result: String,
+    pub directions: Option<Vec<AnalysisDirection>>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AnalysisDirection {
+    pub title: String,
+    pub description: String,
 }
 
 // API: 使用專家系統生成任務
@@ -1444,27 +1476,25 @@ pub async fn generate_task_with_expert(
         }
     };
     
-    // 第一步：匹配專家
-    log::info!("開始為任務描述匹配專家: {}", req.description);
-    let expert_match = match ai_service.match_expert_for_task(&req.description).await {
-        Ok(match_result) => {
-            log::info!("成功匹配專家: {} (信心度: {:.2})", 
-                match_result.expert.name, match_result.confidence);
-            match_result
-        }
-        Err(e) => {
-            log::error!("專家匹配失敗: {}", e);
-            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
-                success: false,
-                data: None,
-                message: format!("專家匹配失敗: {}", e),
-            }));
-        }
+    // 直接使用傳入的專家信息，創建專家匹配對象
+    log::info!("使用已匹配的專家: {}", req.expert_name);
+    let virtual_expert = crate::ai_service::Expert {
+        name: req.expert_name.clone(),
+        description: req.expert_description.clone(),
+        expertise_areas: vec!["AI匹配".to_string()],
+        emoji: "🤖".to_string(),
+    };
+    
+    let expert_match = crate::ai_service::ExpertMatch {
+        expert: virtual_expert,
+        confidence: 1.0, // 使用已匹配的專家，信心度設為1.0
+        ai_expert_name: req.expert_name.clone(),
+        ai_expert_description: req.expert_description.clone(),
     };
     
     // 第二步：使用專家生成任務
     log::info!("使用專家 {} 生成任務", expert_match.expert.name);
-    let ai_task = match ai_service.generate_task_with_expert(&req.description, &expert_match.expert).await {
+    let ai_task = match ai_service.generate_task_with_expert(&req.description, &expert_match).await {
         Ok(task) => {
             log::info!("專家成功生成任務: {}", task.title);
             task
@@ -1495,22 +1525,148 @@ pub async fn generate_task_with_expert(
         completion_target: ai_task.completion_target,
     };
     
-    // 生成專家回應訊息
-    let expert_message = format!(
-        "使用{}回應：{}",
-        expert_match.expert.name,
-        expert_match.reasoning
-    );
-    
     let response = ExpertTaskResponse {
         expert_match,
         task_json,
-        expert_message,
     };
     
     Ok(HttpResponse::Ok().json(ApiResponse {
         success: true,
         data: Some(response),
         message: "專家系統成功生成任務".to_string(),
+    }))
+}
+
+// API: 只匹配專家（不生成任務）
+pub async fn match_expert_only(
+    req: web::Json<MatchExpertRequest>,
+) -> Result<HttpResponse> {
+    // 載入配置
+    let config = crate::config::Config::from_env();
+    
+    // 創建 AI 服務
+    let ai_service = match crate::ai_service::create_ai_service(&config.app.ai) {
+        Ok(service) => service,
+        Err(e) => {
+            log::error!("AI 服務初始化失敗: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("AI 服務初始化失敗: {}", e),
+            }));
+        }
+    };
+    
+    // 只進行專家匹配
+    log::info!("開始為任務描述匹配專家: {}", req.description);
+    let expert_match = match ai_service.match_expert_for_task(&req.description).await {
+        Ok(match_result) => {
+            log::info!("成功匹配專家: {} (信心度: {:.2})", 
+                match_result.expert.name, match_result.confidence);
+            match_result
+        }
+        Err(e) => {
+            log::error!("專家匹配失敗: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("專家匹配失敗: {}", e),
+            }));
+        }
+    };
+    
+    let response = ExpertMatchResponse {
+        expert_match,
+    };
+    
+    Ok(HttpResponse::Ok().json(ApiResponse {
+        success: true,
+        data: Some(response),
+        message: "專家匹配成功".to_string(),
+    }))
+}
+
+// API: 專家分析
+pub async fn expert_analysis(
+    req: web::Json<ExpertAnalysisRequest>,
+) -> Result<HttpResponse> {
+    // 載入配置
+    let config = crate::config::Config::from_env();
+    
+    // 創建 AI 服務
+    let ai_service = match crate::ai_service::create_ai_service(&config.app.ai) {
+        Ok(service) => service,
+        Err(e) => {
+            log::error!("AI 服務初始化失敗: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("AI 服務初始化失敗: {}", e),
+            }));
+        }
+    };
+    
+    // 創建一個臨時的專家對象，使用AI返回的信息
+    let expert = crate::ai_service::Expert {
+        name: req.expert_name.clone(),
+        description: "AI匹配的專家".to_string(), // 這個描述不會被使用
+        expertise_areas: vec!["AI匹配".to_string()],
+        emoji: "🤖".to_string(),
+    };
+    
+    // 進行專家分析
+    log::info!("開始專家分析: {} - {}", req.expert_name, req.analysis_type);
+    let analysis_result = match ai_service.analyze_with_expert(&req.description, &req.expert_name, "AI匹配的專家", &req.analysis_type).await {
+        Ok(result) => {
+            log::info!("專家分析完成: {}", req.expert_name);
+            result
+        }
+        Err(e) => {
+            log::error!("專家分析失敗: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("專家分析失敗: {}", e),
+            }));
+        }
+    };
+    
+    // 解析JSON結果（如果是分析加強方向）
+    let mut response = ExpertAnalysisResponse {
+        analysis_result: analysis_result.clone(),
+        directions: None,
+    };
+    
+    if req.analysis_type == "analyze" {
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&analysis_result) {
+            if let Some(directions_array) = parsed.get("directions").and_then(|v| v.as_array()) {
+                let directions: Vec<AnalysisDirection> = directions_array
+                    .iter()
+                    .filter_map(|item| {
+                        if let (Some(title), Some(description)) = (
+                            item.get("title").and_then(|v| v.as_str()),
+                            item.get("description").and_then(|v| v.as_str()),
+                        ) {
+                            Some(AnalysisDirection {
+                                title: title.to_string(),
+                                description: description.to_string(),
+                            })
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                
+                if !directions.is_empty() {
+                    response.directions = Some(directions);
+                }
+            }
+        }
+    }
+    
+    Ok(HttpResponse::Ok().json(ApiResponse {
+        success: true,
+        data: Some(response),
+        message: "專家分析成功".to_string(),
     }))
 }
