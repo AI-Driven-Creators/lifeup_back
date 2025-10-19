@@ -4573,4 +4573,135 @@ pub async fn sync_achievement_statistics(rb: web::Data<RBatis>) -> Result<HttpRe
     }
 }
 
+// ================= Task History API =================
+
+/// 獲取用戶的任務完成歷史
+/// GET /api/users/{user_id}/task-history?limit=5&offset=0&task_type=all
+pub async fn get_task_history(
+    rb: web::Data<RBatis>,
+    path: web::Path<String>,
+    query: web::Query<TaskHistoryQuery>,
+) -> Result<HttpResponse> {
+    let user_id = path.into_inner();
+
+    log::info!(
+        "獲取用戶 {} 的任務歷史，參數: limit={}, offset={}, task_type={}",
+        user_id,
+        query.limit,
+        query.offset,
+        query.task_type
+    );
+
+    // 構建 SQL 查詢
+    let base_sql = "
+        SELECT id, title, task_type, updated_at, experience
+        FROM task
+        WHERE user_id = ?
+          AND status IN (2, 6)
+    ";
+
+    // 根據任務類型添加過濾條件
+    let filter_sql = if query.task_type != "all" {
+        format!("{} AND task_type = ?", base_sql)
+    } else {
+        base_sql.to_string()
+    };
+
+    let order_limit_sql = format!(
+        "{} ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+        filter_sql
+    );
+
+    // 構建計數查詢
+    let count_sql = if query.task_type != "all" {
+        format!(
+            "SELECT COUNT(*) as count FROM task WHERE user_id = ? AND status IN (2, 6) AND task_type = ?"
+        )
+    } else {
+        "SELECT COUNT(*) as count FROM task WHERE user_id = ? AND status IN (2, 6)".to_string()
+    };
+
+    // 執行查詢
+    let tasks_result = if query.task_type != "all" {
+        rb.query_decode::<Vec<Task>>(
+            &order_limit_sql,
+            vec![
+                Value::from(user_id.as_str()),
+                Value::from(query.task_type.as_str()),
+                Value::from(query.limit),
+                Value::from(query.offset),
+            ],
+        )
+        .await
+    } else {
+        rb.query_decode::<Vec<Task>>(
+            &order_limit_sql,
+            vec![
+                Value::from(user_id.as_str()),
+                Value::from(query.limit),
+                Value::from(query.offset),
+            ],
+        )
+        .await
+    };
+
+    // 執行計數查詢
+    let count_result = if query.task_type != "all" {
+        rb.query_decode::<Vec<serde_json::Value>>(
+            &count_sql,
+            vec![Value::from(user_id.as_str()), Value::from(query.task_type.as_str())],
+        )
+        .await
+    } else {
+        rb.query_decode::<Vec<serde_json::Value>>(&count_sql, vec![Value::from(user_id.as_str())])
+            .await
+    };
+
+    match (tasks_result, count_result) {
+        (Ok(tasks), Ok(count_rows)) => {
+            let total_count = count_rows
+                .first()
+                .and_then(|row| row.get("count"))
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+
+            // 轉換為 TaskHistoryItem
+            let history_items: Vec<TaskHistoryItem> = tasks
+                .iter()
+                .filter_map(|task| {
+                    Some(TaskHistoryItem {
+                        id: task.id.clone()?,
+                        title: task.title.clone().unwrap_or_default(),
+                        task_type: task.task_type.clone().unwrap_or_default(),
+                        completed_at: task.updated_at?,
+                        experience: task.experience.unwrap_or(0),
+                    })
+                })
+                .collect();
+
+            let has_more = (query.offset + query.limit) < total_count;
+
+            let response = TaskHistoryResponse {
+                tasks: history_items,
+                total_count,
+                has_more,
+            };
+
+            Ok(HttpResponse::Ok().json(ApiResponse {
+                success: true,
+                data: Some(response),
+                message: "獲取任務歷史成功".to_string(),
+            }))
+        }
+        (Err(e), _) | (_, Err(e)) => {
+            log::error!("獲取任務歷史失敗: {}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("獲取任務歷史失敗: {}", e),
+            }))
+        }
+    }
+}
+
 

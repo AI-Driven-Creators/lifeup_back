@@ -771,3 +771,42 @@ pub struct CareerMainlines {
     pub updated_at: Option<DateTime<Utc>>,
 }
 crud!(CareerMainlines{});
+
+// ================= Task History Models =================
+
+// 任務歷史項目 - 用於返回給前端的簡化任務資料
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TaskHistoryItem {
+    pub id: String,
+    pub title: String,
+    pub task_type: String,
+    pub completed_at: DateTime<Utc>,
+    pub experience: i32,
+}
+
+// 任務歷史查詢參數
+#[derive(Clone, Debug, Deserialize)]
+pub struct TaskHistoryQuery {
+    #[serde(default = "default_limit")]
+    pub limit: i64,
+    #[serde(default)]
+    pub offset: i64,
+    #[serde(default = "default_task_type")]
+    pub task_type: String,
+}
+
+fn default_limit() -> i64 {
+    5
+}
+
+fn default_task_type() -> String {
+    "all".to_string()
+}
+
+// 任務歷史響應資料
+#[derive(Clone, Debug, Serialize)]
+pub struct TaskHistoryResponse {
+    pub tasks: Vec<TaskHistoryItem>,
+    pub total_count: i64,
+    pub has_more: bool,
+}

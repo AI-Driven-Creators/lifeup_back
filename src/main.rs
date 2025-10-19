@@ -210,6 +210,8 @@ async fn main() -> std::io::Result<()> {
             // 用戶數據重置路由
             .route("/api/users/{user_id}/reset", web::delete().to(reset_user_data))
             .route("/api/users/{user_id}/reset", web::post().to(reset_user_data_selective))
+            // 任務歷史路由
+            .route("/api/users/{user_id}/task-history", web::get().to(get_task_history))
     })
     .workers(2)
     .bind(&server_addr)?
