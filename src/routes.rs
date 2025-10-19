@@ -3174,13 +3174,13 @@ pub async fn send_message_to_chatgpt(
 
     // 呼叫ChatGPT API或使用本地回應
     let ai_response = match call_chatgpt_api(&req.message).await {
-        Ok(response) => {
-            log::info!("成功獲取ChatGPT回應");
-            response
-        },
+        Ok(response) => response,
         Err(e) => {
-            log::warn!("ChatGPT API呼叫失敗，使用本地回應: {}", e);
-            format!("收到您的訊息：「{}」。我是您的專業教練，有什麼可以幫助您的嗎？（註：AI服務暫時不可用）", req.message)
+            log::error!("AI 回應取得失敗: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "message": format!("AI 服務調用失敗: {}", e)
+            })));
         }
     };
 
@@ -3205,6 +3205,7 @@ pub async fn send_message_to_chatgpt(
     }
     
     Ok(HttpResponse::Ok().json(json!({
+        "success": true,
         "text": ai_response
     })))
 }
@@ -3218,34 +3219,34 @@ pub async fn test_endpoint() -> Result<HttpResponse> {
 }
 
 async fn call_chatgpt_api(message: &str) -> Result<String, Box<dyn std::error::Error>> {
-    log::info!("開始呼叫AI API");
+    log::info!("開始呼叫AI 提供者");
     
     // 載入配置
     let config = crate::config::Config::from_env();
+    let provider = config.app.ai.api_option.clone();
     
     // 創建 AI 服務
     let ai_service = match crate::ai_service::create_ai_service(&config.app.ai) {
         Ok(service) => service,
         Err(e) => {
             log::error!("AI 服務初始化失敗: {}", e);
-            return Err(format!("AI 服務初始化失敗: {}", e).into());
+            return Err(format!("AI 服務初始化失敗 ({})", e).into());
         }
     };
     
     // 使用專家系統匹配最適合的專家
-    log::info!("開始為訊息匹配專家: {}", message);
-    let expert_match = match ai_service.match_expert_for_task(message).await {
-        Ok(match_result) => {
-            log::info!("成功匹配專家: {} (信心度: {:.2})", 
-                match_result.expert.name, match_result.confidence);
-            match_result
-        }
-        Err(e) => {
-            log::warn!("專家匹配失敗，使用通用教練: {}", e);
-            // 如果專家匹配失敗，使用通用教練
-            return call_chatgpt_api_fallback(message, ai_service).await;
-        }
-    };
+    log::info!("開始為訊息匹配專家 (provider: {}): {}", provider, message);
+    let expert_match = ai_service.match_expert_for_task(message).await.map_err(|e| {
+        log::error!("專家匹配失敗 (provider: {}): {}", provider, e);
+        e
+    })?;
+
+    log::info!(
+        "成功匹配專家 (provider: {}): {} (信心度: {:.2})",
+        provider,
+        expert_match.expert.name,
+        expert_match.confidence
+    );
     
     // 使用專家的專業知識構建提示詞
     let prompt = format!(
@@ -3255,35 +3256,21 @@ async fn call_chatgpt_api(message: &str) -> Result<String, Box<dyn std::error::E
         message
     );
 
-    log::info!("準備發送請求到AI API，使用專家: {}", expert_match.expert.name);
+    log::info!(
+        "準備發送請求到 AI API (provider: {}，專家: {})",
+        provider,
+        expert_match.expert.name
+    );
     
     match ai_service.generate_task_preview(&prompt).await {
         Ok(response) => {
-            log::info!("成功從AI API獲取回應");
+            log::info!("成功從 AI API (provider: {}) 獲取回應", provider);
             // 在回應前加上專家信息
             let expert_response = format!("[{}] {}", expert_match.expert.emoji, response);
             Ok(expert_response)
         },
         Err(e) => {
-            log::error!("AI API 調用失敗: {}", e);
-            Err(format!("AI API 調用失敗: {}", e).into())
-        }
-    }
-}
-
-// 備用函數：當專家匹配失敗時使用
-async fn call_chatgpt_api_fallback(message: &str, ai_service: Box<dyn crate::ai_service::AIService + Send + Sync>) -> Result<String, Box<dyn std::error::Error>> {
-    let prompt = format!("你是一位專業的教練，請根據給定的訊息提供建議。一律使用繁體中文回答。\n\n用戶訊息：{}", message);
-
-    log::info!("使用備用通用教練模式");
-    
-    match ai_service.generate_task_preview(&prompt).await {
-        Ok(response) => {
-            log::info!("成功從AI API獲取回應（備用模式）");
-            Ok(response)
-        },
-        Err(e) => {
-            log::error!("AI API 調用失敗: {}", e);
+            log::error!("AI API 調用失敗 (provider: {}): {}", provider, e);
             Err(format!("AI API 調用失敗: {}", e).into())
         }
     }
