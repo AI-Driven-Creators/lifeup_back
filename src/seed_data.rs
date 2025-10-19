@@ -161,21 +161,25 @@ pub async fn seed_minimum_user_data(rb: &RBatis) -> Result<String, Box<dyn std::
 async fn insert_test_user(rb: &RBatis) -> Result<String, Box<dyn std::error::Error>> {
     let user_id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
-    
+
+    // 使用 bcrypt 對密碼進行哈希處理
+    let password_hash = bcrypt::hash("12345678", bcrypt::DEFAULT_COST)?;
+
     let sql = r#"
-        INSERT INTO user (id, name, email, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO user (id, name, email, password_hash, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
     "#;
-    
+
     match rb.exec(sql, vec![
         user_id.clone().into(),
         "小雅".into(),
         "xiaoya@lifeup.com".into(),
+        password_hash.into(),
         now.clone().into(),
         now.into(),
     ]).await {
         Ok(_) => {
-            info!("測試用戶插入成功: {}", user_id);
+            info!("測試用戶插入成功: {} (密碼: 12345678)", user_id);
             Ok(user_id)
         }
         Err(e) => {
