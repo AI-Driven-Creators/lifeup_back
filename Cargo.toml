@@ -72,3 +72,7 @@ jsonschema = "0.17"
 
 # Async trait 支援
 async-trait = "0.1"
+
+# Async stream 支援 (for SSE)
+async-stream = "0.3"
+futures = "0.3"

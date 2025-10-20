@@ -1,5 +1,5 @@
 
-你是專業的職涯規劃師。基於用戶的完整檔案，為「創業投資人」職業設計個人化學習任務。
+你是專業的職涯規劃師。基於用戶的完整檔案，為「活動企劃」職業設計個人化學習任務。
 
 ## 用戶完整檔案
 
@@ -10,12 +10,12 @@
 - 工作風格：無測驗結果
 
 ### 職業選擇與偏好
-- 目標職業：創業投資人
+- 目標職業：活動企劃
 - 當前程度：完全新手
-- 可用時間：4-7小時
+- 可用時間：8-15小時
 - 學習方式：案例研究
-- 期望時程：6-12個月
-- 學習動機：kjlj
+- 期望時程：3-6個月
+- 學習動機：ferferfe
 
 ## 任務生成要求
 
@@ -60,13 +60,21 @@
 
 ### 分配規則
 1. **每個任務選擇 1-2 個最相關的屬性**
-2. **屬性值根據難度計算**（注意：使用者屬性滿分為 100，請謹慎分配）：
+2. **必須根據任務的實際內容選擇屬性，避免重複使用相同的屬性組合**：
+   - 理論學習、概念理解 → intelligence
+   - 創意設計、方案規劃 → creativity
+   - 長時間學習、技術操作 → focus
+   - 日常練習、持續執行 → endurance
+   - 團隊合作、溝通表達 → social
+   - 新技術學習、環境適應 → adaptability
+3. **屬性值根據難度計算**（注意：使用者屬性滿分為 100，請謹慎分配）：
    - 難度 1: 單個屬性值 1-2
    - 難度 2: 單個屬性值 2-3
    - 難度 3: 單個屬性值 3-4
    - 難度 4: 單個屬性值 4-5
    - 難度 5: 單個屬性值 5-6
-3. **一個任務的所有屬性值總和不應超過 8**
+4. **一個任務的所有屬性值總和不應超過 8**
+5. **整個任務列表必須涵蓋多種不同的屬性組合，不要重複使用相同的屬性**
 
 ## 嚴格 JSON 格式要求
 
@@ -87,44 +95,62 @@
   "personality_insights": "個性特質如何影響這個學習計劃的分析",
   "main_tasks": [
     {
-      "title": "主線任務標題1",
+      "title": "主線任務標題1（理論學習）",
+      "description": "任務總體說明。\\n\\n【學習目標】\\n具體要達成的學習目標。\\n\\n【執行步驟】\\n1. 第一步具體要做什麼\\n2. 第二步具體要做什麼\\n3. 第三步具體要做什麼\\n\\n【完成標準】\\n如何判斷任務完成。",
+      "difficulty": 2,
+      "estimated_hours": 15,
+      "skill_tags": [{"name": "核心技能1", "category": "technical"}],
+      "resources": ["學習資源1", "學習資源2"],
+      "attributes": {"intelligence": 2, "adaptability": 2}
+    },
+    {
+      "title": "主線任務標題2（創意設計）",
       "description": "任務總體說明。\\n\\n【學習目標】\\n具體要達成的學習目標。\\n\\n【執行步驟】\\n1. 第一步具體要做什麼\\n2. 第二步具體要做什麼\\n3. 第三步具體要做什麼\\n\\n【完成標準】\\n如何判斷任務完成。",
       "difficulty": 3,
       "estimated_hours": 20,
-      "skill_tags": [{"name": "核心技能1", "category": "technical"}, {"name": "核心技能2", "category": "soft"}],
-      "resources": ["學習資源1", "學習資源2"],
-      "attributes": {"intelligence": 3, "focus": 2}
+      "skill_tags": [{"name": "核心技能2", "category": "technical"}],
+      "resources": ["學習資源3", "學習資源4"],
+      "attributes": {"creativity": 4}
     },
     {
-      "title": "主線任務標題2",
+      "title": "主線任務標題3（技術實作）",
       "description": "任務總體說明。\\n\\n【學習目標】\\n具體要達成的學習目標。\\n\\n【執行步驟】\\n1. 第一步具體要做什麼\\n2. 第二步具體要做什麼\\n3. 第三步具體要做什麼\\n\\n【完成標準】\\n如何判斷任務完成。",
       "difficulty": 4,
       "estimated_hours": 25,
-      "skill_tags": [{"name": "核心技能3", "category": "technical"}, {"name": "核心技能4", "category": "soft"}],
-      "resources": ["學習資源3", "學習資源4"],
-      "attributes": {"creativity": 4, "adaptability": 3}
+      "skill_tags": [{"name": "核心技能3", "category": "technical"}],
+      "resources": ["學習資源5"],
+      "attributes": {"focus": 4, "intelligence": 2}
+    },
+    {
+      "title": "主線任務標題4（團隊協作）",
+      "description": "任務總體說明。\\n\\n【學習目標】\\n具體要達成的學習目標。\\n\\n【執行步驟】\\n1. 第一步具體要做什麼\\n2. 第二步具體要做什麼\\n3. 第三步具體要做什麼\\n\\n【完成標準】\\n如何判斷任務完成。",
+      "difficulty": 3,
+      "estimated_hours": 18,
+      "skill_tags": [{"name": "核心技能4", "category": "soft"}],
+      "resources": ["學習資源6"],
+      "attributes": {"social": 3, "creativity": 2}
     }
   ],
   "daily_tasks": [
     {
-      "title": "每日任務標題1",
+      "title": "每日任務標題1（日常練習）",
       "description": "任務總體說明。\\n\\n【學習目標】\\n具體要達成的學習目標。\\n\\n【執行步驟】\\n1. 第一步具體要做什麼\\n2. 第二步具體要做什麼\\n\\n【完成標準】\\n如何判斷任務完成。",
       "difficulty": 2,
       "estimated_hours": 1,
       "skill_tags": [{"name": "日常技能1", "category": "soft"}],
       "resources": ["資源1"],
-      "attributes": {"endurance": 2, "focus": 1}
+      "attributes": {"endurance": 2}
     }
   ],
   "project_tasks": [
     {
-      "title": "項目任務標題1",
+      "title": "項目任務標題1（綜合應用）",
       "description": "任務總體說明。\\n\\n【學習目標】\\n具體要達成的學習目標。\\n\\n【執行步驟】\\n1. 第一步具體要做什麼\\n2. 第二步具體要做什麼\\n3. 第三步具體要做什麼\\n4. 第四步具體要做什麼\\n\\n【完成標準】\\n如何判斷任務完成。",
       "difficulty": 5,
       "estimated_hours": 40,
       "skill_tags": [{"name": "實戰技能1", "category": "technical"}, {"name": "綜合技能2", "category": "soft"}],
       "resources": ["項目資源1", "項目資源2"],
-      "attributes": {"creativity": 5, "social": 3}
+      "attributes": {"creativity": 5, "adaptability": 3}
     }
   ]
 }
@@ -141,6 +167,8 @@
 
 重要提醒：
 - **attributes 欄位是必需的**，必須包含 1-2 個屬性及其數值（根據上述分配規則）
+- **嚴禁在所有任務中重複使用相同的屬性組合**，必須根據任務實際內容選擇最合適的屬性
+- 12 個子任務必須盡可能涵蓋所有六大屬性（intelligence、creativity、focus、endurance、social、adaptability）
 - skill_tags 現在必須是物件陣列格式，每個技能包含 name（技能名稱）和 category（分類）
 - category 只能是 "technical"（技術技能）或 "soft"（軟技能）
 - 技術技能包括：程式語言、開發工具、技術操作、硬體知識、數學概念等

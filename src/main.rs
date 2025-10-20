@@ -8,6 +8,7 @@ mod ai_tasks;
 mod achievement_service;
 mod career_routes;
 mod behavior_analytics;
+mod progressive_career_gen;
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
 use actix_web::middleware::Logger;
@@ -204,6 +205,9 @@ async fn main() -> std::io::Result<()> {
             .route("/api/career/generate-tasks", web::post().to(crate::career_routes::generate_career_tasks))
             .route("/api/career/accept-tasks", web::post().to(crate::career_routes::accept_career_tasks))
             .route("/api/career/import", web::post().to(crate::career_routes::import_career_tasks))
+            // 多步驟漸進式任務生成（SSE）
+            .route("/api/career/generate-tasks-progressive", web::post().to(crate::progressive_career_gen::generate_career_tasks_progressive_sse))
+            .app_data(web::Data::new(config.clone()))
             // 用戶數據重置路由
             .route("/api/users/{user_id}/reset", web::delete().to(reset_user_data))
             .route("/api/users/{user_id}/reset", web::post().to(reset_user_data_selective))

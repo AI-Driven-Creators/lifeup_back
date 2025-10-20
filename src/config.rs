@@ -34,6 +34,11 @@ pub struct AIConfig {
     pub openrouter_api_key: Option<String>,
     pub openrouter_model: String,
 
+    // 多步驟任務生成模型配置
+    pub outline_model: String,        // 大綱生成模型（輕量快速）
+    pub detail_model: String,         // 細節擴展模型（推理能力強）
+    pub resource_model: String,       // 資源推薦模型（帶搜尋能力）
+
     // Token 预算控制
     pub max_prompt_tokens: usize,
     pub max_completion_tokens: i32,
@@ -71,6 +76,14 @@ impl Config {
         let openrouter_api_key = env::var("OPENROUTER_API_KEY").ok();
         let openrouter_model = env::var("OPENROUTER_MODEL")
             .unwrap_or_else(|_| "openrouter.ai/google/gemma-3n-e4b-it".to_string());
+
+        // 多步驟任務生成模型配置
+        let outline_model = env::var("OUTLINE_MODEL")
+            .unwrap_or_else(|_| "openai/gpt-4o-mini".to_string());
+        let detail_model = env::var("DETAIL_MODEL")
+            .unwrap_or_else(|_| "openai/gpt-4o".to_string());
+        let resource_model = env::var("RESOURCE_MODEL")
+            .unwrap_or_else(|_| "perplexity/llama-3.1-sonar-large-128k-online".to_string());
 
         // Token 预算控制
         let max_prompt_tokens = env::var("AI_MAX_PROMPT_TOKENS")
@@ -134,6 +147,9 @@ impl Config {
                     openai_model,
                     openrouter_api_key,
                     openrouter_model,
+                    outline_model,
+                    detail_model,
+                    resource_model,
                     max_prompt_tokens,
                     max_completion_tokens,
                     recent_tasks_sample_size,

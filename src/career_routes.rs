@@ -570,7 +570,7 @@ fn safe_substring(s: &str, start: usize, end: usize) -> &str {
     }
 }
 
-async fn get_quiz_result(rb: &RBatis, quiz_result_id: &str) -> Result<QuizResults, Box<dyn std::error::Error>> {
+pub async fn get_quiz_result(rb: &RBatis, quiz_result_id: &str) -> Result<QuizResults, Box<dyn std::error::Error>> {
     log::info!("🔍 查詢測驗結果，ID: {}", quiz_result_id);
 
     let sql = "SELECT id, user_id, values_results, interests_results, talents_results, workstyle_results, completed_at, is_active, created_at FROM quiz_results WHERE id = ? AND is_active = 1";
@@ -612,9 +612,9 @@ async fn get_quiz_result(rb: &RBatis, quiz_result_id: &str) -> Result<QuizResult
     }
 }
 
-fn build_career_task_prompt(
-    quiz_result: &QuizResults, 
-    selected_career: &str, 
+pub fn build_career_task_prompt(
+    quiz_result: &QuizResults,
+    selected_career: &str,
     survey_answers: &SurveyAnswers
 ) -> String {
     format!(r#"
@@ -812,7 +812,7 @@ fn build_career_task_prompt(
     )
 }
 
-fn extract_quiz_summary(quiz_json: &Option<String>) -> String {
+pub fn extract_quiz_summary(quiz_json: &Option<String>) -> String {
     // 簡化處理：從JSON中提取關鍵資訊
     // TODO: 實現更詳細的測驗結果解析
     match quiz_json {
@@ -829,24 +829,124 @@ fn extract_quiz_summary(quiz_json: &Option<String>) -> String {
     }
 }
 
+/// 修復 JSON 字符串值中未轉義的雙引號
+/// 例如："description": "完成"SQL課程"學習" => "description": "完成\"SQL課程\"學習"
+fn fix_unescaped_quotes(json_str: &str) -> String {
+    let mut result = String::with_capacity(json_str.len() + 100);
+    let chars: Vec<char> = json_str.chars().collect();
+    let mut i = 0;
+
+    while i < chars.len() {
+        let ch = chars[i];
+
+        // 找到字符串值的開始（格式為 ": "）
+        if ch == ':' && i + 1 < chars.len() {
+            result.push(ch);
+            i += 1;
+
+            // 跳過空白
+            while i < chars.len() && chars[i].is_whitespace() {
+                result.push(chars[i]);
+                i += 1;
+            }
+
+            // 如果是字符串開始
+            if i < chars.len() && chars[i] == '"' {
+                result.push('"');
+                i += 1;
+
+                // 處理字符串內容
+                let mut escaped = false;
+                while i < chars.len() {
+                    let c = chars[i];
+
+                    if escaped {
+                        // 前一個字符是反斜杠,當前字符已經被轉義
+                        result.push(c);
+                        escaped = false;
+                        i += 1;
+                        continue;
+                    }
+
+                    if c == '\\' {
+                        // 遇到反斜杠,下一個字符被轉義
+                        result.push(c);
+                        escaped = true;
+                        i += 1;
+                        continue;
+                    }
+
+                    if c == '"' {
+                        // 檢查這是否是字符串結束符
+                        // 判斷方法:看後面是否跟著 , 或 } 或 ] 或換行
+                        let mut j = i + 1;
+                        while j < chars.len() && chars[j].is_whitespace() {
+                            j += 1;
+                        }
+
+                        if j >= chars.len() || chars[j] == ',' || chars[j] == '}' || chars[j] == ']' {
+                            // 這是字符串結束符
+                            result.push('"');
+                            i += 1;
+                            break;
+                        } else {
+                            // 這是字符串中間的未轉義引號,需要轉義
+                            result.push('\\');
+                            result.push('"');
+                            i += 1;
+                        }
+                    } else {
+                        result.push(c);
+                        i += 1;
+                    }
+                }
+            } else {
+                // 不是字符串,直接複製
+                if i < chars.len() {
+                    result.push(chars[i]);
+                    i += 1;
+                }
+            }
+        } else {
+            result.push(ch);
+            i += 1;
+        }
+    }
+
+    result
+}
+
 pub fn parse_ai_tasks_response(ai_response: &str) -> Result<GeneratedTasksResponse, Box<dyn std::error::Error>> {
     // 清理 AI 回應，移除可能的 markdown 標記和多餘空白
-    let cleaned_response = ai_response
+    let mut cleaned_response = ai_response
         .trim()
         .trim_start_matches("```json")
         .trim_start_matches("```")
         .trim_end_matches("```")
-        .trim();
-    
-    log::debug!("清理後的 AI 回應: {}", cleaned_response);
-    
+        .trim()
+        .to_string();
+
+    // 修復常見的 JSON 格式問題
+    // 1. 將中文引號替換為轉義後的引號
+    cleaned_response = cleaned_response
+        .replace("\u{201C}", "\\\"")  // 左雙引號 "
+        .replace("\u{201D}", "\\\"")  // 右雙引號 "
+        .replace("\u{2018}", "'")     // 左單引號 '
+        .replace("\u{2019}", "'");    // 右單引號 '
+
+    // 2. 修復 JSON 字符串中未轉義的雙引號
+    // 這是最常見的問題：AI 在 description 等欄位中使用了未轉義的 "
+    cleaned_response = fix_unescaped_quotes(&cleaned_response);
+
+    log::debug!("清理並修復後的 AI 回應前500字符: {}", &cleaned_response[..std::cmp::min(500, cleaned_response.len())]);
+
     // 檢查是否為有效 JSON 開頭
     if !cleaned_response.starts_with('{') {
         log::error!("❌ AI 回應不是有效的 JSON 格式，未以 {{ 開頭");
-        log::error!("前 200 個字符: {}", &cleaned_response[..std::cmp::min(200, cleaned_response.len())]);
+        log::error!("前 200 個字符: {}", safe_substring(&cleaned_response, 0, 200));
 
         // 將錯誤 JSON 輸出到 bug.json
-        if let Err(e) = std::fs::write("bug.json", cleaned_response) {
+        if let Err(e) = std::fs::write("bug.json", &cleaned_response) {
             log::error!("❌ 寫入 bug.json 失敗: {}", e);
         } else {
             log::info!("✅ 已將錯誤 JSON 輸出到 bug.json");
@@ -854,9 +954,9 @@ pub fn parse_ai_tasks_response(ai_response: &str) -> Result<GeneratedTasksRespon
 
         return Err("AI 回應格式錯誤：不是有效的 JSON".into());
     }
-    
+
     // 嘗試解析 JSON
-    match serde_json::from_str::<GeneratedTasksResponse>(cleaned_response) {
+    match serde_json::from_str::<GeneratedTasksResponse>(&cleaned_response) {
         Ok(parsed) => {
             // 驗證任務數據完整性
             let main_count = parsed.main_tasks.len();
@@ -884,7 +984,7 @@ pub fn parse_ai_tasks_response(ai_response: &str) -> Result<GeneratedTasksRespon
             log::error!("錯誤位置: {}", e.to_string());
 
             // 將錯誤 JSON 輸出到 bug.json
-            if let Err(write_err) = std::fs::write("bug.json", cleaned_response) {
+            if let Err(write_err) = std::fs::write("bug.json", &cleaned_response) {
                 log::error!("❌ 寫入 bug.json 失敗: {}", write_err);
             } else {
                 log::info!("✅ 已將錯誤 JSON 輸出到 bug.json");
@@ -892,9 +992,9 @@ pub fn parse_ai_tasks_response(ai_response: &str) -> Result<GeneratedTasksRespon
 
             // 記錄更多調試信息（安全截斷字符串）
             let response_len = cleaned_response.len();
-            let first_500 = safe_substring(cleaned_response, 0, 500);
+            let first_500 = safe_substring(&cleaned_response, 0, 500);
             let last_500 = if response_len > 500 {
-                safe_substring(cleaned_response, response_len.saturating_sub(500), response_len)
+                safe_substring(&cleaned_response, response_len.saturating_sub(500), response_len)
             } else {
                 ""
             };

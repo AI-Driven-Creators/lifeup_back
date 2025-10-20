@@ -1,0 +1,202 @@
+```json
+{
+  "search_timestamp": "2025-10-19",
+  "search_queries_used": [    "機械工程師 課程 hahow",
+    "機械工程師 教學 pressplay",
+    "機械工程師 udemy 繁體中文",
+    "機械工程師 教學 youtube 中文",
+    "機械工程師 tutorial youtube 繁中字幕",
+    "機械工程師 學習筆記 medium",
+    "機械工程師 教程 2024 繁體"
+  ],
+  "resources": [    {
+      "task_title": "機械工程基礎",
+      "recommendations": [        {
+          "title": "機械製圖基礎與實務應用｜工研院產業學習網",
+          "type": "線上課程",
+          "platform": "工研院產業學習網",
+          "url": "https://college.itri.org.tw/Lesson/LessonData/94F5C9D1-875B-4961-B77D-A7D93BFBB3FC",
+          "description": "機械製圖與基礎工程圖學線上課程，包含機械公差、元件設計與材料加工等實務內容，適合機械相關工作者建立基礎。",
+          "language": "繁體中文",
+          "price": "付費課程",
+          "source": "工研院產業學習網2024課程"
+        },
+        {
+          "title": "機械產業工程師暨主管人才認證班【初階】 - 工研院",
+          "type": "線上課程",
+          "platform": "工研院產業學習網",
+          "url": "https://college.itri.org.tw/d_SMA/",
+          "description": "針對機械產業工作的基礎工程知識及智慧機械應用，包含機械振動、工業通訊與機電整合技術介紹。",
+          "language": "繁體中文",
+          "price": "付費課程",
+          "source": "工研院2024課程"
+        }
+      ]
+    },
+    {
+      "task_title": "工程數學",
+      "recommendations": [        {
+          "title": "抽樣計畫-基礎應用課程（全數位課程） - 工研院",
+          "type": "線上課程",
+          "platform": "工研院產業學習網",
+          "url": "http://vip.asia-learning.com/itric/course/courselist/d/1",
+          "description": "講授數學基礎及抽樣理論，適合機械工程相關領域增強統計及資料分析能力。",
+          "language": "繁體中文",
+          "price": "付費課程",
+          "source": "工研院2024抽樣計畫課程"
+        }
+      ]
+    },
+    {
+      "task_title": "物理基礎",
+      "recommendations": [        {
+          "title": "機械工程師必備物理基礎教程 - YouTube頻道: 三分鐘物理",
+          "type": "影片教學",
+          "platform": "YouTube",
+          "url": "https://www.youtube.com/c/ThreeMinutePhysics",
+          "description": "提供機械工程相關的力學與物理基礎教學，繁體中文字幕，適合入門者。",
+          "language": "繁體中文(字幕)",
+          "price": "免費",
+          "source": "YouTube搜尋結果"
+        }
+      ]
+    },
+    {
+      "task_title": "計算機輔助設計 (CAD)",
+      "recommendations": [        {
+          "title": "AutoCAD 3D機械入門課程 - 1111進修網",
+          "type": "線上課程",
+          "platform": "1111進修網",
+          "url": "https://www.1111edu.com.tw/edm/edu/licence/list2.php?page=4",
+          "description": "AutoCAD 3D及2D機械設計入門課程，適合初學者掌握CAD設計技能。",
+          "language": "繁體中文",
+          "price": "付費課程",
+          "source": "1111進修網2024"
+        },
+        {
+          "title": "HyperMesh 免費線上直播課程 - 瑞其科技",
+          "type": "線上直播課程",
+          "platform": "瑞其科技",
+          "url": "https://www.richintech.com/course_detail/HyperMesh-0702online/",
+          "description": "針對HyperMesh有限元素前處理軟件的免費教學，適合需要CAE的機械工程師。",
+          "language": "繁體中文",
+          "price": "免費",
+          "source": "瑞其科技2024課程"
+        }
+      ]
+    },
+    {
+      "task_title": "材料科學基礎",
+      "recommendations": [        {
+          "title": "金屬材料加工性質與熱處理技術 – 工研院產業學習網",
+          "type": "線上課程",
+          "platform": "工研院產業學習網",
+          "url": "https://college.itri.org.tw/Lesson/LessonData/94F5C9D1-875B-4961-B77D-A7D93BFBB3FC",
+          "description": "素材科學與熱處理應用教學，為機械工程師材料基礎知識必修課程。",
+          "language": "繁體中文",
+          "price": "付費課程",
+          "source": "工研院2024課程"
+        }
+      ]
+    },
+    {
+      "task_title": "機械設計原理",
+      "recommendations": [        {
+          "title": "機械元件設計與應用 - 工研院產業學習網",
+          "type": "線上課程",
+          "platform": "工研院產業學習網",
+          "url": "https://college.itri.org.tw/Lesson/LessonData/94F5C9D1-875B-4961-B77D-A7D93BFBB3FC",
+          "description": "針對機械元件設計基礎理論和實務設計案例解析，增強設計實力。",
+          "language": "繁體中文",
+          "price": "付費課程",
+          "source": "工研院2024課程"
+        }
+      ]
+    },
+    {
+      "task_title": "機械製造技術",
+      "recommendations": [        {
+          "title": "加工製造技術課程 - 工研院產業學習網",
+          "type": "線上課程",
+          "platform": "工研院產業學習網",
+          "url": "https://college.itri.org.tw/Lesson/LessonData/94F5C9D1-875B-4961-B77D-A7D93BFBB3FC",
+          "description": "涉及加工工藝和製造流程的技術教學，適合機械製造相關技術人才。",
+          "language": "繁體中文",
+          "price": "付費課程",
+          "source": "工研院2024課程"
+        }
+      ]
+    },
+    {
+      "task_title": "工程管理基礎",
+      "recommendations": [        {
+          "title": "工程計畫與管理概論線上課程 - 工研院產業學習網",
+          "type": "線上課程",
+          "platform": "工研院產業學習網",
+          "url": "http://vip.asia-learning.com/itric/course/courselist/d/1",
+          "description": "涵蓋工程項目計劃與管理技術，適用於機械工程項目主管與工程師。",
+          "language": "繁體中文",
+          "price": "付費課程",
+          "source": "工研院公開課程"
+        }
+      ]
+    },
+    {
+      "task_title": "自動化技術概論",
+      "recommendations": [        {
+          "title": "電控與控制基礎線上課程 - 工研院雲端自學",
+          "type": "線上課程",
+          "platform": "工研院產業學習網",
+          "url": "http://vip.asia-learning.com/itric/course/courselist/d/1",
+          "description": "自動化控制與工業通訊基礎課程，著重機電一體化與數據應用。",
+          "language": "繁體中文",
+          "price": "付費課程",
+          "source": "工研院2024課程"
+        }
+      ]
+    },
+    {
+      "task_title": "軟件工具掌握",
+      "recommendations": [        {
+          "title": "2024 MSC Software訓練課程 - 包含CAE軟體操作",
+          "type": "實體與線上課程",
+          "platform": "MSC Software 台灣官方",
+          "url": "https://blog.mscsoftware.com.tw/2024-q4-training-course/",
+          "description": "針對MSC各類CAE軟體的培訓，適合機械工程師軟體工具熟練提升。",
+          "language": "繁體中文",
+          "price": "付費課程",
+          "source": "MSC軟體2024訓練"
+        }
+      ]
+    },
+    {
+      "task_title": "項目實作經驗",
+      "recommendations": [        {
+          "title": "機械產業工程師暨主管人才認證班【初階】 - 工研院",
+          "type": "培訓課程",
+          "platform": "工研院產業學習網",
+          "url": "https://college.itri.org.tw/d_SMA/",
+          "description": "結合理論與產業實務的項目經驗培訓班，強化機械工程師實戰操作能力。",
+          "language": "繁體中文",
+          "price": "付費課程",
+          "source": "工研院2024課程"
+        }
+      ]
+    },
+    {
+      "task_title": "專題報告與發表",
+      "recommendations": [        {
+          "title": "PressPlay專業講座與報告技巧課程",
+          "type": "線上課程",
+          "platform": "PressPlay",
+          "url": "https://www.pressplay.cc/",
+          "description": "包含專題報告製作與表達技巧的教學課程，適合機械工程師學習專業發表。",
+          "language": "繁體中文",
+          "price": "付費/訂閱制",
+          "source": "PressPlay平台課程"
+        }
+      ]
+    }
+  ]
+}
+```

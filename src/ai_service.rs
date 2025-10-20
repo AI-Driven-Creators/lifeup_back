@@ -199,6 +199,9 @@ pub trait AIService {
     async fn generate_task_preview(&self, prompt: &str) -> Result<String>;
     async fn generate_task_preview_with_history(&self, system_prompt: &str, history: &[(String, String)], current_message: &str) -> Result<String>;
     async fn generate_task_from_text(&self, user_input: &str) -> Result<AIGeneratedTask>;
+
+    // 新增：使用指定模型生成文字回應
+    async fn generate_with_model(&self, model: &str, prompt: &str) -> Result<String>;
 }
 
 // OpenRouter API 請求結構
@@ -691,6 +694,41 @@ impl AIService for OpenAIService {
             Err(anyhow::anyhow!("OpenAI 未返回有效回應"))
         }
     }
+
+    // 新增：使用指定模型生成文字回應（OpenAI 實作）
+    async fn generate_with_model(&self, model: &str, prompt: &str) -> Result<String> {
+        let request = serde_json::json!({
+            "model": model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            "max_completion_tokens": 4000
+        });
+
+        let response = self.client
+            .post("https://api.openai.com/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&request)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await?;
+            return Err(anyhow::anyhow!("OpenAI API 錯誤: {}", error_text));
+        }
+
+        let openai_response: OpenAIResponse = response.json().await?;
+
+        if let Some(choice) = openai_response.choices.first() {
+            Ok(choice.message.content.clone())
+        } else {
+            Err(anyhow::anyhow!("OpenAI 未返回有效回應"))
+        }
+    }
 }
 
 // OpenRouter 服務實現
@@ -1173,6 +1211,54 @@ impl AIService for OpenRouterService {
             Ok(generated_achievement)
         } else {
             log::error!("OpenRouter 響應中沒有 choices");
+            Err(anyhow::anyhow!("OpenRouter 未返回有效回應"))
+        }
+    }
+
+    // 新增：使用指定模型生成文字回應
+    async fn generate_with_model(&self, model: &str, prompt: &str) -> Result<String> {
+        // 根據模型類型動態調整 max_tokens
+        let max_tokens = if model.contains("perplexity") {
+            16000  // Perplexity 模型給予更大的空間
+        } else if model.contains("claude") || model.contains("anthropic") {
+            8000   // Claude 模型需要更多空間來生成完整的任務細節
+        } else {
+            4000   // 其他模型使用預設值
+        };
+
+        log::info!("使用模型 {} 生成回應，max_completion_tokens: {}", model, max_tokens);
+
+        let request = serde_json::json!({
+            "model": model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            "max_completion_tokens": max_tokens
+        });
+
+        let response = self.client
+            .post("https://openrouter.ai/api/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .header("HTTP-Referer", "https://openrouter.ai")
+            .header("X-Title", "LifeUp Backend")
+            .json(&request)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let error_text = response.text().await?;
+            return Err(anyhow::anyhow!("OpenRouter API 錯誤: {}", error_text));
+        }
+
+        let openrouter_response: OpenRouterResponse = response.json().await?;
+
+        if let Some(choice) = openrouter_response.choices.first() {
+            Ok(choice.message.content.clone())
+        } else {
             Err(anyhow::anyhow!("OpenRouter 未返回有效回應"))
         }
     }
