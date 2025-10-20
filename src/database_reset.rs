@@ -95,6 +95,7 @@ async fn create_all_tables(rb: &RBatis) -> Result<(), Box<dyn std::error::Error>
             id TEXT PRIMARY KEY,
             name TEXT,
             email TEXT,
+            password_hash TEXT,
             created_at TEXT,
             updated_at TEXT
         )

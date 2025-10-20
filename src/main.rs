@@ -194,6 +194,9 @@ async fn main() -> std::io::Result<()> {
             .route("/api/tasks/create-from-json", web::post().to(crate::ai_tasks::create_task_from_json))
             .route("/api/tasks/validate-preview", web::post().to(crate::ai_tasks::validate_and_preview_task))
             .route("/api/tasks/generate-from-chat", web::post().to(crate::ai_tasks::generate_task_from_chat))
+            .route("/api/tasks/generate-with-expert", web::post().to(crate::ai_tasks::generate_task_with_expert))
+            .route("/api/tasks/match-expert", web::post().to(crate::ai_tasks::match_expert_only))
+            .route("/api/tasks/expert-analysis", web::post().to(crate::ai_tasks::expert_analysis))
             // AI 成就生成路由
             .route("/api/achievements/generate", web::post().to(generate_achievement_with_ai))
             .route(
@@ -211,6 +214,8 @@ async fn main() -> std::io::Result<()> {
             // 用戶數據重置路由
             .route("/api/users/{user_id}/reset", web::delete().to(reset_user_data))
             .route("/api/users/{user_id}/reset", web::post().to(reset_user_data_selective))
+            // 任務歷史路由
+            .route("/api/users/{user_id}/task-history", web::get().to(get_task_history))
     })
     .workers(2)
     .bind(&server_addr)?

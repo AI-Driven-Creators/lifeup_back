@@ -69,7 +69,19 @@ impl Config {
         let log_level = env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
 
         // AI 配置
-        let api_option = env::var("API_OPTION").unwrap_or_else(|_| "OpenRouter".to_string());
+        let raw_api_option = env::var("API_OPTION").unwrap_or_else(|_| "OpenRouter".to_string());
+        let api_option_normalized = raw_api_option.trim().to_lowercase();
+        let api_option = match api_option_normalized.as_str() {
+            "openai" => "OpenAI".to_string(),
+            "openrouter" => "OpenRouter".to_string(),
+            other => {
+                log::warn!(
+                    "未識別的 API_OPTION 值: '{}', 將維持原值。可用選項: OpenAI, OpenRouter",
+                    other
+                );
+                raw_api_option.trim().to_string()
+            }
+        };
         let openai_api_key = env::var("OPENAI_API_KEY").ok();
         let openai_model = env::var("OPENAI_MODEL")
             .unwrap_or_else(|_| "gpt-4o-mini".to_string());

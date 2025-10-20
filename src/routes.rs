@@ -3174,13 +3174,13 @@ pub async fn send_message_to_chatgpt(
 
     // 呼叫ChatGPT API或使用本地回應
     let ai_response = match call_chatgpt_api(&req.message).await {
-        Ok(response) => {
-            log::info!("成功獲取ChatGPT回應");
-            response
-        },
+        Ok(response) => response,
         Err(e) => {
-            log::warn!("ChatGPT API呼叫失敗，使用本地回應: {}", e);
-            format!("收到您的訊息：「{}」。我是您的專業教練，有什麼可以幫助您的嗎？（註：AI服務暫時不可用）", req.message)
+            log::error!("AI 回應取得失敗: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(json!({
+                "success": false,
+                "message": format!("AI 服務調用失敗: {}", e)
+            })));
         }
     };
 
@@ -3205,6 +3205,7 @@ pub async fn send_message_to_chatgpt(
     }
     
     Ok(HttpResponse::Ok().json(json!({
+        "success": true,
         "text": ai_response
     })))
 }
@@ -3218,31 +3219,58 @@ pub async fn test_endpoint() -> Result<HttpResponse> {
 }
 
 async fn call_chatgpt_api(message: &str) -> Result<String, Box<dyn std::error::Error>> {
-    log::info!("開始呼叫AI API");
+    log::info!("開始呼叫AI 提供者");
     
     // 載入配置
     let config = crate::config::Config::from_env();
+    let provider = config.app.ai.api_option.clone();
     
     // 創建 AI 服務
     let ai_service = match crate::ai_service::create_ai_service(&config.app.ai) {
         Ok(service) => service,
         Err(e) => {
             log::error!("AI 服務初始化失敗: {}", e);
-            return Err(format!("AI 服務初始化失敗: {}", e).into());
+            return Err(format!("AI 服務初始化失敗 ({})", e).into());
         }
     };
     
-    let prompt = format!("你是一位專業的教練，請根據給定的訊息提供建議。一律使用繁體中文回答。\n\n重要提示：如果使用者的訊息中包含以下任何意圖，請提醒他們使用任務創建模式：\n- 想要建立、創建、新增、設定任務\n- 提到「我要做...」、「我想要...」、「幫我規劃...」、「提醒我...」\n- 描述具體的待辦事項或目標\n- 想要安排時間或設定提醒\n\n當偵測到這些意圖時，請回覆：「我注意到您想要創建任務！建議您切換到『任務創建模式』（在輸入框上方的下拉選單中選擇），這樣我可以更精準地幫您生成結構化的任務。在任務創建模式下，您只需描述任務內容，系統就會自動生成完整的任務資料。」\n\n如果使用者只是想討論、詢問建議或聊天，則正常回應即可。\n\n用戶訊息：{}", message);
+    // 使用專家系統匹配最適合的專家
+    log::info!("開始為訊息匹配專家 (provider: {}): {}", provider, message);
+    let expert_match = ai_service.match_expert_for_task(message).await.map_err(|e| {
+        log::error!("專家匹配失敗 (provider: {}): {}", provider, e);
+        e
+    })?;
 
-    log::info!("準備發送請求到AI API");
+    log::info!(
+        "成功匹配專家 (provider: {}): {} (信心度: {:.2})",
+        provider,
+        expert_match.expert.name,
+        expert_match.confidence
+    );
+    
+    // 使用專家的專業知識構建提示詞
+    let prompt = format!(
+        "你是{}，{}。請根據你的專業知識為用戶提供建議。一律使用繁體中文回答。\n\n用戶訊息：{}", 
+        expert_match.expert.name,
+        expert_match.expert.description,
+        message
+    );
+
+    log::info!(
+        "準備發送請求到 AI API (provider: {}，專家: {})",
+        provider,
+        expert_match.expert.name
+    );
     
     match ai_service.generate_task_preview(&prompt).await {
         Ok(response) => {
-            log::info!("成功從AI API獲取回應");
-            Ok(response)
+            log::info!("成功從 AI API (provider: {}) 獲取回應", provider);
+            // 在回應前加上專家信息
+            let expert_response = format!("[{}] {}", expert_match.expert.emoji, response);
+            Ok(expert_response)
         },
         Err(e) => {
-            log::error!("AI API 調用失敗: {}", e);
+            log::error!("AI API 調用失敗 (provider: {}): {}", provider, e);
             Err(format!("AI API 調用失敗: {}", e).into())
         }
     }
@@ -3738,11 +3766,39 @@ async fn call_ai_api_with_personality(rb: &RBatis, message: &str, user_id: Optio
         }
     };
     
+    // 使用專家系統匹配最適合的專家
+    log::info!("開始為訊息匹配專家: {}", message);
+    let expert_match = match ai_service.match_expert_for_task(message).await {
+        Ok(match_result) => {
+            log::info!("成功匹配專家: {} (信心度: {:.2})", 
+                match_result.expert.name, match_result.confidence);
+            Some(match_result)
+        }
+        Err(e) => {
+            log::warn!("專家匹配失敗，將使用通用個性化教練: {}", e);
+            None
+        }
+    };
+    
     // 獲取用戶的教練個性
     let personality_type = get_user_personality_type(rb, user_id.clone()).await?;
-    let system_prompt = personality_type.system_prompt();
+    let base_system_prompt = personality_type.system_prompt();
     
-    log::info!("使用教練個性: {:?}", personality_type);
+    // 結合專家和個性化系統
+    let system_prompt = if let Some(expert) = &expert_match {
+        format!(
+            "你是{}，{}。同時，你具有{}的教練個性。請結合你的專業知識和個性特質為用戶提供建議。一律使用繁體中文回答。\n\n{}",
+            expert.expert.name,
+            expert.expert.description,
+            personality_type.display_name(),
+            base_system_prompt
+        )
+    } else {
+        base_system_prompt.to_string()
+    };
+    
+    log::info!("使用教練個性: {:?}, 專家: {:?}", personality_type, 
+        expert_match.as_ref().map(|e| &e.expert.name));
     
     // 獲取上一次的對話內容（用戶問題和AI回答）
     let mut prompt = system_prompt.to_string();
@@ -3808,7 +3864,13 @@ async fn call_ai_api_with_personality(rb: &RBatis, message: &str, user_id: Optio
                 match ai_service.generate_task_preview_with_history(&system_prompt, &history, &message).await {
                     Ok(response) => {
                         log::info!("成功獲取個性化AI回應");
-                        return Ok(response);
+                        // 如果有專家匹配，在回應前加上專家信息
+                        let final_response = if let Some(expert) = &expert_match {
+                            format!("[{}] {}", expert.expert.emoji, response)
+                        } else {
+                            response
+                        };
+                        return Ok(final_response);
                     },
                     Err(e) => {
                         log::error!("個性化AI API 調用失敗: {}", e);
@@ -3831,7 +3893,13 @@ async fn call_ai_api_with_personality(rb: &RBatis, message: &str, user_id: Optio
     match ai_service.generate_task_preview(&prompt).await {
         Ok(response) => {
             log::info!("成功獲取個性化AI回應");
-            Ok(response)
+            // 如果有專家匹配，在回應前加上專家信息
+            let final_response = if let Some(expert) = &expert_match {
+                format!("[{}] {}", expert.expert.emoji, response)
+            } else {
+                response
+            };
+            Ok(final_response)
         },
         Err(e) => {
             log::error!("個性化AI API 調用失敗: {}", e);
@@ -4030,8 +4098,37 @@ async fn call_ai_api_with_direct_personality(message: &str, personality_type: Co
         }
     };
     
-    let system_prompt = personality_type.system_prompt();
-    log::info!("使用系統提示詞: {}", system_prompt);
+    // 使用專家系統匹配最適合的專家
+    log::info!("開始為訊息匹配專家: {}", message);
+    let expert_match = match ai_service.match_expert_for_task(message).await {
+        Ok(match_result) => {
+            log::info!("成功匹配專家: {} (信心度: {:.2})", 
+                match_result.expert.name, match_result.confidence);
+            Some(match_result)
+        }
+        Err(e) => {
+            log::warn!("專家匹配失敗，將使用通用指定個性教練: {}", e);
+            None
+        }
+    };
+    
+    let base_system_prompt = personality_type.system_prompt();
+    
+    // 結合專家和指定個性
+    let system_prompt = if let Some(expert) = &expert_match {
+        format!(
+            "你是{}，{}。同時，你具有{}的教練個性。請結合你的專業知識和個性特質為用戶提供建議。一律使用繁體中文回答。\n\n{}",
+            expert.expert.name,
+            expert.expert.description,
+            personality_type.display_name(),
+            base_system_prompt
+        )
+    } else {
+        base_system_prompt.to_string()
+    };
+    
+    log::info!("使用指定個性: {:?}, 專家: {:?}", personality_type, 
+        expert_match.as_ref().map(|e| &e.expert.name));
     
     let prompt = format!("{}\n\n用戶訊息：{}", system_prompt, message);
 
@@ -4040,7 +4137,13 @@ async fn call_ai_api_with_direct_personality(message: &str, personality_type: Co
     match ai_service.generate_task_preview(&prompt).await {
         Ok(response) => {
             log::info!("成功提取指定個性AI回應內容");
-            Ok(response)
+            // 如果有專家匹配，在回應前加上專家信息
+            let final_response = if let Some(expert) = &expert_match {
+                format!("[{}] {}", expert.expert.emoji, response)
+            } else {
+                response
+            };
+            Ok(final_response)
         },
         Err(e) => {
             log::error!("指定個性AI API 調用失敗: {}", e);
@@ -4465,6 +4568,137 @@ pub async fn sync_achievement_statistics(rb: web::Data<RBatis>) -> Result<HttpRe
                 success: false,
                 data: None,
                 message: format!("同步成就統計數據失敗: {}", e),
+            }))
+        }
+    }
+}
+
+// ================= Task History API =================
+
+/// 獲取用戶的任務完成歷史
+/// GET /api/users/{user_id}/task-history?limit=5&offset=0&task_type=all
+pub async fn get_task_history(
+    rb: web::Data<RBatis>,
+    path: web::Path<String>,
+    query: web::Query<TaskHistoryQuery>,
+) -> Result<HttpResponse> {
+    let user_id = path.into_inner();
+
+    log::info!(
+        "獲取用戶 {} 的任務歷史，參數: limit={}, offset={}, task_type={}",
+        user_id,
+        query.limit,
+        query.offset,
+        query.task_type
+    );
+
+    // 構建 SQL 查詢
+    let base_sql = "
+        SELECT id, title, task_type, updated_at, experience
+        FROM task
+        WHERE user_id = ?
+          AND status IN (2, 6)
+    ";
+
+    // 根據任務類型添加過濾條件
+    let filter_sql = if query.task_type != "all" {
+        format!("{} AND task_type = ?", base_sql)
+    } else {
+        base_sql.to_string()
+    };
+
+    let order_limit_sql = format!(
+        "{} ORDER BY updated_at DESC LIMIT ? OFFSET ?",
+        filter_sql
+    );
+
+    // 構建計數查詢
+    let count_sql = if query.task_type != "all" {
+        format!(
+            "SELECT COUNT(*) as count FROM task WHERE user_id = ? AND status IN (2, 6) AND task_type = ?"
+        )
+    } else {
+        "SELECT COUNT(*) as count FROM task WHERE user_id = ? AND status IN (2, 6)".to_string()
+    };
+
+    // 執行查詢
+    let tasks_result = if query.task_type != "all" {
+        rb.query_decode::<Vec<Task>>(
+            &order_limit_sql,
+            vec![
+                Value::from(user_id.as_str()),
+                Value::from(query.task_type.as_str()),
+                Value::from(query.limit),
+                Value::from(query.offset),
+            ],
+        )
+        .await
+    } else {
+        rb.query_decode::<Vec<Task>>(
+            &order_limit_sql,
+            vec![
+                Value::from(user_id.as_str()),
+                Value::from(query.limit),
+                Value::from(query.offset),
+            ],
+        )
+        .await
+    };
+
+    // 執行計數查詢
+    let count_result = if query.task_type != "all" {
+        rb.query_decode::<Vec<serde_json::Value>>(
+            &count_sql,
+            vec![Value::from(user_id.as_str()), Value::from(query.task_type.as_str())],
+        )
+        .await
+    } else {
+        rb.query_decode::<Vec<serde_json::Value>>(&count_sql, vec![Value::from(user_id.as_str())])
+            .await
+    };
+
+    match (tasks_result, count_result) {
+        (Ok(tasks), Ok(count_rows)) => {
+            let total_count = count_rows
+                .first()
+                .and_then(|row| row.get("count"))
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+
+            // 轉換為 TaskHistoryItem
+            let history_items: Vec<TaskHistoryItem> = tasks
+                .iter()
+                .filter_map(|task| {
+                    Some(TaskHistoryItem {
+                        id: task.id.clone()?,
+                        title: task.title.clone().unwrap_or_default(),
+                        task_type: task.task_type.clone().unwrap_or_default(),
+                        completed_at: task.updated_at?,
+                        experience: task.experience.unwrap_or(0),
+                    })
+                })
+                .collect();
+
+            let has_more = (query.offset + query.limit) < total_count;
+
+            let response = TaskHistoryResponse {
+                tasks: history_items,
+                total_count,
+                has_more,
+            };
+
+            Ok(HttpResponse::Ok().json(ApiResponse {
+                success: true,
+                data: Some(response),
+                message: "獲取任務歷史成功".to_string(),
+            }))
+        }
+        (Err(e), _) | (_, Err(e)) => {
+            log::error!("獲取任務歷史失敗: {}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("獲取任務歷史失敗: {}", e),
             }))
         }
     }
