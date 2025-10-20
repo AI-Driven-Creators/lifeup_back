@@ -95,7 +95,7 @@ impl Config {
         let detail_model = env::var("DETAIL_MODEL")
             .unwrap_or_else(|_| "openai/gpt-4o".to_string());
         let resource_model = env::var("RESOURCE_MODEL")
-            .unwrap_or_else(|_| "perplexity/llama-3.1-sonar-large-128k-online".to_string());
+            .unwrap_or_else(|_| "perplexity/sonar".to_string());
 
         // Token 预算控制
         let max_prompt_tokens = env::var("AI_MAX_PROMPT_TOKENS")

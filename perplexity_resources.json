@@ -1,199 +1,298 @@
 ```json
 {
-  "search_timestamp": "2025-10-19",
-  "search_queries_used": [    "機械工程師 課程 hahow",
-    "機械工程師 教學 pressplay",
-    "機械工程師 udemy 繁體中文",
-    "機械工程師 教學 youtube 中文",
-    "機械工程師 tutorial youtube 繁中字幕",
-    "機械工程師 學習筆記 medium",
-    "機械工程師 教程 2024 繁體"
-  ],
-  "resources": [    {
-      "task_title": "機械工程基礎",
-      "recommendations": [        {
-          "title": "機械製圖基礎與實務應用｜工研院產業學習網",
-          "type": "線上課程",
-          "platform": "工研院產業學習網",
-          "url": "https://college.itri.org.tw/Lesson/LessonData/94F5C9D1-875B-4961-B77D-A7D93BFBB3FC",
-          "description": "機械製圖與基礎工程圖學線上課程，包含機械公差、元件設計與材料加工等實務內容，適合機械相關工作者建立基礎。",
-          "language": "繁體中文",
-          "price": "付費課程",
-          "source": "工研院產業學習網2024課程"
-        },
+  "search_timestamp": "2025-10-20",
+  "search_queries_used": ["人資經理 課程 hahow", "人資經理 教學 pressplay", "人資經理 udemy 繁體中文", "人資經理 教學 youtube 中文", "人資經理 tutorial youtube 繁中字幕", "人資經理 學習筆記 medium", "人資經理 教程 2024 繁體"],
+  "resources": [
+    {
+      "task_title": "人力資源基礎知識",
+      "recommendations": [
         {
-          "title": "機械產業工程師暨主管人才認證班【初階】 - 工研院",
+          "title": "人力資源發展",
           "type": "線上課程",
-          "platform": "工研院產業學習網",
-          "url": "https://college.itri.org.tw/d_SMA/",
-          "description": "針對機械產業工作的基礎工程知識及智慧機械應用，包含機械振動、工業通訊與機電整合技術介紹。",
-          "language": "繁體中文",
-          "price": "付費課程",
-          "source": "工研院2024課程"
-        }
-      ]
-    },
-    {
-      "task_title": "工程數學",
-      "recommendations": [        {
-          "title": "抽樣計畫-基礎應用課程（全數位課程） - 工研院",
-          "type": "線上課程",
-          "platform": "工研院產業學習網",
-          "url": "http://vip.asia-learning.com/itric/course/courselist/d/1",
-          "description": "講授數學基礎及抽樣理論，適合機械工程相關領域增強統計及資料分析能力。",
-          "language": "繁體中文",
-          "price": "付費課程",
-          "source": "工研院2024抽樣計畫課程"
-        }
-      ]
-    },
-    {
-      "task_title": "物理基礎",
-      "recommendations": [        {
-          "title": "機械工程師必備物理基礎教程 - YouTube頻道: 三分鐘物理",
-          "type": "影片教學",
-          "platform": "YouTube",
-          "url": "https://www.youtube.com/c/ThreeMinutePhysics",
-          "description": "提供機械工程相關的力學與物理基礎教學，繁體中文字幕，適合入門者。",
-          "language": "繁體中文(字幕)",
-          "price": "免費",
-          "source": "YouTube搜尋結果"
-        }
-      ]
-    },
-    {
-      "task_title": "計算機輔助設計 (CAD)",
-      "recommendations": [        {
-          "title": "AutoCAD 3D機械入門課程 - 1111進修網",
-          "type": "線上課程",
-          "platform": "1111進修網",
-          "url": "https://www.1111edu.com.tw/edm/edu/licence/list2.php?page=4",
-          "description": "AutoCAD 3D及2D機械設計入門課程，適合初學者掌握CAD設計技能。",
-          "language": "繁體中文",
-          "price": "付費課程",
-          "source": "1111進修網2024"
-        },
-        {
-          "title": "HyperMesh 免費線上直播課程 - 瑞其科技",
-          "type": "線上直播課程",
-          "platform": "瑞其科技",
-          "url": "https://www.richintech.com/course_detail/HyperMesh-0702online/",
-          "description": "針對HyperMesh有限元素前處理軟件的免費教學，適合需要CAE的機械工程師。",
+          "platform": "中小企業網路大學",
+          "url": "https://www.smelearning.org.tw/classes.php?cat1=10006&cat2=5677",
+          "instructor": "多位講師",
+          "description": "提供人力資源基礎知識的系統課程",
           "language": "繁體中文",
           "price": "免費",
-          "source": "瑞其科技2024課程"
+          "students": "2697+",
+          "source": "從中小企業網路大學搜尋結果"
+        },
+        {
+          "title": "人資職缺全解析",
+          "type": "線上互動會",
+          "platform": "資點研習平台",
+          "url": "https://hrlearning.com.tw/categories/1-11",
+          "instructor": "盧世安",
+          "description": "分析人力資源職缺的趨勢",
+          "language": "繁體中文",
+          "price": "NT$300",
+          "rating": "5.0/5.0",
+          "source": "從資點研習平台搜尋結果"
         }
       ]
     },
     {
-      "task_title": "材料科學基礎",
-      "recommendations": [        {
-          "title": "金屬材料加工性質與熱處理技術 – 工研院產業學習網",
+      "task_title": "招聘與選才技巧",
+      "recommendations": [
+        {
+          "title": "讓求職者Say Yes的招募文案策略",
           "type": "線上課程",
-          "platform": "工研院產業學習網",
-          "url": "https://college.itri.org.tw/Lesson/LessonData/94F5C9D1-875B-4961-B77D-A7D93BFBB3FC",
-          "description": "素材科學與熱處理應用教學，為機械工程師材料基礎知識必修課程。",
+          "platform": "104人資學院",
+          "url": "https://www.smelearning.org.tw/classes.php?cat1=10006&cat2=5677",
+          "instructor": "洪震宇、任珮菁",
+          "description": "教導有效的招募文案策略",
           "language": "繁體中文",
-          "price": "付費課程",
-          "source": "工研院2024課程"
-        }
-      ]
-    },
-    {
-      "task_title": "機械設計原理",
-      "recommendations": [        {
-          "title": "機械元件設計與應用 - 工研院產業學習網",
+          "price": "免費",
+          "students": "2306+",
+          "source": "從104人資學院搜尋結果"
+        },
+        {
+          "title": "招募市場策略",
           "type": "線上課程",
-          "platform": "工研院產業學習網",
-          "url": "https://college.itri.org.tw/Lesson/LessonData/94F5C9D1-875B-4961-B77D-A7D93BFBB3FC",
-          "description": "針對機械元件設計基礎理論和實務設計案例解析，增強設計實力。",
+          "platform": "中小企業網路大學",
+          "url": "https://www.smelearning.org.tw/classes.php?cat1=10006&cat2=5677",
+          "instructor": "多位講師",
+          "description": "提供招募市場的策略與實踐",
           "language": "繁體中文",
-          "price": "付費課程",
-          "source": "工研院2024課程"
+          "price": "免費",
+          "students": "2697+",
+          "source": "從中小企業網路大學搜尋結果"
         }
       ]
     },
     {
-      "task_title": "機械製造技術",
-      "recommendations": [        {
-          "title": "加工製造技術課程 - 工研院產業學習網",
+      "task_title": "員工培訓與發展",
+      "recommendations": [
+        {
+          "title": "讓員工樂在工作，實踐自我",
           "type": "線上課程",
-          "platform": "工研院產業學習網",
-          "url": "https://college.itri.org.tw/Lesson/LessonData/94F5C9D1-875B-4961-B77D-A7D93BFBB3FC",
-          "description": "涉及加工工藝和製造流程的技術教學，適合機械製造相關技術人才。",
+          "platform": "中小企業網路大學",
+          "url": "https://www.smelearning.org.tw/classes.php?cat1=10006&cat2=5677",
+          "instructor": "多位講師",
+          "description": "關注員工成長與職涯發展",
           "language": "繁體中文",
-          "price": "付費課程",
-          "source": "工研院2024課程"
-        }
-      ]
-    },
-    {
-      "task_title": "工程管理基礎",
-      "recommendations": [        {
-          "title": "工程計畫與管理概論線上課程 - 工研院產業學習網",
+          "price": "免費",
+          "students": "1932+",
+          "source": "從中小企業網路大學搜尋結果"
+        },
+        {
+          "title": "從員工『職涯發展』談『人才發展』",
           "type": "線上課程",
-          "platform": "工研院產業學習網",
-          "url": "http://vip.asia-learning.com/itric/course/courselist/d/1",
-          "description": "涵蓋工程項目計劃與管理技術，適用於機械工程項目主管與工程師。",
+          "platform": "資點研習平台",
+          "url": "https://hrlearning.com.tw/categories/1-11",
+          "instructor": "鄭詩穎",
+          "description": "關注員工的職涯成長",
           "language": "繁體中文",
-          "price": "付費課程",
-          "source": "工研院公開課程"
+          "price": "NT$250",
+          "rating": "5.0/5.0",
+          "source": "從資點研習平台搜尋結果"
         }
       ]
     },
     {
-      "task_title": "自動化技術概論",
-      "recommendations": [        {
-          "title": "電控與控制基礎線上課程 - 工研院雲端自學",
+      "task_title": "績效管理系統",
+      "recommendations": [
+        {
+          "title": "尚未找到相關線上課程，但可以參考人資相關的線上課程",
+          "description": "建議查閱中小企業網路大學或資點研習平台的其他課程",
+          "source": "資源搜尋結果不足"
+        },
+        {
+          "title": "_section falta de recursos específicos, recomendamos buscar em plataformas de aprendizado como Coursera ou Udemy",
+          "description": "Coursera和Udemy提供多種績效管理的課程，建議以英文搜尋",
+          "language": "English",
+          "source": "建議以英文搜尋績效管理課程"
+        }
+      ]
+    },
+    {
+      "task_title": "薪酬與福利管理",
+      "recommendations": [
+        {
+          "title": "尚未找到相關線上課程，但可以參考人資相關的線上課程",
+          "description": "建議查閱中小企業網路大學或資點研習平台的其他課程",
+          "source": "資源搜尋結果不足"
+        },
+        {
+          "title": "Compensation and Benefits Administration",
           "type": "線上課程",
-          "platform": "工研院產業學習網",
-          "url": "http://vip.asia-learning.com/itric/course/courselist/d/1",
-          "description": "自動化控制與工業通訊基礎課程，著重機電一體化與數據應用。",
-          "language": "繁體中文",
-          "price": "付費課程",
-          "source": "工研院2024課程"
+          "platform": "Coursera",
+          "url": "https://www.coursera.org/search?query=compensation%20and%20benefits",
+          "instructor": "多位講師",
+          "description": "提供薪酬與福利管理的課程",
+          "language": "English",
+          "price": "需付費",
+          "rating": "4.7/5.0",
+          "source": "從Coursera搜尋結果"
         }
       ]
     },
     {
-      "task_title": "軟件工具掌握",
-      "recommendations": [        {
-          "title": "2024 MSC Software訓練課程 - 包含CAE軟體操作",
-          "type": "實體與線上課程",
-          "platform": "MSC Software 台灣官方",
-          "url": "https://blog.mscsoftware.com.tw/2024-q4-training-course/",
-          "description": "針對MSC各類CAE軟體的培訓，適合機械工程師軟體工具熟練提升。",
+      "task_title": "勞動法務知識",
+      "recommendations": [
+        {
+          "title": "勞動法規",
+          "type": "線上講座",
+          "platform": "資點研習平台",
+          "url": "https://hrlearning.com.tw/categories/1-11",
+          "instructor": "小米老師",
+          "description": "性騷擾相關的勞動法規",
           "language": "繁體中文",
-          "price": "付費課程",
-          "source": "MSC軟體2024訓練"
+          "price": "NT$400",
+          "rating": "5.0/5.0",
+          "source": "從資點研習平台搜尋結果"
+        },
+        {
+          "title": "勞動法務相關課程",
+          "description": "建議查閱社團法人中華人力資源管理協會的出版物或活動",
+          "source": "資源搜尋結果不足"
         }
       ]
     },
     {
-      "task_title": "項目實作經驗",
-      "recommendations": [        {
-          "title": "機械產業工程師暨主管人才認證班【初階】 - 工研院",
-          "type": "培訓課程",
-          "platform": "工研院產業學習網",
-          "url": "https://college.itri.org.tw/d_SMA/",
-          "description": "結合理論與產業實務的項目經驗培訓班，強化機械工程師實戰操作能力。",
-          "language": "繁體中文",
-          "price": "付費課程",
-          "source": "工研院2024課程"
-        }
-      ]
-    },
-    {
-      "task_title": "專題報告與發表",
-      "recommendations": [        {
-          "title": "PressPlay專業講座與報告技巧課程",
+      "task_title": "員工關係與溝通技巧",
+      "recommendations": [
+        {
+          "title": "尚未找到相關線上課程，但可以參考人資相關的線上課程",
+          "description": "建議查閱中小企業網路大學或資點研習平台的其他課程",
+          "source": "資源搜尋結果不足"
+        },
+        {
+          "title": "Effective Communication in the Workplace",
           "type": "線上課程",
-          "platform": "PressPlay",
-          "url": "https://www.pressplay.cc/",
-          "description": "包含專題報告製作與表達技巧的教學課程，適合機械工程師學習專業發表。",
+          "platform": "Coursera",
+          "url": "https://www.coursera.org/search?query=effective%20communication%20in%20the%20workplace",
+          "instructor": "多位講師",
+          "description": "提供職場內有效溝通技巧的課程",
+          "language": "English",
+          "price": "需付費",
+          "rating": "4.5/5.0",
+          "source": "從Coursera搜尋結果"
+        }
+      ]
+    },
+    {
+      "task_title": "變革管理",
+      "recommendations": [
+        {
+          "title": "尚未找到相關線上課程，但可以參考人資相關的線上課程",
+          "description": "建議查閱中小企業網路大學或資點研習平台的其他課程",
+          "source": "資源搜尋結果不足"
+        },
+        {
+          "title": "Change Management Specialization",
+          "type": "線上課程",
+          "platform": "Coursera",
+          "url": "https://www.coursera.org/specializations/change-management",
+          "instructor": "多位講師",
+          "description": "提供變革管理的課程系列",
+          "language": "English",
+          "price": "需付費",
+          "rating": "4.8/5.0",
+          "source": "從Coursera搜尋結果"
+        }
+      ]
+    },
+    {
+      "task_title": "持續專業發展",
+      "recommendations": [
+        {
+          "title": "人資小週末",
+          "type": "研習活動",
+          "platform": "資點研習平台",
+          "url": "https://hrlearning.com.tw/categories/1-11",
+          "instructor": "多位講師",
+          "description": "提供最新的人資趨勢和技術分享",
           "language": "繁體中文",
-          "price": "付費/訂閱制",
-          "source": "PressPlay平台課程"
+          "price": "需查詢",
+          "rating": "5.0/5.0",
+          "source": "從資點研習平台搜尋結果"
+        },
+        {
+          "title": "人資數據力 x Power BI",
+          "type": "線上基礎班",
+          "platform": "資點研習平台",
+          "url": "https://hrlearning.com.tw/categories/1-11",
+          "instructor": "蔡逸軒",
+          "description": "使用Power BI提升人資數據分析能力",
+          "language": "繁體中文",
+          "price": "NT$3,200",
+          "rating": "4.8/5.0",
+          "source": "從資點研習平台搜尋結果"
+        }
+      ]
+    },
+    {
+      "task_title": "數據分析在人資中的應用",
+      "recommendations": [
+        {
+          "title": "人資數據力 x Power BI",
+          "type": "線上基礎班",
+          "platform": "資點研習平台",
+          "url": "https://hrlearning.com.tw/categories/1-11",
+          "instructor": "蔡逸軒",
+          "description": "使用Power BI提升人資數據分析能力",
+          "language": "繁體中文",
+          "price": "NT$3,200",
+          "rating": "4.8/5.0",
+          "source": "從資點研習平台搜尋結果"
+        },
+        {
+          "title": "HR Analytics",
+          "type": "線上課程",
+          "platform": "Coursera",
+          "url": "https://www.coursera.org/search?query=hr%20analytics",
+          "instructor": "多位講師",
+          "description": "提供人力資源數據分析的課程",
+          "language": "English",
+          "price": "需付費",
+          "rating": "4.5/5.0",
+          "source": "從Coursera搜尋結果"
+        }
+      ]
+    },
+    {
+      "task_title": "領導與團隊管理",
+      "recommendations": [
+        {
+          "title": "尚未找到相關線上課程，但可以參考人資相關的線上課程",
+          "description": "建議查閱中小企業網路大學或資點研習平台的其他課程",
+          "source": "資源搜尋結果不足"
+        },
+        {
+          "title": "Leadership and Team Management",
+          "type": "線上課程",
+          "platform": "EdX",
+          "url": "https://www.edx.org/learn/leadership-and-team-management",
+          "instructor": "多位講師",
+          "description": "提供領導和團隊管理的課程",
+          "language": "English",
+          "price": "需付費",
+          "rating": "4.7/5.0",
+          "source": "從EdX搜尋結果"
+        }
+      ]
+    },
+    {
+      "task_title": "勞動合同管理",
+      "recommendations": [
+        {
+          "title": "尚未找到相關線上課程，但可以參考人資相關的線上課程",
+          "description": "建議查閱中小企業網路大學或資點研習平台的其他課程",
+          "source": "資源搜尋結果不足"
+        },
+        {
+          "title": "Contract Management",
+          "type": "線上課程",
+          "platform": "Coursera",
+          "url": "https://www.coursera.org/search?query=contract%20management",
+          "instructor": "多位講師",
+          "description": "提供契約管理的課程",
+          "language": "English",
+          "price": "需付費",
+          "rating": "4.5/5.0",
+          "source": "從Coursera搜尋結果"
         }
       ]
     }
