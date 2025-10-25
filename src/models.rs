@@ -1,6 +1,7 @@
 use rbatis::crud;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize, Deserializer};
+use rbatis::{RBatis, Error as RbatisError};
 
 // 成就達成條件類型枚舉
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -324,6 +325,15 @@ pub struct Task {
     pub attributes: Option<serde_json::Value>,  // 任務完成時獲得的屬性獎勵 {"intelligence": 5, "creativity": 3}
 }
 crud!(Task{});
+
+impl Task {
+    pub async fn update_is_parent_task(rb: &RBatis, task_id: &str, is_parent: bool) -> Result<(), RbatisError> {
+        rb.exec("UPDATE task SET is_parent_task = ? WHERE id = ?", vec![
+            rbs::Value::I32(if is_parent { 1 } else { 0 }),
+            rbs::Value::String(task_id.to_string())
+        ]).await.map(|_| ())
+    }
+}
 
 // Skill model
 #[derive(Clone, Debug, Serialize, Deserialize)]

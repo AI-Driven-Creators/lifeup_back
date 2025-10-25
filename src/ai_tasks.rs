@@ -9,7 +9,7 @@ use std::collections::HashMap;
 
 use crate::models::{Task, User, GenerateTaskRequest, TaskStatus, Achievement, UserAchievement};
 use crate::career_routes::parse_ai_tasks_response;
-use crate::ai_service::convert_to_achievement_model;
+use crate::ai_service::{convert_to_achievement_model, AIGeneratedTaskPlan};
 use crate::achievement_service::AchievementService;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -87,14 +87,14 @@ pub async fn generate_task_json(
             
             // 將 AI 生成的任務轉換為符合 schema 的 JSON
             let task_json = CreateTaskInput {
-                title: ai_task.title,
+                title: ai_task.title.unwrap_or_else(|| "未命名任務".to_string()),
                 description: ai_task.description,
-                task_type: Some(ai_task.task_type),
-                priority: Some(ai_task.priority),
-                difficulty: Some(ai_task.difficulty),
-                experience: Some(ai_task.experience),
+                task_type: ai_task.task_type,
+                priority: ai_task.priority,
+                difficulty: ai_task.difficulty,
+                experience: ai_task.experience,
                 due_date: ai_task.due_date,
-                is_recurring: Some(ai_task.is_recurring),
+                is_recurring: ai_task.is_recurring,
                 recurrence_pattern: ai_task.recurrence_pattern,
                 start_date: ai_task.start_date,
                 end_date: ai_task.end_date,
@@ -495,14 +495,14 @@ pub async fn generate_task_with_ai(
         Ok(ai_task) => {
             // 轉換為 CreateTaskInput
             let task_input = CreateTaskInput {
-                title: ai_task.title,
+                title: ai_task.title.unwrap_or_else(|| "未命名任務".to_string()),
                 description: ai_task.description,
-                task_type: Some(ai_task.task_type),
-                priority: Some(ai_task.priority),
-                difficulty: Some(ai_task.difficulty),
-                experience: Some(ai_task.experience),
+                task_type: ai_task.task_type,
+                priority: ai_task.priority,
+                difficulty: ai_task.difficulty,
+                experience: ai_task.experience,
                 due_date: ai_task.due_date,
-                is_recurring: Some(ai_task.is_recurring),
+                is_recurring: ai_task.is_recurring,
                 recurrence_pattern: ai_task.recurrence_pattern,
                 start_date: ai_task.start_date,
                 end_date: ai_task.end_date,
@@ -544,50 +544,70 @@ pub struct TaskPreviewResponse {
 }
 
 // 驗證任務 JSON 格式的函數
+// 輔助函數：驗證日期字串是否可解析（支持多種格式）
+fn is_valid_date_string(date_str: &str) -> bool {
+    // 嘗試 RFC3339 格式（帶時區）
+    if chrono::DateTime::parse_from_rfc3339(date_str).is_ok() {
+        return true;
+    }
+
+    // 嘗試 ISO 8601 格式（不帶時區，假設 UTC）
+    if date_str.parse::<chrono::NaiveDateTime>().is_ok() {
+        return true;
+    }
+
+    // 嘗試只有日期的格式
+    if date_str.parse::<chrono::NaiveDate>().is_ok() {
+        return true;
+    }
+
+    false
+}
+
 fn validate_task_json(task_input: &CreateTaskInput) -> (bool, Vec<String>) {
     let mut errors = Vec::new();
-    
+
     // 驗證標題
     if task_input.title.trim().is_empty() {
         errors.push("任務標題不能為空".to_string());
     }
-    
+
     // 驗證優先級
     if let Some(priority) = task_input.priority {
-        if priority < 1 || priority > 5 {
-            errors.push("優先級必須在 1-5 之間".to_string());
+        if priority < 0 || priority > 2 {
+            errors.push("優先級必須在 0-2 之間".to_string());
         }
     }
-    
+
     // 驗證難度
     if let Some(difficulty) = task_input.difficulty {
         if difficulty < 1 || difficulty > 5 {
             errors.push("難度必須在 1-5 之間".to_string());
         }
     }
-    
+
     // 驗證經驗值
     if let Some(experience) = task_input.experience {
         if experience < 0 {
             errors.push("經驗值不能為負數".to_string());
         }
     }
-    
-    // 驗證日期格式
+
+    // 驗證日期格式（寬容處理多種格式）
     if let Some(due_date) = &task_input.due_date {
-        if chrono::DateTime::parse_from_rfc3339(due_date).is_err() {
+        if !is_valid_date_string(due_date) {
             errors.push("截止日期格式不正確".to_string());
         }
     }
-    
+
     if let Some(start_date) = &task_input.start_date {
-        if chrono::DateTime::parse_from_rfc3339(start_date).is_err() {
+        if !is_valid_date_string(start_date) {
             errors.push("開始日期格式不正確".to_string());
         }
     }
-    
+
     if let Some(end_date) = &task_input.end_date {
-        if chrono::DateTime::parse_from_rfc3339(end_date).is_err() {
+        if !is_valid_date_string(end_date) {
             errors.push("結束日期格式不正確".to_string());
         }
     }
@@ -606,8 +626,8 @@ fn validate_task_json(task_input: &CreateTaskInput) -> (bool, Vec<String>) {
     
     // 驗證完成目標
     if let Some(target) = task_input.completion_target {
-        if target < 0.0 || target > 100.0 {
-            errors.push("完成目標必須在 0-100 之間".to_string());
+        if target < 0.0 || target > 1.0 {
+            errors.push("完成目標必須在 0.0-1.0 之間".to_string());
         }
     }
     
@@ -740,14 +760,14 @@ pub async fn generate_task_from_chat(
     match ai_service.generate_task_from_text(&description).await {
         Ok(ai_task) => {
             let task_json = CreateTaskInput {
-                title: ai_task.title,
+                title: ai_task.title.unwrap_or_else(|| "未命名任務".to_string()),
                 description: ai_task.description,
-                task_type: Some(ai_task.task_type),
-                priority: Some(ai_task.priority),
-                difficulty: Some(ai_task.difficulty),
-                experience: Some(ai_task.experience),
+                task_type: ai_task.task_type,
+                priority: ai_task.priority,
+                difficulty: ai_task.difficulty,
+                experience: ai_task.experience,
                 due_date: ai_task.due_date,
-                is_recurring: Some(ai_task.is_recurring),
+                is_recurring: ai_task.is_recurring,
                 recurrence_pattern: ai_task.recurrence_pattern,
                 start_date: ai_task.start_date,
                 end_date: ai_task.end_date,
@@ -1431,6 +1451,7 @@ pub struct GenerateTaskWithExpertRequest {
 pub struct ExpertTaskResponse {
     pub expert_match: crate::ai_service::ExpertMatch,
     pub task_json: CreateTaskInput,
+    pub task_plan: crate::ai_service::AIGeneratedTaskPlan,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -1506,17 +1527,11 @@ pub async fn generate_task_with_expert(
         existing_match
     } else {
         log::info!("[generate_task_with_expert] 前端未提供專家，使用 expert_name/description 重建虛擬專家");
-        crate::ai_service::ExpertMatch {
-            expert: crate::ai_service::Expert {
-                name: req.expert_name.clone(),
-                description: req.expert_description.clone(),
-                expertise_areas: vec!["AI匹配".to_string()],
-                emoji: "🤖".to_string(),
-            },
-            confidence: 1.0,
-            ai_expert_name: req.expert_name.clone(),
-            ai_expert_description: req.expert_description.clone(),
-        }
+        return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: format!("前端未提供專家，使用 expert_name/description 重建虛擬專家失敗"),
+        }));
     };
     
     let ai_input_prompt = crate::ai_service::build_task_generation_prompt(
@@ -1539,7 +1554,7 @@ pub async fn generate_task_with_expert(
 
     let ai_task_plan = match ai_service.generate_task_with_expert(&ai_input_prompt, &expert_match).await {
         Ok(task_plan) => {
-            log::info!("專家成功生成任務計劃: {} (包含 {} 個子任務)", 
+            log::info!("專家成功生成任務計劃: {:?} (包含 {} 個子任務)",
                       task_plan.main_task.title, task_plan.subtasks.len());
             task_plan
         }
@@ -1552,137 +1567,111 @@ pub async fn generate_task_with_expert(
             }));
         }
     };
-    
-    // 獲取用戶ID
-    let user_id = req.user_id.clone().unwrap_or_else(|| "default_user".to_string());
-    
-    // 創建主任務
-    let parent_task_id = uuid::Uuid::new_v4().to_string();
-    let now = chrono::Utc::now();
-    
-    let parent_task = crate::models::Task {
-        id: Some(parent_task_id.clone()),
-        user_id: Some(user_id.clone()),
-        title: Some(ai_task_plan.main_task.title.clone()),
-        description: ai_task_plan.main_task.description.clone(),
-        status: Some(0), // pending
-        priority: Some(ai_task_plan.main_task.priority),
-        task_type: Some(ai_task_plan.main_task.task_type.clone()),
-        difficulty: Some(ai_task_plan.main_task.difficulty),
-        experience: Some(ai_task_plan.main_task.experience),
-        due_date: ai_task_plan.main_task.due_date.clone().and_then(|d| chrono::DateTime::parse_from_rfc3339(&d).ok().map(|dt| dt.with_timezone(&chrono::Utc))),
-        is_recurring: Some(if ai_task_plan.main_task.is_recurring { 1 } else { 0 }),
-        recurrence_pattern: ai_task_plan.main_task.recurrence_pattern.clone(),
-        start_date: ai_task_plan.main_task.start_date.clone().and_then(|d| chrono::DateTime::parse_from_rfc3339(&d).ok().map(|dt| dt.with_timezone(&chrono::Utc))),
-        end_date: ai_task_plan.main_task.end_date.clone().and_then(|d| chrono::DateTime::parse_from_rfc3339(&d).ok().map(|dt| dt.with_timezone(&chrono::Utc))),
-        completion_target: ai_task_plan.main_task.completion_target,
-        is_parent_task: Some(1), // 標記為父任務
-        task_order: Some(0),
-        created_at: Some(now),
-        updated_at: Some(now),
-        parent_task_id: None,
-        career_mainline_id: None,
-        task_category: Some("expert_generated".to_string()),
-        skill_tags: None,
-        completion_rate: Some(0.0),
-        task_date: None,
-        cancel_count: Some(0),
-        last_cancelled_at: None,
-        attributes: None,
-    };
-    
-    // 保存主任務
-    if let Err(e) = crate::models::Task::insert(rb.get_ref(), &parent_task).await {
-        log::error!("創建主任務失敗: {}", e);
-        return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
-            success: false,
-            data: None,
-            message: "創建主任務失敗".to_string(),
-        }));
-    }
-    
-    log::info!("[generate_task_with_expert] ✅ 創建主任務: {}", parent_task_id);
-    
-    // 創建子任務
-    let mut created_subtasks = Vec::new();
-    let mut task_order = 1;
-    
-    for ai_subtask in &ai_task_plan.subtasks {
-        let subtask_id = uuid::Uuid::new_v4().to_string();
-        
-        let subtask = crate::models::Task {
-            id: Some(subtask_id.clone()),
-            user_id: Some(user_id.clone()),
-            title: Some(ai_subtask.title.clone()),
-            description: ai_subtask.description.clone(),
-            status: Some(0), // pending
-            priority: Some(ai_subtask.priority),
-            task_type: Some(ai_subtask.task_type.clone()),
-            difficulty: Some(ai_subtask.difficulty),
-            experience: Some(ai_subtask.experience),
-            due_date: ai_subtask.due_date.clone().and_then(|d| chrono::DateTime::parse_from_rfc3339(&d).ok().map(|dt| dt.with_timezone(&chrono::Utc))),
-            is_recurring: Some(if ai_subtask.is_recurring { 1 } else { 0 }),
-            recurrence_pattern: ai_subtask.recurrence_pattern.clone(),
-            start_date: ai_subtask.start_date.clone().and_then(|d| chrono::DateTime::parse_from_rfc3339(&d).ok().map(|dt| dt.with_timezone(&chrono::Utc))),
-            end_date: ai_subtask.end_date.clone().and_then(|d| chrono::DateTime::parse_from_rfc3339(&d).ok().map(|dt| dt.with_timezone(&chrono::Utc))),
-            completion_target: ai_subtask.completion_target,
-            is_parent_task: Some(0), // 標記為子任務
-            task_order: Some(task_order),
-            created_at: Some(now),
-            updated_at: Some(now),
-            parent_task_id: Some(parent_task_id.clone()),
-            career_mainline_id: None,
-            task_category: Some("expert_subtask".to_string()),
-            skill_tags: None,
-            completion_rate: Some(0.0),
-            task_date: None,
-            cancel_count: Some(0),
-            last_cancelled_at: None,
-            attributes: None,
-        };
-        
-        // 保存子任務
-        if let Err(e) = crate::models::Task::insert(rb.get_ref(), &subtask).await {
-            log::error!("創建子任務失敗: {}", e);
-        } else {
-            created_subtasks.push(subtask);
-            task_order += 1;
+
+    // 整合選中的強化選項和分析結果到主任務描述中
+    let mut enhanced_description = ai_task_plan.main_task.description.clone().unwrap_or_default();
+
+    // 如果有選中的選項，添加到描述中
+    if let Some(selected_options) = &req.selected_options {
+        if !selected_options.is_empty() {
+            let option_labels: Vec<String> = selected_options.iter()
+                .map(|opt| match opt.as_str() {
+                    "analyze" => "分析加強方向",
+                    "goals" => "生成明確目標",
+                    "resources" => "建議學習資源",
+                    _ => opt
+                })
+                .map(|s| s.to_string())
+                .collect();
+
+            enhanced_description.push_str(&format!("\n\n【小教練重點加強】\n{}", option_labels.join("、")));
         }
     }
-    
-    log::info!("[generate_task_with_expert] ✅ 成功創建 {} 個子任務", created_subtasks.len());
-    
-    // 轉換為 CreateTaskInput 格式（主任務）
+
+    // 檢查是否有分析結果
+    let has_analyze_output = req.expert_outputs.as_ref()
+        .and_then(|outputs| outputs.get("analyze"))
+        .map(|v| !v.is_empty())
+        .unwrap_or(false);
+
+    // 如果有選中的加強方向，且沒有分析結果（避免重複）
+    if let Some(directions) = &req.selected_directions {
+        if !directions.is_empty() && !has_analyze_output {
+            enhanced_description.push_str("\n\n【選定的加強方向】");
+            for (i, direction) in directions.iter().enumerate() {
+                enhanced_description.push_str(&format!("\n{}. {} - {}", i + 1, direction.title, direction.description));
+            }
+        }
+    }
+
+    // 如果有專家輸出，添加摘要到描述中
+    if let Some(outputs) = &req.expert_outputs {
+        for (key, value) in outputs.iter() {
+            if !value.is_empty() {
+                let label = match key.as_str() {
+                    "analyze" => "分析結果",
+                    "goals" => "明確目標",
+                    "resources" => "學習資源",
+                    _ => key
+                };
+
+                // 對於分析結果，如果已經包含了選定方向的內容，就包含完整內容
+                // 否則只添加簡短摘要
+                let summary = if key == "analyze" {
+                    // 分析結果通常已包含選定方向，顯示完整內容
+                    value.clone()
+                } else if value.len() > 200 {
+                    format!("{}...", &value[..200])
+                } else {
+                    value.clone()
+                };
+
+                enhanced_description.push_str(&format!("\n\n【{}】\n{}", label, summary));
+            }
+        }
+    }
+
+    // 更新主任務的描述
+    let mut updated_main_task = ai_task_plan.main_task.clone();
+    updated_main_task.description = Some(enhanced_description);
+
+    log::info!(
+        "[generate_task_with_expert] 任務計劃已生成（不插入資料庫），包含 {} 個子任務計劃",
+        ai_task_plan.subtasks.len()
+    );
+
+    // 轉換為 CreateTaskInput 格式（主任務）- 使用增強後的描述
     let task_json = CreateTaskInput {
-        title: ai_task_plan.main_task.title.clone(),
-        description: ai_task_plan.main_task.description.clone(),
-        task_type: Some(ai_task_plan.main_task.task_type.clone()),
-        priority: Some(ai_task_plan.main_task.priority),
-        difficulty: Some(ai_task_plan.main_task.difficulty),
-        experience: Some(ai_task_plan.main_task.experience),
-        due_date: ai_task_plan.main_task.due_date.clone(),
-        is_recurring: Some(ai_task_plan.main_task.is_recurring),
-        recurrence_pattern: ai_task_plan.main_task.recurrence_pattern.clone(),
-        start_date: ai_task_plan.main_task.start_date.clone(),
-        end_date: ai_task_plan.main_task.end_date.clone(),
-        completion_target: ai_task_plan.main_task.completion_target,
+        title: updated_main_task.title.clone().unwrap_or_else(|| "未命名任務".to_string()),
+        description: updated_main_task.description.clone(),
+        task_type: updated_main_task.task_type.clone(),
+        priority: updated_main_task.priority,
+        difficulty: updated_main_task.difficulty,
+        experience: updated_main_task.experience,
+        due_date: updated_main_task.due_date.clone(),
+        is_recurring: updated_main_task.is_recurring,
+        recurrence_pattern: updated_main_task.recurrence_pattern.clone(),
+        start_date: updated_main_task.start_date.clone(),
+        end_date: updated_main_task.end_date.clone(),
+        completion_target: updated_main_task.completion_target,
     };
-    
+
     let response = ExpertTaskResponse {
         expert_match,
         task_json,
+        task_plan: ai_task_plan.clone(),
     };
-    
+
     log::info!(
-        "[generate_task_with_expert] 任務生成完成，主任務: {}，子任務數: {}",
-        ai_task_plan.main_task.title,
-        created_subtasks.len()
+        "[generate_task_with_expert] 任務計劃生成完成，主任務: {:?}，子任務計劃數: {}",
+        updated_main_task.title,
+        ai_task_plan.subtasks.len()
     );
 
     Ok(HttpResponse::Ok().json(ApiResponse {
         success: true,
         data: Some(response),
-        message: format!("任務計劃生成成功，包含主任務和 {} 個子任務", created_subtasks.len()),
+        message: format!("任務計劃生成成功，包含主任務和 {} 個子任務計劃（尚未創建）", ai_task_plan.subtasks.len()),
     }))
 }
 
@@ -1732,6 +1721,215 @@ pub async fn match_expert_only(
         success: true,
         data: Some(response),
         message: "專家匹配成功".to_string(),
+    }))
+}
+
+// API: 為已存在的任務生成子任務
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GenerateSubtasksRequest {
+    pub parent_task_id: String,
+    pub task_description: String,
+    pub task_plan: Option<AIGeneratedTaskPlan>, // 可選的任務計劃，如果前端已經有了就直接使用
+    pub user_id: Option<String>,
+    pub expert_match: Option<crate::ai_service::ExpertMatch>, // 專家信息，用於生成一致的子任務
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct GenerateSubtasksResponse {
+    pub subtasks_created: Vec<Task>,
+    pub total_count: usize,
+}
+
+pub async fn generate_subtasks_for_task(
+    rb: web::Data<RBatis>,
+    req: web::Json<GenerateSubtasksRequest>,
+) -> Result<HttpResponse> {
+    log::info!(
+        "[generate_subtasks_for_task] 開始為任務 {} 生成子任務",
+        req.parent_task_id
+    );
+
+    // 驗證父任務是否存在
+    let parent_tasks: Vec<Task> = match Task::select_by_map(rb.get_ref(), value!{
+        "id": &req.parent_task_id
+    }).await {
+        Ok(tasks) => tasks,
+        Err(e) => {
+            log::error!("查詢父任務失敗: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("查詢父任務失敗: {}", e),
+            }));
+        }
+    };
+
+    if parent_tasks.is_empty() {
+        return Ok(HttpResponse::NotFound().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: "找不到指定的父任務".to_string(),
+        }));
+    }
+
+    let parent_task = &parent_tasks[0];
+    let user_id = parent_task.user_id.clone().unwrap_or_else(|| "default_user".to_string());
+
+    // 如果前端提供了任務計劃且有子任務，就直接使用
+    let subtasks_to_create = if let Some(task_plan) = &req.task_plan {
+        if !task_plan.subtasks.is_empty() {
+            log::info!("[generate_subtasks_for_task] 使用前端提供的任務計劃，包含 {} 個子任務", task_plan.subtasks.len());
+            task_plan.subtasks.clone()
+        } else {
+            log::info!("[generate_subtasks_for_task] 任務計劃中沒有子任務，需要使用 AI 生成");
+            // 繼續執行 AI 生成邏輯（見下方）
+            Vec::new() // 暫時返回空，下面會處理
+        }
+    } else {
+        log::info!("[generate_subtasks_for_task] 沒有任務計劃，需要使用 AI 生成");
+        Vec::new() // 暫時返回空，下面會處理
+    };
+
+    // 如果還沒有子任務，使用 AI 生成
+    let subtasks_to_create = if subtasks_to_create.is_empty() {
+        log::info!("[generate_subtasks_for_task] 開始使用 AI 生成子任務");
+
+        // 載入配置
+        let config = crate::config::Config::from_env();
+
+        // 創建 AI 服務
+        let ai_service = match crate::ai_service::create_ai_service(&config.app.ai) {
+            Ok(service) => service,
+            Err(e) => {
+                log::error!("AI 服務初始化失敗: {}", e);
+                return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: format!("AI 服務初始化失敗: {}", e),
+                }));
+            }
+        };
+
+        // 使用傳入的專家信息，或創建預設的
+        let expert_match = req.expert_match.clone().unwrap_or_else(|| {
+            crate::ai_service::ExpertMatch {
+                expert: crate::ai_service::Expert {
+                    name: "通用專家".to_string(),
+                    description: "提供通用任務規劃和學習建議".to_string(),
+                    expertise_areas: vec!["general".to_string()],
+                    emoji: "🎯".to_string(),
+                },
+                confidence: 0.8,
+                ai_expert_name: "任務規劃專家".to_string(),
+                ai_expert_description: "協助將主任務分解為可執行的子任務".to_string(),
+            }
+        });
+
+        // 使用新的專用子任務生成函數
+        match ai_service.generate_subtasks_for_main_task(
+            parent_task.title.as_deref().unwrap_or("未命名任務"),
+            &req.task_description,
+            &expert_match,
+        ).await {
+            Ok(subtasks) => subtasks,
+            Err(e) => {
+                log::error!("AI 生成子任務失敗: {}", e);
+                return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: format!("AI 生成子任務失敗: {}", e),
+                }));
+            }
+        }
+    } else {
+        // 如果已經有子任務，直接使用
+        subtasks_to_create
+    };
+
+    // 創建子任務
+    let now = chrono::Utc::now();
+    let mut created_subtasks = Vec::new();
+    let mut task_order = 1;
+
+    log::info!("[generate_subtasks_for_task] 準備創建 {} 個子任務", subtasks_to_create.len());
+
+    for (index, ai_subtask) in subtasks_to_create.into_iter().enumerate() {
+        log::info!("[generate_subtasks_for_task] 處理第 {} 個子任務: {:?}", index + 1, ai_subtask.title);
+
+        let subtask_id = uuid::Uuid::new_v4().to_string();
+
+        let subtask = Task {
+            id: Some(subtask_id.clone()),
+            user_id: Some(user_id.clone()),
+            title: ai_subtask.title.clone(),
+            description: ai_subtask.description.clone(),
+            status: Some(0), // pending
+            priority: ai_subtask.priority,
+            task_type: ai_subtask.task_type.clone().or_else(|| Some("expert_subtask".to_string())),
+            difficulty: ai_subtask.difficulty,
+            experience: ai_subtask.experience,
+            due_date: ai_subtask.due_date.clone().and_then(|d| chrono::DateTime::parse_from_rfc3339(&d).ok().map(|dt| dt.with_timezone(&chrono::Utc))),
+            is_recurring: Some(0),
+            recurrence_pattern: None,
+            start_date: None,
+            end_date: None,
+            completion_target: ai_subtask.completion_target,
+            is_parent_task: Some(0), // 標記為子任務
+            task_order: Some(task_order),
+            created_at: Some(now),
+            updated_at: Some(now),
+            parent_task_id: Some(req.parent_task_id.clone()),
+            career_mainline_id: None,
+            task_category: Some("expert_subtask".to_string()),
+            skill_tags: None,
+            completion_rate: Some(0.0),
+            task_date: None,
+            cancel_count: Some(0),
+            last_cancelled_at: None,
+            attributes: None,
+        };
+
+        // 插入子任務到資料庫
+        match Task::insert(rb.get_ref(), &subtask).await {
+            Ok(exec_result) => {
+                log::info!("成功創建子任務: {}, 影響行數: {:?}",
+                    subtask.title.as_deref().unwrap_or("未命名"),
+                    exec_result.rows_affected);
+                created_subtasks.push(subtask);
+                task_order += 1;
+            }
+            Err(e) => {
+                log::error!("創建子任務失敗: {}", e);
+                log::error!("失敗的子任務數據: {:?}", subtask);
+                // 繼續創建其他子任務
+            }
+        }
+    }
+
+    // 更新父任務的 is_parent_task 標記
+    if !created_subtasks.is_empty() {
+        let update_sql = "UPDATE task SET is_parent_task = 1 WHERE id = ?";
+        if let Err(e) = rb.exec(update_sql, vec![
+            rbs::Value::String(req.parent_task_id.clone()),
+        ]).await {
+            log::warn!("更新父任務狀態失敗: {}", e);
+        }
+    }
+
+    log::info!(
+        "[generate_subtasks_for_task] 成功為任務 {} 創建了 {} 個子任務",
+        req.parent_task_id,
+        created_subtasks.len()
+    );
+
+    let subtasks_count = created_subtasks.len();
+    Ok(HttpResponse::Ok().json(ApiResponse {
+        success: true,
+        data: Some(GenerateSubtasksResponse {
+            total_count: subtasks_count,
+            subtasks_created: created_subtasks,
+        }),
+        message: format!("成功創建 {} 個子任務", subtasks_count),
     }))
 }
 

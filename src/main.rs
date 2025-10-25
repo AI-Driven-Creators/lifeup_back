@@ -197,6 +197,7 @@ async fn main() -> std::io::Result<()> {
             .route("/api/tasks/generate-with-expert", web::post().to(crate::ai_tasks::generate_task_with_expert))
             .route("/api/tasks/match-expert", web::post().to(crate::ai_tasks::match_expert_only))
             .route("/api/tasks/expert-analysis", web::post().to(crate::ai_tasks::expert_analysis))
+            .route("/api/tasks/generate-subtasks", web::post().to(crate::ai_tasks::generate_subtasks_for_task))
             // AI 成就生成路由
             .route("/api/achievements/generate", web::post().to(generate_achievement_with_ai))
             .route(
