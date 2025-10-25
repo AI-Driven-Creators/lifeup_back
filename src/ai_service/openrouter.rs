@@ -813,21 +813,43 @@ impl AIService for OpenRouterService {
             "goals" => format!(
                 r#"你是{}，{}
 
-請根據用戶的需求生成3-5個明確、可衡量的學習目標。目標應該具體、可達成、有時間性。
+請根據用戶的需求生成5個明確、可衡量的學習目標。目標應該具體、可達成、有時間性。
 
 用戶需求：{}
 
-請以清晰的格式回應，每個目標用編號列出，並說明如何衡量達成情況。"#,
+請以JSON格式回應，格式如下：
+{{
+  "goals": [
+    {{"title": "目標標題", "description": "具體描述和衡量標準"}},
+    {{"title": "目標標題", "description": "具體描述和衡量標準"}},
+    {{"title": "目標標題", "description": "具體描述和衡量標準"}},
+    {{"title": "目標標題", "description": "具體描述和衡量標準"}},
+    {{"title": "目標標題", "description": "具體描述和衡量標準"}}
+  ]
+}}
+
+必須返回恰好5個目標。每個目標標題要簡潔明確，描述要包含具體的衡量標準（不超過30字）。"#,
                 expert_name, expert_description, user_input
             ),
             "resources" => format!(
                 r#"你是{}，{}
 
-請根據用戶的需求推薦3-5個優質的學習資源，包括書籍、課程、網站、工具等。
+請根據用戶的需求推薦5個優質的學習資源，包括書籍、課程、網站、工具等。
 
 用戶需求：{}
 
-請以清晰的格式回應，每個資源用編號列出，並簡要說明為什麼推薦這個資源。"#,
+請以JSON格式回應，格式如下：
+{{
+  "resources": [
+    {{"title": "資源名稱", "description": "資源描述和推薦理由"}},
+    {{"title": "資源名稱", "description": "資源描述和推薦理由"}},
+    {{"title": "資源名稱", "description": "資源描述和推薦理由"}},
+    {{"title": "資源名稱", "description": "資源描述和推薦理由"}},
+    {{"title": "資源名稱", "description": "資源描述和推薦理由"}}
+  ]
+}}
+
+必須返回恰好5個學習資源。每個資源名稱要簡潔明確，描述要簡短說明為什麼推薦（不超過30字）。"#,
                 expert_name, expert_description, user_input
             ),
             _ => return Err(anyhow::anyhow!("不支援的分析類型: {}", analysis_type)),

@@ -217,7 +217,11 @@ pub async fn insert_task_from_json(
         difficulty: task_input.difficulty,
         experience: task_input.experience,
         parent_task_id: None,
-        is_parent_task: if task_input.is_recurring.unwrap_or(false) { Some(1) } else { Some(0) },
+        is_parent_task: if task_input.task_type == Some("main".to_string()) || task_input.is_recurring.unwrap_or(false) {
+            Some(1)
+        } else {
+            Some(0)
+        },
         task_order: Some(0),
         due_date: task_input.due_date.as_ref().and_then(|d| {
             chrono::DateTime::parse_from_rfc3339(d)
@@ -1478,10 +1482,24 @@ pub struct ExpertAnalysisRequest {
 pub struct ExpertAnalysisResponse {
     pub analysis_result: String,
     pub directions: Option<Vec<AnalysisDirection>>,
+    pub goals: Option<Vec<AnalysisGoal>>,
+    pub resources: Option<Vec<AnalysisResource>>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AnalysisGoal {
+    pub title: String,
+    pub description: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AnalysisDirection {
+    pub title: String,
+    pub description: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AnalysisResource {
     pub title: String,
     pub description: String,
 }
@@ -2053,12 +2071,15 @@ pub async fn expert_analysis(
         }
     };
     
-    // 解析JSON結果（如果是分析加強方向）
+    // 解析JSON結果
     let mut response = ExpertAnalysisResponse {
         analysis_result: analysis_result.clone(),
         directions: None,
+        goals: None,
+        resources: None,
     };
-    
+
+    // 處理分析加強方向
     if req.analysis_type == "analyze" {
         if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&analysis_result) {
             if let Some(directions_array) = parsed.get("directions").and_then(|v| v.as_array()) {
@@ -2078,9 +2099,65 @@ pub async fn expert_analysis(
                         }
                     })
                     .collect();
-                
+
                 if !directions.is_empty() {
                     response.directions = Some(directions);
+                }
+            }
+        }
+    }
+
+    // 處理生成明確目標
+    if req.analysis_type == "goals" {
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&analysis_result) {
+            if let Some(goals_array) = parsed.get("goals").and_then(|v| v.as_array()) {
+                let goals: Vec<AnalysisGoal> = goals_array
+                    .iter()
+                    .filter_map(|item| {
+                        if let (Some(title), Some(description)) = (
+                            item.get("title").and_then(|v| v.as_str()),
+                            item.get("description").and_then(|v| v.as_str()),
+                        ) {
+                            Some(AnalysisGoal {
+                                title: title.to_string(),
+                                description: description.to_string(),
+                            })
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                if !goals.is_empty() {
+                    response.goals = Some(goals);
+                }
+            }
+        }
+    }
+
+    // 處理建議學習資源
+    if req.analysis_type == "resources" {
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&analysis_result) {
+            if let Some(resources_array) = parsed.get("resources").and_then(|v| v.as_array()) {
+                let resources: Vec<AnalysisResource> = resources_array
+                    .iter()
+                    .filter_map(|item| {
+                        if let (Some(title), Some(description)) = (
+                            item.get("title").and_then(|v| v.as_str()),
+                            item.get("description").and_then(|v| v.as_str()),
+                        ) {
+                            Some(AnalysisResource {
+                                title: title.to_string(),
+                                description: description.to_string(),
+                            })
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+
+                if !resources.is_empty() {
+                    response.resources = Some(resources);
                 }
             }
         }
