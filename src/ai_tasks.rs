@@ -1699,8 +1699,8 @@ pub async fn match_expert_only(
     log::info!("開始為任務描述匹配專家: {}", req.description);
     let expert_match = match ai_service.match_expert_for_task(&req.description).await {
         Ok(match_result) => {
-            log::info!("成功匹配專家: {} (信心度: {:.2})", 
-                match_result.expert.name, match_result.confidence);
+            log::info!("成功匹配專家: {}",
+                match_result.expert.name);
             match_result
         }
         Err(e) => {
@@ -1790,28 +1790,16 @@ pub async fn generate_subtasks_for_task(
         Vec::new() // 暫時返回空，下面會處理
     };
 
-    // 如果還沒有子任務，使用 AI 生成
-    let subtasks_to_create = if subtasks_to_create.is_empty() {
-        log::info!("[generate_subtasks_for_task] 開始使用 AI 生成子任務");
+    // 如果還沒有子任務，使用 AI 生成（異步處理）
+    if subtasks_to_create.is_empty() {
+        log::info!("[generate_subtasks_for_task] 開始異步生成子任務");
 
-        // 載入配置
-        let config = crate::config::Config::from_env();
-
-        // 創建 AI 服務
-        let ai_service = match crate::ai_service::create_ai_service(&config.app.ai) {
-            Ok(service) => service,
-            Err(e) => {
-                log::error!("AI 服務初始化失敗: {}", e);
-                return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
-                    success: false,
-                    data: None,
-                    message: format!("AI 服務初始化失敗: {}", e),
-                }));
-            }
-        };
-
-        // 使用傳入的專家信息，或創建預設的
-        let expert_match = req.expert_match.clone().unwrap_or_else(|| {
+        // 複製必要的數據用於異步任務
+        let parent_task_id_clone = req.parent_task_id.clone();
+        let task_description_clone = req.task_description.clone();
+        let parent_task_title = parent_task.title.clone().unwrap_or_else(|| "未命名任務".to_string());
+        let user_id_clone = user_id.clone();
+        let expert_match_clone = req.expert_match.clone().unwrap_or_else(|| {
             crate::ai_service::ExpertMatch {
                 expert: crate::ai_service::Expert {
                     name: "通用專家".to_string(),
@@ -1819,32 +1807,119 @@ pub async fn generate_subtasks_for_task(
                     expertise_areas: vec!["general".to_string()],
                     emoji: "🎯".to_string(),
                 },
-                confidence: 0.8,
                 ai_expert_name: "任務規劃專家".to_string(),
                 ai_expert_description: "協助將主任務分解為可執行的子任務".to_string(),
             }
         });
 
-        // 使用新的專用子任務生成函數
-        match ai_service.generate_subtasks_for_main_task(
-            parent_task.title.as_deref().unwrap_or("未命名任務"),
-            &req.task_description,
-            &expert_match,
-        ).await {
-            Ok(subtasks) => subtasks,
-            Err(e) => {
-                log::error!("AI 生成子任務失敗: {}", e);
-                return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
-                    success: false,
-                    data: None,
-                    message: format!("AI 生成子任務失敗: {}", e),
-                }));
+        // 獲取數據庫連接的克隆
+        let rb_clone = rb.get_ref().clone();
+
+        // 啟動異步任務處理
+        tokio::spawn(async move {
+            log::info!("[異步任務] 開始生成子任務 for task {}", parent_task_id_clone);
+
+            // 載入配置
+            let config = crate::config::Config::from_env();
+
+            // 創建 AI 服務
+            let ai_service = match crate::ai_service::create_ai_service(&config.app.ai) {
+                Ok(service) => service,
+                Err(e) => {
+                    log::error!("[異步任務] AI 服務初始化失敗: {}", e);
+                    return;
+                }
+            };
+
+            // 使用新的專用子任務生成函數
+            let subtasks = match ai_service.generate_subtasks_for_main_task(
+                &parent_task_title,
+                &task_description_clone,
+                &expert_match_clone,
+            ).await {
+                Ok(subtasks) => subtasks,
+                Err(e) => {
+                    log::error!("[異步任務] AI 生成子任務失敗: {}", e);
+                    return;
+                }
+            };
+
+            // 創建子任務
+            let now = chrono::Utc::now();
+            let mut task_order = 1;
+            let mut created_count = 0;
+
+            for (index, ai_subtask) in subtasks.into_iter().enumerate() {
+                log::info!("[異步任務] 處理第 {} 個子任務: {:?}", index + 1, ai_subtask.title);
+
+                let subtask_id = uuid::Uuid::new_v4().to_string();
+
+                let subtask = Task {
+                    id: Some(subtask_id.clone()),
+                    user_id: Some(user_id_clone.clone()),
+                    title: ai_subtask.title.clone(),
+                    description: ai_subtask.description.clone(),
+                    status: Some(0), // pending
+                    priority: ai_subtask.priority,
+                    task_type: ai_subtask.task_type.clone().or_else(|| Some("expert_subtask".to_string())),
+                    difficulty: ai_subtask.difficulty,
+                    experience: ai_subtask.experience,
+                    due_date: ai_subtask.due_date.clone().and_then(|d| chrono::DateTime::parse_from_rfc3339(&d).ok().map(|dt| dt.with_timezone(&chrono::Utc))),
+                    is_recurring: Some(0),
+                    recurrence_pattern: None,
+                    start_date: None,
+                    end_date: None,
+                    completion_target: ai_subtask.completion_target,
+                    is_parent_task: Some(0), // 標記為子任務
+                    task_order: Some(task_order),
+                    created_at: Some(now),
+                    updated_at: Some(now),
+                    parent_task_id: Some(parent_task_id_clone.clone()),
+                    career_mainline_id: None,
+                    task_category: Some("expert_subtask".to_string()),
+                    skill_tags: None,
+                    completion_rate: Some(0.0),
+                    task_date: None,
+                    cancel_count: Some(0),
+                    last_cancelled_at: None,
+                    attributes: None,
+                };
+
+                if let Err(e) = Task::insert(&rb_clone, &subtask).await {
+                    log::error!("[異步任務] 創建子任務失敗: {}", e);
+                    continue;
+                }
+
+                created_count += 1;
+                task_order += 1;
             }
-        }
-    } else {
-        // 如果已經有子任務，直接使用
-        subtasks_to_create
-    };
+
+            // 更新父任務狀態
+            if created_count > 0 {
+                let update_sql = "UPDATE task SET is_parent_task = 1 WHERE id = ?";
+                if let Err(e) = rb_clone.exec(update_sql, vec![
+                    rbs::Value::String(parent_task_id_clone.clone()),
+                ]).await {
+                    log::warn!("[異步任務] 更新父任務狀態失敗: {}", e);
+                }
+
+                log::info!("[異步任務] 成功為任務 {} 創建了 {} 個子任務", parent_task_id_clone, created_count);
+            }
+        });
+
+        // 立即返回成功響應
+        return Ok(HttpResponse::Ok().json(ApiResponse {
+            success: true,
+            data: Some(GenerateSubtasksResponse {
+                total_count: 0,
+                subtasks_created: Vec::new(),
+            }),
+            message: "子任務正在後台生成中，請稍後刷新查看".to_string(),
+        }));
+    }
+
+    // 如果已經有子任務，直接使用（保持原有邏輯）
+    let subtasks_to_create = subtasks_to_create;
 
     // 創建子任務
     let now = chrono::Utc::now();

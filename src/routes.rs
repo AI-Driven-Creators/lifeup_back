@@ -3242,10 +3242,9 @@ async fn call_chatgpt_api(message: &str) -> Result<String, Box<dyn std::error::E
     })?;
 
     log::info!(
-        "成功匹配專家 (provider: {}): {} (信心度: {:.2})",
+        "成功匹配專家 (provider: {}): {}",
         provider,
-        expert_match.expert.name,
-        expert_match.confidence
+        expert_match.expert.name
     );
     
     // 使用專家的專業知識構建提示詞
@@ -3770,8 +3769,8 @@ async fn call_ai_api_with_personality(rb: &RBatis, message: &str, user_id: Optio
     log::info!("開始為訊息匹配專家: {}", message);
     let expert_match = match ai_service.match_expert_for_task(message).await {
         Ok(match_result) => {
-            log::info!("成功匹配專家: {} (信心度: {:.2})", 
-                match_result.expert.name, match_result.confidence);
+            log::info!("成功匹配專家: {}",
+                match_result.expert.name);
             Some(match_result)
         }
         Err(e) => {
@@ -4102,8 +4101,8 @@ async fn call_ai_api_with_direct_personality(message: &str, personality_type: Co
     log::info!("開始為訊息匹配專家: {}", message);
     let expert_match = match ai_service.match_expert_for_task(message).await {
         Ok(match_result) => {
-            log::info!("成功匹配專家: {} (信心度: {:.2})", 
-                match_result.expert.name, match_result.confidence);
+            log::info!("成功匹配專家: {}",
+                match_result.expert.name);
             Some(match_result)
         }
         Err(e) => {
