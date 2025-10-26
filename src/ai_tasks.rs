@@ -647,72 +647,11 @@ pub async fn validate_and_preview_task(
     // 驗證任務 JSON
     let (is_valid, validation_errors) = validate_task_json(task_input);
     
-    // 如果驗證通過，生成任務預覽
+    // 如果驗證通過，生成任務預覽（使用 Markdown 格式）
     let task_preview = if is_valid {
-        // 先生成簡單的預覽
-        let mut simple_preview = format!("📋 任務名稱：{}\n", task_input.title);
-        
-        if let Some(desc) = &task_input.description {
-            simple_preview.push_str(&format!("📝 描述：{}\n", desc));
-        }
-        
-        simple_preview.push_str(&format!("🎯 類型：{}\n", task_input.task_type.as_deref().unwrap_or("一般任務")));
-        simple_preview.push_str(&format!("⭐ 優先級：{}/5\n", task_input.priority.unwrap_or(3)));
-        simple_preview.push_str(&format!("🔥 難度：{}/5\n", task_input.difficulty.unwrap_or(3)));
-        simple_preview.push_str(&format!("💎 經驗值：{}\n", task_input.experience.unwrap_or(10)));
-        
-        if let Some(due_date) = &task_input.due_date {
-            if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(due_date) {
-                simple_preview.push_str(&format!("📅 截止日期：{}\n", dt.format("%Y-%m-%d %H:%M")));
-            }
-        }
-        
-        if task_input.is_recurring.unwrap_or(false) {
-            simple_preview.push_str(&format!("🔄 重複模式：{}\n", task_input.recurrence_pattern.as_deref().unwrap_or("無")));
-            
-            if let Some(start_date) = &task_input.start_date {
-                if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(start_date) {
-                    simple_preview.push_str(&format!("🚀 開始日期：{}\n", dt.format("%Y-%m-%d")));
-                }
-            }
-            
-            if let Some(end_date) = &task_input.end_date {
-                if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(end_date) {
-                    simple_preview.push_str(&format!("🏁 結束日期：{}\n", dt.format("%Y-%m-%d")));
-                }
-            }
-        }
-        
-        // 嘗試使用 AI 生成更豐富的預覽
-        let config = crate::config::Config::from_env();
-        if let Ok(ai_service) = crate::ai_service::create_ai_service(&config.app.ai) {
-            
-            // 建構提示詞
-            let prompt = format!(
-                "請為以下任務生成一個簡潔有趣的介紹（限制在100字以內）：\n\
-                任務名稱：{}\n\
-                描述：{}\n\
-                類型：{}\n\
-                優先級：{}/5\n\
-                難度：{}/5\n\
-                經驗值：{}\n\
-                請用鼓勵和積極的語氣，讓用戶想要完成這個任務。",
-                task_input.title,
-                task_input.description.as_deref().unwrap_or("無"),
-                task_input.task_type.as_deref().unwrap_or("一般任務"),
-                task_input.priority.unwrap_or(3),
-                task_input.difficulty.unwrap_or(3),
-                task_input.experience.unwrap_or(10)
-            );
-            
-            // 使用 AI 生成預覽
-            match ai_service.generate_task_preview(&prompt).await {
-                Ok(ai_preview) => Some(ai_preview),
-                Err(_) => Some(simple_preview), // 如果 AI 生成失敗，使用簡單預覽
-            }
-        } else {
-            Some(simple_preview)
-        }
+        // 生成 Markdown 格式的預覽
+        let mut simple_preview = format!("## 📋 {}", task_input.title);
+        Some(simple_preview)
     } else {
         None
     };
@@ -1639,7 +1578,9 @@ pub async fn generate_task_with_expert(
                     // 分析結果通常已包含選定方向，顯示完整內容
                     value.clone()
                 } else if value.len() > 200 {
-                    format!("{}...", &value[..200])
+                    // 使用字符邊界安全的方式截取字串
+                    let truncated = value.chars().take(200).collect::<String>();
+                    format!("{}...", truncated)
                 } else {
                     value.clone()
                 };

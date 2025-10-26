@@ -938,7 +938,8 @@ pub fn parse_ai_tasks_response(ai_response: &str) -> Result<GeneratedTasksRespon
     // 這是最常見的問題：AI 在 description 等欄位中使用了未轉義的 "
     cleaned_response = fix_unescaped_quotes(&cleaned_response);
 
-    log::debug!("清理並修復後的 AI 回應前500字符: {}", &cleaned_response[..std::cmp::min(500, cleaned_response.len())]);
+    let preview = cleaned_response.chars().take(500).collect::<String>();
+    log::debug!("清理並修復後的 AI 回應前500字符: {}", preview);
 
     // 檢查是否為有效 JSON 開頭
     if !cleaned_response.starts_with('{') {

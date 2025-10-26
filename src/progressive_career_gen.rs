@@ -208,7 +208,8 @@ async fn run_progressive_generation(
     }).await?;
 
     let resource_prompt = build_resource_prompt(&detailed_result, &request.selected_career);
-    log::debug!("資源推薦 prompt 前 200 字元: {}", &resource_prompt[..resource_prompt.len().min(200)]);
+    let preview = resource_prompt.chars().take(200).collect::<String>();
+    log::debug!("資源推薦 prompt 前 200 字元: {}", preview);
 
     log::info!("📡 呼叫 Perplexity API 進行資源搜尋...");
     let resource_result = ai_service.generate_with_model(&config.app.ai.resource_model, &resource_prompt).await
@@ -236,7 +237,8 @@ async fn run_progressive_generation(
     let resources_json: serde_json::Value = serde_json::from_str(cleaned_resource_result)
         .unwrap_or_else(|e| {
             log::error!("❌ 資源 JSON 解析失敗: {}", e);
-            log::error!("前 500 字元: {}", &cleaned_resource_result[..cleaned_resource_result.len().min(500)]);
+            let preview = cleaned_resource_result.chars().take(500).collect::<String>();
+            log::error!("前 500 字元: {}", preview);
             serde_json::json!({"resources": []})
         });
 

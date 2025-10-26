@@ -242,7 +242,8 @@ impl AIService for OpenRouterService {
 
         let openrouter_response: OpenRouterResponse = serde_json::from_str(&response_text)
             .map_err(|e| {
-                log::error!("解析 OpenRouter 響應失敗: {}. 響應內容: {}", e, &response_text[..std::cmp::min(200, response_text.len())]);
+                let preview = response_text.chars().take(200).collect::<String>();
+                log::error!("解析 OpenRouter 響應失敗: {}. 響應內容: {}", e, preview);
                 anyhow::anyhow!("解析 OpenRouter 響應失敗: {}", e)
             })?;
 
@@ -680,15 +681,15 @@ impl AIService for OpenRouterService {
 
 要求：
 1. 主任務作為整體學習目標，task_type 必須為 "main"
-2. 任務描述應該詳細且具體，包含學習目標、方法建議等
+2. 任務描述應該簡單明確
 3. 學習型任務不設為重複性，is_recurring 必須為 false，recurrence_pattern 必須為 null
 4. 主任務固定設置：priority = 2、difficulty = 3、experience = 100
 5. 不需要設置 start_date、end_date、completion_target（全部為 null）
 
 請以 JSON 格式回應，包含以下所有欄位：
 {{
-  "title": "任務標題",
-  "description": "詳細描述（包含學習目標和方法建議）",
+  "title": "任務標題(繁體中文)",
+  "description": "詳細描述（包含學習目標和方法建議，繁體中文）",
   "task_type": "main",
   "priority": 2,
   "difficulty": 3,
@@ -915,11 +916,11 @@ impl AIService for OpenRouterService {
 標題：{}
 描述：{}
 
-請為這個主任務生成 3-5 個具體可執行的子任務。
-
+請為這個主任務生成 5 個具體可執行的子任務。
+跟一個每日任務，每日任務的 task_type 必須為 "daily"
 要求：
 - 每個子任務應該明確具體，可直接執行
-- 子任務的 task_type 可為 "main"、"side" 或 "challenge"
+- 子任務的 task_type 可為 "main","side","challenge","daily"
 - 難度遞增（1-4），從簡單到困難
 - 提供合理的經驗值（10-50）
 - 子任務不需要設定截止時間
