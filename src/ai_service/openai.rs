@@ -876,6 +876,10 @@ impl AIService for OpenAIService {
             16000  // Perplexity 模型給予更大的空間
         } else if model.contains("claude") || model.contains("anthropic") {
             8000   // Claude 模型需要更多空間來生成完整的任務細節
+        } else if model.contains("gpt-4o") && !model.contains("mini") {
+            8000   // GPT-4o (非 mini) 支持更長的輸出
+        } else if model.contains("gpt") {
+            6000   // 其他 GPT 模型（包括 gpt-4o-mini）給予較多空間
         } else {
             4000   // 其他模型使用預設值
         };

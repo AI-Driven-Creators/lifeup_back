@@ -1020,13 +1020,18 @@ impl AIService for OpenRouterService {
             16000  // Perplexity 模型給予更大的空間
         } else if model.contains("claude") || model.contains("anthropic") {
             8000   // Claude 模型需要更多空間來生成完整的任務細節
+        } else if model.contains("gpt-4o") && !model.contains("mini") {
+            8000   // GPT-4o (非 mini) 支持更長的輸出
+        } else if model.contains("gpt") {
+            6000   // 其他 GPT 模型（包括 gpt-4o-mini）給予較多空間
         } else {
             4000   // 其他模型使用預設值
         };
 
         log::info!("使用模型 {} 生成回應，max_completion_tokens: {}", model, max_tokens);
 
-        let request = serde_json::json!({
+        // 建構基本請求
+        let mut request = serde_json::json!({
             "model": model,
             "messages": [
                 {
@@ -1036,6 +1041,14 @@ impl AIService for OpenRouterService {
             ],
             "max_completion_tokens": max_tokens
         });
+
+        // 若是 Perplexity 模型，添加 web_search_options 啟用搜尋功能
+        if model.contains("perplexity") {
+            request["web_search_options"] = serde_json::json!({
+                "search_context_size": "medium"  // 使用 medium 平衡成本與搜尋品質
+            });
+            log::info!("🔍 為 Perplexity 模型啟用網路搜尋功能 (search_context_size: medium)");
+        }
 
         let response = self.client
             .post("https://openrouter.ai/api/v1/chat/completions")

@@ -486,6 +486,7 @@ async fn migrate_database(rb: &RBatis) {
         "ALTER TABLE user ADD COLUMN password_hash TEXT",
         "ALTER TABLE task ADD COLUMN career_mainline_id TEXT",
         "ALTER TABLE task ADD COLUMN task_category TEXT",
+        "ALTER TABLE task ADD COLUMN attributes TEXT",
         "ALTER TABLE quiz_results ADD COLUMN updated_at TEXT",
         "ALTER TABLE skill ADD COLUMN attribute TEXT DEFAULT 'intelligence'",
         // 確保 email 唯一

@@ -1079,12 +1079,22 @@ async fn create_subtask_from_ai_data(
         task_date: None,
         cancel_count: Some(0),
         last_cancelled_at: None,
-        attributes: None,
+        attributes: ai_task.attributes.clone(),
     };
 
     // 在保存任務之前，先確保所有技能標籤都存在於技能表中
-    if let Err(e) = ensure_skills_exist(rb, user_id, &ai_task.skill_tags).await {
-        log::warn!("創建技能時發生錯誤: {}", e);
+    log::info!("🔧 開始確保技能存在，任務: {}, 技能標籤數: {}", ai_task.title, ai_task.skill_tags.len());
+    for skill_tag in &ai_task.skill_tags {
+        log::info!("  - 技能: {} (類型: {})", skill_tag.name, skill_tag.category);
+    }
+
+    match ensure_skills_exist(rb, user_id, &ai_task.skill_tags).await {
+        Ok(_) => {
+            log::info!("✅ 所有技能已確保存在");
+        }
+        Err(e) => {
+            log::error!("❌ 創建技能時發生錯誤: {}", e);
+        }
     }
 
     // 保存到資料庫
@@ -1291,17 +1301,24 @@ pub async fn import_career_tasks(
 async fn ensure_skills_exist(rb: &RBatis, user_id: &str, skill_tags: &[SkillTag]) -> Result<(), Box<dyn std::error::Error>> {
     use crate::models::Skill;
 
+    log::info!("📊 ensure_skills_exist 被調用，user_id: {}, 技能標籤數: {}", user_id, skill_tags.len());
+
     for skill_tag in skill_tags {
         let skill_name = &skill_tag.name;
+        log::info!("  🔍 檢查技能: {}", skill_name);
+
         // 檢查技能是否已存在
         let existing_skills = Skill::select_by_map(rb, value!{
             "user_id": user_id,
             "name": skill_name
         }).await?;
 
+        log::info!("  📋 查詢結果: 找到 {} 個同名技能", existing_skills.len());
+
         if existing_skills.is_empty() {
             // 技能不存在，創建新技能
             let skill_category = &skill_tag.category;  // 使用AI提供的分類
+            log::info!("  🆕 技能不存在，準備創建: {} (類型: {})", skill_name, skill_category);
 
             let new_skill = Skill {
                 id: Some(uuid::Uuid::new_v4().to_string()),
@@ -1320,18 +1337,24 @@ async fn ensure_skills_exist(rb: &RBatis, user_id: &str, skill_tags: &[SkillTag]
 
             match Skill::insert(rb, &new_skill).await {
                 Ok(_) => {
-                    log::info!("✅ 自動創建技能: {} (類型: {})", skill_name, skill_category);
+                    log::info!("  ✅ 成功創建技能: {} (ID: {}, 類型: {})",
+                              skill_name,
+                              new_skill.id.as_ref().unwrap_or(&"unknown".to_string()),
+                              skill_category);
                 }
                 Err(e) => {
-                    log::error!("❌ 創建技能 {} 失敗: {}", skill_name, e);
+                    log::error!("  ❌ 創建技能 {} 失敗: {}", skill_name, e);
                     return Err(e.into());
                 }
             }
         } else {
-            log::debug!("技能 {} 已存在，跳過創建", skill_name);
+            log::info!("  ✓ 技能 {} 已存在 (ID: {}), 跳過創建",
+                      skill_name,
+                      existing_skills[0].id.as_ref().unwrap_or(&"unknown".to_string()));
         }
     }
 
+    log::info!("✅ ensure_skills_exist 完成，所有技能已確保存在");
     Ok(())
 }
 

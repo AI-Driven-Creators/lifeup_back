@@ -1,298 +1,206 @@
 ```json
 {
-  "search_timestamp": "2025-10-20",
-  "search_queries_used": ["人資經理 課程 hahow", "人資經理 教學 pressplay", "人資經理 udemy 繁體中文", "人資經理 教學 youtube 中文", "人資經理 tutorial youtube 繁中字幕", "人資經理 學習筆記 medium", "人資經理 教程 2024 繁體"],
-  "resources": [
-    {
-      "task_title": "人力資源基礎知識",
-      "recommendations": [
-        {
-          "title": "人力資源發展",
+  "search_timestamp": "2025-10-26",
+  "search_queries_used": [    "物理治療師 課程 hahow",
+    "物理治療師 教學 pressplay",
+    "物理治療師 udemy 繁體中文",
+    "物理治療師 教學 youtube 中文",
+    "物理治療師 tutorial youtube 繁中字幕",
+    "物理治療師 學習筆記 medium",
+    "物理治療師 教程 2024 繁體"
+  ],
+  "resources": [    {
+      "task_title": "基礎人體解剖學",
+      "recommendations": [        {
+          "title": "找回身體最佳狀態｜動力鏈：人人必修的身體使用說明書 - Hahow線上課程",
           "type": "線上課程",
-          "platform": "中小企業網路大學",
-          "url": "https://www.smelearning.org.tw/classes.php?cat1=10006&cat2=5677",
-          "instructor": "多位講師",
-          "description": "提供人力資源基礎知識的系統課程",
+          "platform": "Hahow",
+          "url": "https://hahow.in/courses/625eba90d3f1710007f5692c",
+          "instructor": "啾c 物理治療師",
+          "description": "動力鏈與肌肉解剖的詳細講解，讓學員理解身體如何協調運作，適合物理治療師與運動愛好者。",
           "language": "繁體中文",
-          "price": "免費",
-          "students": "2697+",
-          "source": "從中小企業網路大學搜尋結果"
+          "price": "付費",
+          "source": "從 Hahow 搜尋結果第1項"
         },
         {
-          "title": "人資職缺全解析",
-          "type": "線上互動會",
-          "platform": "資點研習平台",
-          "url": "https://hrlearning.com.tw/categories/1-11",
-          "instructor": "盧世安",
-          "description": "分析人力資源職缺的趨勢",
-          "language": "繁體中文",
-          "price": "NT$300",
-          "rating": "5.0/5.0",
-          "source": "從資點研習平台搜尋結果"
-        }
-      ]
-    },
-    {
-      "task_title": "招聘與選才技巧",
-      "recommendations": [
-        {
-          "title": "讓求職者Say Yes的招募文案策略",
-          "type": "線上課程",
-          "platform": "104人資學院",
-          "url": "https://www.smelearning.org.tw/classes.php?cat1=10006&cat2=5677",
-          "instructor": "洪震宇、任珮菁",
-          "description": "教導有效的招募文案策略",
-          "language": "繁體中文",
-          "price": "免費",
-          "students": "2306+",
-          "source": "從104人資學院搜尋結果"
-        },
-        {
-          "title": "招募市場策略",
-          "type": "線上課程",
-          "platform": "中小企業網路大學",
-          "url": "https://www.smelearning.org.tw/classes.php?cat1=10006&cat2=5677",
-          "instructor": "多位講師",
-          "description": "提供招募市場的策略與實踐",
-          "language": "繁體中文",
-          "price": "免費",
-          "students": "2697+",
-          "source": "從中小企業網路大學搜尋結果"
-        }
-      ]
-    },
-    {
-      "task_title": "員工培訓與發展",
-      "recommendations": [
-        {
-          "title": "讓員工樂在工作，實踐自我",
-          "type": "線上課程",
-          "platform": "中小企業網路大學",
-          "url": "https://www.smelearning.org.tw/classes.php?cat1=10006&cat2=5677",
-          "instructor": "多位講師",
-          "description": "關注員工成長與職涯發展",
-          "language": "繁體中文",
-          "price": "免費",
-          "students": "1932+",
-          "source": "從中小企業網路大學搜尋結果"
-        },
-        {
-          "title": "從員工『職涯發展』談『人才發展』",
-          "type": "線上課程",
-          "platform": "資點研習平台",
-          "url": "https://hrlearning.com.tw/categories/1-11",
-          "instructor": "鄭詩穎",
-          "description": "關注員工的職涯成長",
-          "language": "繁體中文",
-          "price": "NT$250",
-          "rating": "5.0/5.0",
-          "source": "從資點研習平台搜尋結果"
-        }
-      ]
-    },
-    {
-      "task_title": "績效管理系統",
-      "recommendations": [
-        {
-          "title": "尚未找到相關線上課程，但可以參考人資相關的線上課程",
-          "description": "建議查閱中小企業網路大學或資點研習平台的其他課程",
-          "source": "資源搜尋結果不足"
-        },
-        {
-          "title": "_section falta de recursos específicos, recomendamos buscar em plataformas de aprendizado como Coursera ou Udemy",
-          "description": "Coursera和Udemy提供多種績效管理的課程，建議以英文搜尋",
+          "title": "Advanced Anatomy and Physiology Mastery for Physical Therapists",
+          "type": "文章資源",
+          "platform": "SpryPt Blog",
+          "url": "https://www.sprypt.com/blog/skills-that-every-physical-therapist-should-develop",
+          "description": "詳細介紹物理治療師必備的高階人體解剖與生理知識，英文資源。",
           "language": "English",
-          "source": "建議以英文搜尋績效管理課程"
+          "source": "2025年最新技術文章"
         }
       ]
     },
     {
-      "task_title": "薪酬與福利管理",
-      "recommendations": [
-        {
-          "title": "尚未找到相關線上課程，但可以參考人資相關的線上課程",
-          "description": "建議查閱中小企業網路大學或資點研習平台的其他課程",
-          "source": "資源搜尋結果不足"
-        },
-        {
-          "title": "Compensation and Benefits Administration",
-          "type": "線上課程",
-          "platform": "Coursera",
-          "url": "https://www.coursera.org/search?query=compensation%20and%20benefits",
-          "instructor": "多位講師",
-          "description": "提供薪酬與福利管理的課程",
+      "task_title": "生理學基礎",
+      "recommendations": [        {
+          "title": "15 Essential Physical Therapist Skills Every PT Must Master in 2025 - SpryPt",
+          "type": "技術文章",
+          "platform": "SpryPt",
+          "url": "https://www.sprypt.com/blog/skills-that-every-physical-therapist-should-develop",
+          "description": "本篇涵蓋生理學相關知識與技能，重點包括心肺循環及神經系統理解，適合PT持續進修參考，英文資源。",
           "language": "English",
-          "price": "需付費",
-          "rating": "4.7/5.0",
-          "source": "從Coursera搜尋結果"
+          "source": "最新技術文章"
         }
       ]
     },
     {
-      "task_title": "勞動法務知識",
-      "recommendations": [
-        {
-          "title": "勞動法規",
-          "type": "線上講座",
-          "platform": "資點研習平台",
-          "url": "https://hrlearning.com.tw/categories/1-11",
-          "instructor": "小米老師",
-          "description": "性騷擾相關的勞動法規",
+      "task_title": "病理學概論",
+      "recommendations": [        {
+          "title": "Clinical Assessment Skills for Physiotherapists and Occupational Therapists - Comprehensive Guide",
+          "type": "專業書籍",
+          "platform": "CBSPD",
+          "url": "https://www.cbspd.com/product/clinical-assessment-skilss-for-physiotherapists-and-occupationals-therapists-allied-health-professionals-pb-2020",
+          "description": "包含病理學與臨床評估的詳細教材，適合物理治療師病理學入門學習，英文資源。",
+          "language": "English",
+          "source": "專業出版物"
+        }
+      ]
+    },
+    {
+      "task_title": "物理治療理論",
+      "recommendations": [        {
+          "title": "我的日常懶人姿勢管理線上課 - YouTube",
+          "type": "影片教學",
+          "platform": "YouTube",
+          "url": "https://www.youtube.com/watch?v=yUYoHxECndY",
+          "description": "由物理治療師詹珞瑤講授的體態姿勢與疼痛管理理論，包含多種實用姿勢矯正與呼吸訓練方法，繁體中文教學。",
           "language": "繁體中文",
-          "price": "NT$400",
-          "rating": "5.0/5.0",
-          "source": "從資點研習平台搜尋結果"
-        },
-        {
-          "title": "勞動法務相關課程",
-          "description": "建議查閱社團法人中華人力資源管理協會的出版物或活動",
-          "source": "資源搜尋結果不足"
+          "source": "YouTube繁中教學"
         }
       ]
     },
     {
-      "task_title": "員工關係與溝通技巧",
-      "recommendations": [
-        {
-          "title": "尚未找到相關線上課程，但可以參考人資相關的線上課程",
-          "description": "建議查閱中小企業網路大學或資點研習平台的其他課程",
-          "source": "資源搜尋結果不足"
-        },
-        {
-          "title": "Effective Communication in the Workplace",
+      "task_title": "臨床評估技能",
+      "recommendations": [        {
+          "title": "Physiotherapy Year II – Clinical Skills List - University of Manitoba",
+          "type": "PDF學術文件",
+          "platform": "University of Manitoba",
+          "url": "https://umanitoba.ca/explore/sites/explore/files/2022-12/NMSK%20-%20Clinical%20Skills%20Learned%20in%20Class%202021.pdf",
+          "description": "涵蓋完整的臨床評估技能與考核標準，包含客觀與主觀評估，適合物理治療學生及初學者參考，英文資源。",
+          "language": "English"
+        }
+      ]
+    },
+    {
+      "task_title": "治療技術學習",
+      "recommendations": [        {
+          "title": "人人必修動力鏈線上課程 - 森動教育訓練",
           "type": "線上課程",
-          "platform": "Coursera",
-          "url": "https://www.coursera.org/search?query=effective%20communication%20in%20the%20workplace",
-          "instructor": "多位講師",
-          "description": "提供職場內有效溝通技巧的課程",
-          "language": "English",
-          "price": "需付費",
-          "rating": "4.5/5.0",
-          "source": "從Coursera搜尋結果"
+          "platform": "森動教育訓練 Senfit",
+          "url": "https://senfit.tw/online-courses-kinetic-chain/",
+          "description": "啾c物理治療師親授動力鏈治療技術與身體使用說明，包含運動治療專業認證內容，繁體中文，適合實務操作提升。",
+          "language": "繁體中文"
         }
       ]
     },
     {
-      "task_title": "變革管理",
-      "recommendations": [
-        {
-          "title": "尚未找到相關線上課程，但可以參考人資相關的線上課程",
-          "description": "建議查閱中小企業網路大學或資點研習平台的其他課程",
-          "source": "資源搜尋結果不足"
-        },
-        {
-          "title": "Change Management Specialization",
-          "type": "線上課程",
-          "platform": "Coursera",
-          "url": "https://www.coursera.org/specializations/change-management",
-          "instructor": "多位講師",
-          "description": "提供變革管理的課程系列",
-          "language": "English",
-          "price": "需付費",
-          "rating": "4.8/5.0",
-          "source": "從Coursera搜尋結果"
+      "task_title": "實習經驗",
+      "recommendations": [        {
+          "title": "PT and PTA Clinical Performance Instrument (CPI) 3.0 - APTA",
+          "type": "評估工具及指引",
+          "platform": "American Physical Therapy Association",
+          "url": "https://www.apta.org/for-educators/assessments/pt-cpi",
+          "description": "針對物理治療學生臨床表現的評估標準工具，用於臨床實習考核與自我成長追蹤，英文資源。",
+          "language": "English"
         }
       ]
     },
     {
-      "task_title": "持續專業發展",
-      "recommendations": [
-        {
-          "title": "人資小週末",
-          "type": "研習活動",
-          "platform": "資點研習平台",
-          "url": "https://hrlearning.com.tw/categories/1-11",
-          "instructor": "多位講師",
-          "description": "提供最新的人資趨勢和技術分享",
-          "language": "繁體中文",
-          "price": "需查詢",
-          "rating": "5.0/5.0",
-          "source": "從資點研習平台搜尋結果"
-        },
-        {
-          "title": "人資數據力 x Power BI",
-          "type": "線上基礎班",
-          "platform": "資點研習平台",
-          "url": "https://hrlearning.com.tw/categories/1-11",
-          "instructor": "蔡逸軒",
-          "description": "使用Power BI提升人資數據分析能力",
-          "language": "繁體中文",
-          "price": "NT$3,200",
-          "rating": "4.8/5.0",
-          "source": "從資點研習平台搜尋結果"
+      "task_title": "專業倫理與法律",
+      "recommendations": [        {
+          "title": "Competence in Physical Therapy: A Framework for Understanding Effects of Disuse on Physical Therapy Performance - FSBPT",
+          "type": "專業報告PDF",
+          "platform": "Federation of State Boards of Physical Therapy",
+          "url": "https://www.fsbpt.org/Portals/0/documents/free-resources/Competence_in_PhysicalTherapy_A_Framework_for_UnderstandingEffects_of_Disuse_on_PhysicalTherapyPerformance.pdf",
+          "description": "探討物理治療專業能力與倫理標準，包含專業行為框架，適合進階學習與法規認知，英文資源。",
+          "language": "English"
         }
       ]
     },
     {
-      "task_title": "數據分析在人資中的應用",
-      "recommendations": [
-        {
-          "title": "人資數據力 x Power BI",
-          "type": "線上基礎班",
-          "platform": "資點研習平台",
-          "url": "https://hrlearning.com.tw/categories/1-11",
-          "instructor": "蔡逸軒",
-          "description": "使用Power BI提升人資數據分析能力",
-          "language": "繁體中文",
-          "price": "NT$3,200",
-          "rating": "4.8/5.0",
-          "source": "從資點研習平台搜尋結果"
-        },
-        {
-          "title": "HR Analytics",
-          "type": "線上課程",
-          "platform": "Coursera",
-          "url": "https://www.coursera.org/search?query=hr%20analytics",
-          "instructor": "多位講師",
-          "description": "提供人力資源數據分析的課程",
-          "language": "English",
-          "price": "需付費",
-          "rating": "4.5/5.0",
-          "source": "從Coursera搜尋結果"
+      "task_title": "持續進修計劃",
+      "recommendations": [        {
+          "title": "PressPlay Academy - 物理治療師詹珞瑤專欄及課程",
+          "type": "線上平台與內容",
+          "platform": "PressPlay Academy",
+          "url": "https://www.pressplay.cc/author/E139D51BAA6CB8F4E6D22B1B382B3ACE",
+          "description": "提供物理治療相關持續教育內容與課程，包含最新技術、日常保養、臨床經驗分享，繁體中文。",
+          "language": "繁體中文"
         }
       ]
     },
     {
-      "task_title": "領導與團隊管理",
-      "recommendations": [
-        {
-          "title": "尚未找到相關線上課程，但可以參考人資相關的線上課程",
-          "description": "建議查閱中小企業網路大學或資點研習平台的其他課程",
-          "source": "資源搜尋結果不足"
-        },
-        {
-          "title": "Leadership and Team Management",
-          "type": "線上課程",
-          "platform": "EdX",
-          "url": "https://www.edx.org/learn/leadership-and-team-management",
-          "instructor": "多位講師",
-          "description": "提供領導和團隊管理的課程",
-          "language": "English",
-          "price": "需付費",
-          "rating": "4.7/5.0",
-          "source": "從EdX搜尋結果"
+      "task_title": "溝通與病人關係",
+      "recommendations": [        {
+          "title": "Clinical Skills List including communication and sensitive practice - University of Manitoba PDF",
+          "type": "PDF教學文件",
+          "platform": "University of Manitoba",
+          "url": "https://umanitoba.ca/explore/sites/explore/files/2022-12/NMSK%20-%20Clinical%20Skills%20Learned%20in%20Class%202021.pdf",
+          "description": "詳細列出臨床溝通技巧、病人關係管理及敏感問題處理方法，英文資源，適合增進臨床人際互動能力。",
+          "language": "English"
         }
       ]
     },
     {
-      "task_title": "勞動合同管理",
-      "recommendations": [
-        {
-          "title": "尚未找到相關線上課程，但可以參考人資相關的線上課程",
-          "description": "建議查閱中小企業網路大學或資點研習平台的其他課程",
-          "source": "資源搜尋結果不足"
-        },
-        {
-          "title": "Contract Management",
-          "type": "線上課程",
-          "platform": "Coursera",
-          "url": "https://www.coursera.org/search?query=contract%20management",
-          "instructor": "多位講師",
-          "description": "提供契約管理的課程",
-          "language": "English",
-          "price": "需付費",
-          "rating": "4.5/5.0",
-          "source": "從Coursera搜尋結果"
+      "task_title": "最新研究與趨勢",
+      "recommendations": [        {
+          "title": "ASPT Core Competencies and Clinical Reasoning Framework - APTA",
+          "type": "最新核心能力指引",
+          "platform": "American Physical Therapy Association",
+          "url": "https://www.apta.org/contentassets/89db00a8ab01418c844ced87e401563e/core-competencies-pt-resident.pdf",
+          "description": "美國物理治療協會最新核心能力與臨床推理模型，代表最新研究趨勢指引，英文資源。",
+          "language": "English"
+        }
+      ]
+    },
+    {
+      "task_title": "每日運動與健康管理",
+      "recommendations": [        {
+          "title": "日常懶人姿勢管理線上課程 - YouTube - 物理治療師詹珞瑤",
+          "type": "YouTube教學",
+          "platform": "YouTube",
+          "url": "https://www.youtube.com/watch?v=yUYoHxECndY",
+          "description": "介紹日常姿勢矯正與自主舒緩方法，強調正確呼吸與運動，提升生活品質，繁體中文教學。",
+          "language": "繁體中文"
+        }
+      ]
+    },
+    {
+      "task_title": "每日案例學習",
+      "recommendations": [        {
+          "title": "PressPlay Academy 物理治療師詹珞瑤頻道",
+          "type": "線上教學與案例分享",
+          "platform": "PressPlay Academy",
+          "url": "https://www.pressplay.cc/author/E139D51BAA6CB8F4E6D22B1B382B3ACE",
+          "description": "包含多元案例討論與實務操作分享，適合每日學習與反覆精進，繁體中文內容。",
+          "language": "繁體中文"
+        }
+      ]
+    },
+    {
+      "task_title": "項目任務標題1（綜合應用）",
+      "recommendations": [        {
+          "title": "Clinical Assessment Skills for Physiotherapists and Occupational Therapists - CBSPD",
+          "type": "綜合應用書籍",
+          "platform": "CBSPD",
+          "url": "https://www.cbspd.com/product/clinical-assessment-skilss-for-physiotherapists-and-occupationals-therapists-allied-health-professionals-pb-2020",
+          "description": "內容涵蓋臨床評估與治療技術的綜合應用，適合完成綜合項目任務，英文資源。",
+          "language": "English"
+        }
+      ]
+    },
+    {
+      "task_title": "項目任務標題2（實驗報告）",
+      "recommendations": [        {
+          "title": "University of Manitoba Clinical Skills List - Neuromusculoskeletal Skills 2021 PDF",
+          "type": "實驗報告與技能文件",
+          "platform": "University of Manitoba",
+          "url": "https://umanitoba.ca/explore/sites/explore/files/2022-12/NMSK%20-%20Clinical%20Skills%20Learned%20in%20Class%202021.pdf",
+          "description": "包含臨床技術與評估方法，適合用於實驗報告和臨床實踐研究，英文資源。",
+          "language": "English"
         }
       ]
     }

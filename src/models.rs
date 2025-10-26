@@ -319,6 +319,7 @@ pub struct Task {
     pub cancel_count: Option<i32>,
     #[serde(deserialize_with = "deserialize_optional_datetime", default)]
     pub last_cancelled_at: Option<DateTime<Utc>>,
+    #[serde(deserialize_with = "deserialize_skill_tags", default)]
     pub skill_tags: Option<Vec<String>>,
     pub career_mainline_id: Option<String>,
     pub task_category: Option<String>,
@@ -737,13 +738,47 @@ pub struct GeneratedTask {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GeneratedTasksResponse {
+    #[serde(default = "default_learning_summary")]
     pub learning_summary: String,
-    #[serde(deserialize_with = "deserialize_rounded_i32")]
+    #[serde(deserialize_with = "deserialize_rounded_i32_with_default")]
     pub estimated_months: i32,
+    #[serde(default = "default_personality_insights")]
     pub personality_insights: String,
+    #[serde(default)]
     pub main_tasks: Vec<GeneratedTask>,
+    #[serde(default)]
     pub daily_tasks: Vec<GeneratedTask>,
+    #[serde(default)]
     pub project_tasks: Vec<GeneratedTask>,
+}
+
+fn default_learning_summary() -> String {
+    "學習計劃概要".to_string()
+}
+
+fn default_personality_insights() -> String {
+    "根據您的測驗結果和職業選擇生成個性化學習計劃。".to_string()
+}
+
+// 自定義反序列化器：將浮點數四捨五入為整數，缺失時使用默認值
+fn deserialize_rounded_i32_with_default<'de, D>(deserializer: D) -> Result<i32, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value: Option<serde_json::Value> = Option::deserialize(deserializer)?;
+    match value {
+        Some(serde_json::Value::Number(n)) => {
+            if let Some(i) = n.as_i64() {
+                Ok(i as i32)
+            } else if let Some(f) = n.as_f64() {
+                Ok(f.round() as i32)
+            } else {
+                Ok(6) // 默認值
+            }
+        }
+        None => Ok(6), // 默認值
+        _ => Ok(6), // 默認值
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

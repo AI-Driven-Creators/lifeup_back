@@ -237,8 +237,7 @@ async fn run_progressive_generation(
     let resources_json: serde_json::Value = serde_json::from_str(cleaned_resource_result)
         .unwrap_or_else(|e| {
             log::error!("❌ 資源 JSON 解析失敗: {}", e);
-            let preview = cleaned_resource_result.chars().take(500).collect::<String>();
-            log::error!("前 500 字元: {}", preview);
+            log::error!("前 500 字元: {}", truncate_str_safe(cleaned_resource_result, 500));
             serde_json::json!({"resources": []})
         });
 
