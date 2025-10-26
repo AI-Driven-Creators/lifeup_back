@@ -911,6 +911,49 @@ pub async fn send_message(
     }
 }
 
+// 保存單條聊天訊息（用於系統訊息、專家訊息等）
+#[derive(serde::Deserialize)]
+pub struct SaveMessageRequest {
+    pub user_id: String,
+    pub role: String,       // "user", "assistant", "coach", "system"
+    pub content: String,
+}
+
+pub async fn save_chat_message(
+    rb: web::Data<RBatis>,
+    req: web::Json<SaveMessageRequest>,
+) -> Result<HttpResponse> {
+    log::info!("收到保存聊天訊息請求: role={}, user_id={}", req.role, req.user_id);
+
+    let now = Utc::now();
+    let chat_message = crate::models::ChatMessage {
+        id: Some(Uuid::new_v4().to_string()),
+        user_id: Some(req.user_id.clone()),
+        role: Some(req.role.clone()),
+        content: Some(req.content.clone()),
+        created_at: Some(now),
+    };
+
+    match crate::models::ChatMessage::insert(rb.get_ref(), &chat_message).await {
+        Ok(_) => {
+            log::info!("成功保存聊天訊息");
+            Ok(HttpResponse::Ok().json(ApiResponse {
+                success: true,
+                data: Some(chat_message),
+                message: "訊息保存成功".to_string(),
+            }))
+        },
+        Err(e) => {
+            log::error!("保存聊天訊息失敗: {}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("保存訊息失敗: {}", e),
+            }))
+        }
+    }
+}
+
 // 更新任務狀態
 pub async fn update_task(
     rb: web::Data<RBatis>,

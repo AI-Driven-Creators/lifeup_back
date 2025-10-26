@@ -167,6 +167,7 @@ async fn main() -> std::io::Result<()> {
             .route("/api/chat/messages", web::get().to(get_chat_messages))
             .route("/api/chat/messages/all", web::get().to(get_all_chat_messages))
             .route("/api/chat/send", web::post().to(send_message))
+            .route("/api/chat/save-message", web::post().to(save_chat_message))
             .route("/api/chat/chatgpt", web::post().to(send_message_to_chatgpt))
             .route("/api/chat/personality", web::post().to(send_message_with_personality))
             .route("/api/chat/test-personality", web::post().to(send_message_with_direct_personality))

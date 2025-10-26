@@ -881,7 +881,7 @@ impl AIService for OpenRouterService {
         log::info!("[AI INPUT][analyze_with_expert] description={} type={} expert_name={} expert_description={}", user_input, analysis_type, expert_name, expert_description);
 
         let request = OpenRouterRequest {
-            model: self.model.clone(),
+            model: self.model_fast.clone(),
             messages: vec![
                 ChatMessage {
                     role: "system".to_string(),
