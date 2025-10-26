@@ -9,9 +9,11 @@ use std::collections::HashMap;
 // 模型等級枚舉
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelTier {
-    Fast,   // 快速回應（簡單對話、快速回覆、任務預覽）
-    Normal, // 標準推理（任務生成、成就生成、專家匹配）
-    Think,  // 深度推理（複雜規劃、專家分析、子任務生成）
+    Small,      // 超輕量（簡單文字處理、格式轉換、基礎驗證）
+    Fast,       // 快速回應（簡單對話、快速回覆、任務預覽）
+    Normal,     // 標準推理（任務生成、成就生成、專家匹配）
+    Think,      // 深度推理（複雜規劃、專家分析、子任務生成）
+    Background, // 背景處理（大量數據分析、批次處理、深度研究）
 }
 
 // 格式化 AI 輸出為單行日誌

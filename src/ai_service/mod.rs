@@ -30,9 +30,11 @@ pub fn create_ai_service(config: &AIConfig) -> Result<Box<dyn AIService + Send +
             Ok(Box::new(OpenAIService::new(
                 api_key.clone(),
                 config.openai_model.clone(),
+                config.model_small.clone(),
                 config.model_fast.clone(),
                 config.model_normal.clone(),
                 config.model_think.clone(),
+                config.model_background.clone(),
             )))
         }
         "OpenRouter" => {
@@ -41,9 +43,11 @@ pub fn create_ai_service(config: &AIConfig) -> Result<Box<dyn AIService + Send +
             Ok(Box::new(OpenRouterService::new(
                 api_key.clone(),
                 config.openrouter_model.clone(),
+                config.model_small.clone(),
                 config.model_fast.clone(),
                 config.model_normal.clone(),
                 config.model_think.clone(),
+                config.model_background.clone(),
             )))
         }
         _ => Err(anyhow::anyhow!("不支援的 AI 服務選項: {}", config.api_option))

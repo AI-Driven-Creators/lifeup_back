@@ -48,20 +48,24 @@ struct Choice {
 pub struct OpenAIService {
     api_key: String,
     model: String,
+    model_small: String,
     model_fast: String,
     model_normal: String,
     model_think: String,
+    model_background: String,
     client: reqwest::Client,
 }
 
 impl OpenAIService {
-    pub fn new(api_key: String, model: String, model_fast: String, model_normal: String, model_think: String) -> Self {
+    pub fn new(api_key: String, model: String, model_small: String, model_fast: String, model_normal: String, model_think: String, model_background: String) -> Self {
         Self {
             api_key,
             model,
+            model_small,
             model_fast,
             model_normal,
             model_think,
+            model_background,
             client: reqwest::Client::new(),
         }
     }
@@ -70,9 +74,11 @@ impl OpenAIService {
     fn get_model_by_tier(&self, tier: super::common::ModelTier) -> &str {
         use super::common::ModelTier;
         match tier {
+            ModelTier::Small => &self.model_small,
             ModelTier::Fast => &self.model_fast,
             ModelTier::Normal => &self.model_normal,
             ModelTier::Think => &self.model_think,
+            ModelTier::Background => &self.model_background,
         }
     }
 }

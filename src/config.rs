@@ -39,10 +39,12 @@ pub struct AIConfig {
     pub detail_model: String,         // 細節擴展模型（推理能力強）
     pub resource_model: String,       // 資源推薦模型（帶搜尋能力）
 
-    // 模型等級配置 (Fast/Normal/Think)
+    // 模型等級配置 (Small/Fast/Normal/Think/Background)
+    pub model_small: String,          // 超輕量模型（簡單文字處理、格式轉換）
     pub model_fast: String,           // 快速回應模型（簡單對話、快速回覆）
     pub model_normal: String,         // 標準推理模型（任務生成、成就生成）
     pub model_think: String,          // 深度推理模型（複雜規劃、專家分析）
+    pub model_background: String,     // 背景處理模型（大量數據分析、批次處理）
 
     // Token 预算控制
     pub max_prompt_tokens: usize,
@@ -102,13 +104,19 @@ impl Config {
         let resource_model = env::var("RESOURCE_MODEL")
             .unwrap_or_else(|_| "perplexity/sonar".to_string());
 
-        // 模型等級配置 (Fast/Normal/Think)
+        // 模型等級配置 (Small/Fast/Normal/Think/Background)
         // 若未設定，依序降級: 新模型 -> 舊模型 -> 預設值
+        let model_small = env::var("AI_MODEL_SMALL")
+            .unwrap_or_else(|_| {
+                env::var("OPENROUTER_MODEL")
+                    .or_else(|_| env::var("OPENAI_MODEL"))
+                    .unwrap_or_else(|_| "google/gemma-3n-e4b-it".to_string())
+            });
         let model_fast = env::var("AI_MODEL_FAST")
             .unwrap_or_else(|_| {
                 env::var("OPENROUTER_MODEL")
                     .or_else(|_| env::var("OPENAI_MODEL"))
-                    .unwrap_or_else(|_| "google/gemini-flash-1.5-8b".to_string())
+                    .unwrap_or_else(|_| "qwen/qwen3-8b".to_string())
             });
         let model_normal = env::var("AI_MODEL_NORMAL")
             .unwrap_or_else(|_| {
@@ -120,7 +128,13 @@ impl Config {
             .unwrap_or_else(|_| {
                 env::var("OPENAI_MODEL")
                     .or_else(|_| env::var("OPENROUTER_MODEL"))
-                    .unwrap_or_else(|_| "anthropic/claude-3.5-sonnet".to_string())
+                    .unwrap_or_else(|_| "openai/gpt-oss-120b".to_string())
+            });
+        let model_background = env::var("AI_MODEL_BACKGROUND")
+            .unwrap_or_else(|_| {
+                env::var("OPENAI_MODEL")
+                    .or_else(|_| env::var("OPENROUTER_MODEL"))
+                    .unwrap_or_else(|_| "google/gemma-3n-e4b-it".to_string())
             });
 
         // Token 预算控制
@@ -188,9 +202,11 @@ impl Config {
                     outline_model,
                     detail_model,
                     resource_model,
+                    model_small,
                     model_fast,
                     model_normal,
                     model_think,
+                    model_background,
                     max_prompt_tokens,
                     max_completion_tokens,
                     recent_tasks_sample_size,
