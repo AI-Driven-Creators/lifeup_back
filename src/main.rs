@@ -69,40 +69,40 @@ async fn main() -> std::io::Result<()> {
     rb.init(SqliteDriver {}, &config.database.url).unwrap();
     log::info!("資料庫連接成功: {}", config.database.url);
 
-    // 處理數據庫重置命令 (--reset-db: 完全重置 + 插入測試數據)
+    // 處理資料庫重置命令 (--reset-db: 完全重置 + 插入測試資料)
     if reset_db {
-        log::info!("執行數據庫重置...");
+        log::info!("執行資料庫重置...");
         if let Err(e) = reset_database(&rb).await {
-            log::error!("數據庫重置失敗: {}", e);
+            log::error!("資料庫重置失敗: {}", e);
             return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()));
         }
         if let Err(e) = seed_database(&rb).await {
-            log::error!("種子數據插入失敗: {}", e);
+            log::error!("種子資料插入失敗: {}", e);
             return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()));
         }
-        log::info!("數據庫重置和種子數據插入完成！");
+        log::info!("資料庫重置和種子資料插入完成！");
         return Ok(());
     }
     
-    // 處理數據庫初始化命令 (--init-db: 僅建立表結構，不插入任何用戶資料)
+    // 處理資料庫初始化命令 (--init-db: 僅建立表結構，不插入任何使用者資料)
     if init_db {
-        log::info!("執行數據庫初始化...");
+        log::info!("執行資料庫初始化...");
         if let Err(e) = reset_database(&rb).await {
-            log::error!("數據庫初始化失敗: {}", e);
+            log::error!("資料庫初始化失敗: {}", e);
             return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()));
         }
-        log::info!("數據庫初始化完成（未插入任何用戶資料），請先註冊帳號。");
+        log::info!("資料庫初始化完成（未插入任何使用者資料），請先註冊帳號。");
         return Ok(());
     }
 
-    // 處理僅插入種子數據命令 (--seed: 保留現有表，只插入數據)
+    // 處理僅插入種子資料命令 (--seed: 保留現有表，只插入資料)
     if seed_only {
-        log::info!("僅插入種子數據...");
+        log::info!("僅插入種子資料...");
         if let Err(e) = seed_database(&rb).await {
-            log::error!("種子數據插入失敗: {}", e);
+            log::error!("種子資料插入失敗: {}", e);
             return Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()));
         }
-        log::info!("種子數據插入完成！");
+        log::info!("種子資料插入完成！");
         return Ok(());
     }
 
@@ -213,7 +213,7 @@ async fn main() -> std::io::Result<()> {
             // 多步驟漸進式任務生成（SSE）
             .route("/api/career/generate-tasks-progressive", web::post().to(crate::progressive_career_gen::generate_career_tasks_progressive_sse))
             .app_data(web::Data::new(config.clone()))
-            // 用戶數據重置路由
+            // 使用者資料重置路由
             .route("/api/users/{user_id}/reset", web::delete().to(reset_user_data))
             .route("/api/users/{user_id}/reset", web::post().to(reset_user_data_selective))
             // 任務歷史路由

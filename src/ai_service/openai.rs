@@ -86,9 +86,9 @@ impl OpenAIService {
 #[async_trait::async_trait]
 impl AIService for OpenAIService {
     async fn generate_achievement_from_text(&self, user_input: &str) -> Result<AIGeneratedAchievement> {
-        let system_prompt = r#"你是一個成就設計助手。根據用戶的行為數據分析，生成個性化且具有激勵性的成就。
+        let system_prompt = r#"你是一個成就設計助手。根據使用者的行為資料分析，生成個性化且具有激勵性的成就。
 
-請仔細分析用戶的：
+請仔細分析使用者的：
 1. 已有成就列表
 2. 任務完成狀況
 3. 任務取消/失敗狀況
@@ -96,8 +96,8 @@ impl AIService for OpenAIService {
 
 **設計原則：**
 - 成就名稱要幽默且具體，如「成為英語字典」「跑火入魔」
-- 基於用戶實際行為模式生成，不要憑空想像
-- 如果用戶在某領域已有基礎成就且表現優秀，可考慮升級版成就
+- 基於使用者實際行為模式生成，不要憑空想像
+- 如果使用者在某領域已有基礎成就且表現優秀，可考慮升級版成就
 - 避免與現有成就重複
 
 **成就分類：**
@@ -147,7 +147,7 @@ impl AIService for OpenAIService {
   "experience_reward": 300
 }"#;
 
-        let user_message = format!("請根據以下用戶行為數據生成合適的成就：{}", user_input);
+        let user_message = format!("請根據以下使用者行為資料生成合適的成就：{}", user_input);
 
         let request = OpenAIRequest {
             model: self.model.clone(),
@@ -202,15 +202,15 @@ impl AIService for OpenAIService {
     }
 
     async fn generate_achievement_from_user_id(&self, rb: &RBatis, user_id: &str) -> Result<AIGeneratedAchievement> {
-        // 1. 生成用户行为摘要
-        log::info!("为用户 {} 生成行为摘要...", user_id);
+        // 1. 生成使用者行為摘要
+        log::info!("為使用者 {} 生成行為摘要...", user_id);
         let summary = BehaviorAnalytics::generate_summary(rb, user_id).await?;
-        log::info!("行为摘要生成完成：完成{}个任务，最长连续{}天", summary.total_tasks_completed, summary.longest_streak.days);
+        log::info!("行為摘要生成完成：完成{}個任務，最长連續{}天", summary.total_tasks_completed, summary.longest_streak.days);
 
         // 2. 构建基于摘要的 prompt
         let system_prompt = build_achievement_prompt_from_summary(&summary);
 
-        // 3. 调用 AI 生成成就
+        // 3. 呼叫 AI 生成成就
         let request = OpenAIRequest {
             model: self.model.clone(),
             messages: vec![
@@ -220,7 +220,7 @@ impl AIService for OpenAIService {
                 },
                 ChatMessage {
                     role: "user".to_string(),
-                    content: "請基於以上用戶數據，生成一個最合適的成就。".to_string(),
+                    content: "請基於以上使用者資料，生成一個最合適的成就。".to_string(),
                 },
             ],
             max_completion_tokens: 4000,
@@ -270,7 +270,7 @@ impl AIService for OpenAIService {
             "messages": [
                 {
                     "role": "system",
-                    "content": "你是一個充滿活力和鼓勵的任務助手。用積極正面的語氣為用戶介紹任務，讓他們感到興奮和有動力去完成。"
+                    "content": "你是一個充滿活力和鼓勵的任務助手。用積極正面的語氣為使用者介紹任務，讓他們感到興奮和有動力去完成。"
                 },
                 {
                     "role": "user",
@@ -330,7 +330,7 @@ impl AIService for OpenAIService {
             "content": system_prompt
         }));
 
-        // 最後添加當前用戶訊息
+        // 最後添加當前使用者訊息
         messages.push(serde_json::json!({
             "role": "user",
             "content": current_message
@@ -376,7 +376,7 @@ impl AIService for OpenAIService {
         let current_time_str = now.format("%Y-%m-%dT%H:%M:%S").to_string();
 
         let primary_prompt = format!(
-            r#"你是一個任務規劃助手。根據用戶的自然語言描述，先生成任務的主要欄位。
+            r#"你是一個任務規劃助手。根據使用者的自然語言描述，先生成任務的主要欄位。
 
 **重要：現在的時間是 {}。** 在生成任何與日期相關的欄位（如 due_date）時，請以此時間為基準進行推算。
 
@@ -386,7 +386,7 @@ impl AIService for OpenAIService {
 - 中期任務（1-2週完成）：設定1-2週後的截止日期
 - 長期任務（1個月以上）：設定1-3個月後的截止日期
 - 只有對於沒有明確時間限制的習慣類任務才設定 due_date 為 null
-- 如果用戶明確提到時間（如"明天"、"下週"、"月底"），一定要根據當前時間計算對應的截止日期
+- 如果使用者明確提到時間（如"明天"、"下週"、"月底"），一定要根據當前時間計算對應的截止日期
 
 任務類型說明：
 - main: 主要任務（重要的長期目標，通常設定較長的截止日期）
@@ -569,12 +569,12 @@ impl AIService for OpenAIService {
             .join("\n");
 
         let system_prompt = format!(
-            r#"你是一個專家匹配助手。根據用戶的任務描述，從以下專家列表中選擇最適合的專家。
+            r#"你是一個專家匹配助手。根據使用者的任務描述，從以下專家列表中選擇最適合的專家。
 
 可用專家列表：
 {}
 
-請分析用戶的任務描述，選擇最適合的專家，並提供匹配理由。
+請分析使用者的任務描述，選擇最適合的專家，並提供匹配理由。
 
 回應格式（JSON）：
 {{
@@ -668,7 +668,7 @@ impl AIService for OpenAIService {
 
 **重要：現在的時間是 {}。** 在生成任何與日期相關的欄位（如 due_date）時，請以此時間為基準進行推算。
 
-請根據用戶需求生成一個完整的學習任務。
+請根據使用者需求生成一個完整的學習任務。
 
 要求：
 1. 主任務作為整體學習目標，task_type 必須為 "main"
@@ -785,8 +785,8 @@ impl AIService for OpenAIService {
             "analyze" => format!(
                 r#"你是{}，{}
 
-請根據用戶的需求分析出5個適合的加強方向。
-用戶需求：{}
+請根據使用者的需求分析出5個適合的加強方向。
+使用者需求：{}
 每個方向標題要簡潔明確，描述要簡短（不超過20字）。
 請以JSON格式回應，格式如下：
 {{
@@ -800,9 +800,9 @@ impl AIService for OpenAIService {
             ),
             "goals" => format!(
                 r#"你是{}，{}
-請根據用戶的需求生成5個明確、可衡量的學習目標。目標應該具體、可達成、有時間性。
+請根據使用者的需求生成5個明確、可衡量的學習目標。目標應該具體、可達成、有時間性。
 每個目標標題要簡潔明確，描述要包含具體的衡量標準（不超過30字）。
-用戶需求：{}
+使用者需求：{}
 請以JSON格式回應，格式如下：
 {{
   "goals": [
@@ -820,9 +820,9 @@ impl AIService for OpenAIService {
             "resources" => format!(
                 r#"你是{}，{}
 
-請根據用戶的需求推薦5個優質的學習資源，包括書籍、課程、網站、工具等。
+請根據使用者的需求推薦5個優質的學習資源，包括書籍、課程、網站、工具等。
 
-用戶需求：{}
+使用者需求：{}
 
 請以JSON格式回應，格式如下：
 {{

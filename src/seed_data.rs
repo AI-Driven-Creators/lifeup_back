@@ -8,74 +8,74 @@ use rand::Rng;
 use crate::models::TaskStatus;
 use crate::achievement_service::AchievementService;
 
-/// 插入種子數據到數據庫
+/// 插入種子資料到資料庫
 pub async fn seed_database(rb: &RBatis) -> Result<(), Box<dyn std::error::Error>> {
-    info!("開始插入種子數據...");
+    info!("開始插入種子資料...");
 
-    // 插入測試用戶
+    // 插入測試使用者
     let user_id = insert_test_user(rb).await?;
     
-    // 插入遊戲化用戶資料
+    // 插入遊戲化使用者資料
     insert_user_profile(rb, &user_id).await?;
     
-    // 插入用戶屬性
+    // 插入使用者屬性
     insert_user_attributes(rb, &user_id).await?;
     
-    // 插入任務數據
+    // 插入任務資料
     insert_test_tasks(rb, &user_id).await?;
     
-    // 插入技能數據
+    // 插入技能資料
     insert_test_skills(rb, &user_id).await?;
     
     // 插入聊天記錄
     insert_test_chat_messages(rb, &user_id).await?;
     
-    // 插入成就數據
+    // 插入成就資料
     insert_achievements(rb).await?;
     
-    // 根據現有數據，檢查並解鎖成就
-    info!("正在根據種子數據檢查並解鎖成就...");
+    // 根據現有資料，檢查並解鎖成就
+    info!("正在根據種子資料檢查並解鎖成就...");
     match AchievementService::check_and_unlock_achievements(rb, &user_id).await {
         Ok(unlocked) if !unlocked.is_empty() => {
             let names: Vec<String> = unlocked.iter().map(|a| a.name.clone().unwrap_or_default()).collect();
-            info!("成功為測試用戶解鎖了 {} 個成就: {}", unlocked.len(), names.join(", "));
+            info!("成功為測試使用者解鎖了 {} 個成就: {}", unlocked.len(), names.join(", "));
         }
         Ok(_) => {
-            info!("根據種子數據，沒有新的成就被解鎖。");
+            info!("根據種子資料，沒有新的成就被解鎖。");
         }
         Err(e) => {
-            error!("檢查種子數據成就時出錯: {}", e);
+            error!("檢查種子資料成就時出錯: {}", e);
         }
     }
     
-    // 插入每日進度數據
+    // 插入每日進度資料
     insert_daily_progress(rb, &user_id).await?;
     
-    // 插入週屬性快照數據
+    // 插入週屬性快照資料
     insert_weekly_attribute_snapshots(rb, &user_id).await?;
     
     // 插入重複性任務示例
     insert_recurring_tasks(rb, &user_id).await?;
 
-    info!("種子數據插入完成！");
+    info!("種子資料插入完成！");
     Ok(())
 }
 
-/// 僅插入最小化用戶資料（用戶本體 + user_profile + user_attributes）
+/// 僅插入最小化使用者資料（使用者本體 + user_profile + user_attributes）
 /// 用於 `--init-db` 場景，確保前端 /personal 能正常讀取
 pub async fn seed_minimum_user_data(rb: &RBatis) -> Result<String, Box<dyn std::error::Error>> {
-    info!("開始插入最小化用戶資料...");
+    info!("開始插入最小化使用者資料...");
 
-    // 若已存在相同 email 的用戶，直接返回其 id（冪等處理）
+    // 若已存在相同 email 的使用者，直接返回其 id（冪等處理）
     if let Ok(existing) = rb.query_decode::<Vec<crate::models::User>>("SELECT * FROM user WHERE email = ?", vec!["xiaoya@lifeup.com".into()]).await {
         if let Some(u) = existing.first() {
             let uid = u.id.clone().unwrap_or_default();
-            info!("最小化用戶已存在，跳過建立: {}", uid);
+            info!("最小化使用者已存在，跳過建立: {}", uid);
             return Ok(uid);
         }
     }
 
-    // 建立用戶
+    // 建立使用者
     let user_id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
 
@@ -95,9 +95,9 @@ pub async fn seed_minimum_user_data(rb: &RBatis) -> Result<String, Box<dyn std::
         ],
     )
     .await?;
-    info!("用戶建立成功: {}", user_id);
+    info!("使用者建立成功: {}", user_id);
 
-    // 建立用戶遊戲化資料（user_profile）
+    // 建立使用者遊戲化資料（user_profile）
     let profile_id = Uuid::new_v4().to_string();
     let insert_profile_sql = r#"
         INSERT INTO user_profile (
@@ -126,7 +126,7 @@ pub async fn seed_minimum_user_data(rb: &RBatis) -> Result<String, Box<dyn std::
     .await?;
     info!("user_profile 建立成功");
 
-    // 建立用戶屬性（user_attributes）
+    // 建立使用者屬性（user_attributes）
     let attributes_id = Uuid::new_v4().to_string();
     let insert_attributes_sql = r#"
         INSERT INTO user_attributes (
@@ -153,11 +153,11 @@ pub async fn seed_minimum_user_data(rb: &RBatis) -> Result<String, Box<dyn std::
     .await?;
     info!("user_attributes 建立成功");
 
-    info!("最小化用戶資料插入完成");
+    info!("最小化使用者資料插入完成");
     Ok(user_id)
 }
 
-/// 插入測試用戶
+/// 插入測試使用者
 async fn insert_test_user(rb: &RBatis) -> Result<String, Box<dyn std::error::Error>> {
     let user_id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
@@ -179,21 +179,21 @@ async fn insert_test_user(rb: &RBatis) -> Result<String, Box<dyn std::error::Err
         now.into(),
     ]).await {
         Ok(_) => {
-            info!("測試用戶插入成功: {} (密碼: 12345678)", user_id);
+            info!("測試使用者插入成功: {} (密碼: 12345678)", user_id);
             Ok(user_id)
         }
         Err(e) => {
-            error!("測試用戶插入失敗: {}", e);
+            error!("測試使用者插入失敗: {}", e);
             Err(e.into())
         }
     }
 }
 
-/// 插入測試任務數據
+/// 插入測試任務資料
 async fn insert_test_tasks(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn std::error::Error>> {
     let now = Utc::now();
     
-    // 主任務數據 (title, description, task_type, difficulty, experience, status, is_parent_task, skill_tags)
+    // 主任務資料 (title, description, task_type, difficulty, experience, status, is_parent_task, skill_tags)
     let main_tasks = vec![
         (
             "學習 Vue.js 開發",
@@ -409,7 +409,7 @@ async fn insert_test_tasks(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn std
         }
     }
 
-    info!("測試任務數據插入完成");
+    info!("測試任務資料插入完成");
     Ok(())
 }
 
@@ -824,7 +824,7 @@ async fn insert_subtasks_for_branding(rb: &RBatis, user_id: &str, parent_id: &st
     Ok(())
 }
 
-/// 插入測試技能數據
+/// 插入測試技能資料
 async fn insert_test_skills(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn std::error::Error>> {
     let technical_skills = vec![
         ("Vue.js", "前端框架開發技能", "technical", 3, 1250, 1500, "💻"),
@@ -876,7 +876,7 @@ async fn insert_test_skills(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn st
         ]).await?;
     }
 
-    info!("測試技能數據插入完成（{} 個技能）", skills_count);
+    info!("測試技能資料插入完成（{} 個技能）", skills_count);
     Ok(())
 }
 
@@ -915,7 +915,7 @@ async fn insert_test_chat_messages(rb: &RBatis, user_id: &str) -> Result<(), Box
     Ok(())
 }
 
-/// 插入用戶遊戲化資料
+/// 插入使用者遊戲化資料
 async fn insert_user_profile(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn std::error::Error>> {
     let profile_id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
@@ -947,17 +947,17 @@ async fn insert_user_profile(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn s
         now.into(),
     ]).await {
         Ok(_) => {
-            info!("用戶遊戲化資料插入成功");
+            info!("使用者遊戲化資料插入成功");
             Ok(())
         }
         Err(e) => {
-            error!("用戶遊戲化資料插入失敗: {}", e);
+            error!("使用者遊戲化資料插入失敗: {}", e);
             Err(e.into())
         }
     }
 }
 
-/// 插入用戶屬性
+/// 插入使用者屬性
 async fn insert_user_attributes(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn std::error::Error>> {
     let attributes_id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
@@ -981,17 +981,17 @@ async fn insert_user_attributes(rb: &RBatis, user_id: &str) -> Result<(), Box<dy
         now.into(),
     ]).await {
         Ok(_) => {
-            info!("用戶屬性插入成功");
+            info!("使用者屬性插入成功");
             Ok(())
         }
         Err(e) => {
-            error!("用戶屬性插入失敗: {}", e);
+            error!("使用者屬性插入失敗: {}", e);
             Err(e.into())
         }
     }
 }
 
-/// 插入成就數據
+/// 插入成就資料
 async fn insert_achievements(rb: &RBatis) -> Result<(), Box<dyn std::error::Error>> {
     let achievements = vec![
         ("第一步", "完成第一個任務", "🎯", "task", "task_complete", 1, 50),
@@ -1030,13 +1030,13 @@ async fn insert_achievements(rb: &RBatis) -> Result<(), Box<dyn std::error::Erro
         ]).await?;
     }
 
-    info!("成就數據插入完成");
+    info!("成就資料插入完成");
     Ok(())
 }
 
 
 
-/// 插入每日進度數據
+/// 插入每日進度資料
 async fn insert_daily_progress(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn std::error::Error>> {
     let now = Utc::now();
     
@@ -1096,16 +1096,16 @@ async fn insert_daily_progress(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn
         ]).await?;
     }
 
-    info!("每日進度數據插入完成");
+    info!("每日進度資料插入完成");
     Ok(())
 }
 
-/// 插入週屬性快照數據
+/// 插入週屬性快照資料
 async fn insert_weekly_attribute_snapshots(rb: &RBatis, user_id: &str) -> Result<(), Box<dyn std::error::Error>> {
     let now = Utc::now();
     let mut rng = rand::thread_rng();
     
-    // 生成過去 8 週的屬性快照數據（包含本週）
+    // 生成過去 8 週的屬性快照資料（包含本週）
     for weeks_ago in 0..8 {
         let target_date = now - Duration::weeks(weeks_ago);
         let target_naive = target_date.naive_utc().date();
@@ -1173,7 +1173,7 @@ async fn insert_weekly_attribute_snapshots(rb: &RBatis, user_id: &str) -> Result
         ]).await?;
     }
     
-    info!("週屬性快照數據插入完成（8 週數據）");
+    info!("週屬性快照資料插入完成（8 週資料）");
     Ok(())
 }
 
@@ -1516,7 +1516,7 @@ async fn insert_recurring_task_history(
     info!("歷史記錄天數 - 工作日: {}, 每日: {}, 週末: {}", 
           weekday_history_days, daily_history_days, weekend_history_days);
     
-    // 收集所有需要插入的任務數據
+    // 收集所有需要插入的任務資料
     let mut all_task_data = Vec::new();
     
     // 為工作日學習任務收集歷史記錄（包含今天，只有工作日）
@@ -1551,7 +1551,7 @@ async fn insert_recurring_task_history(
                 weekday_completed += 1;
             }
             
-            // 收集工作日任務數據
+            // 收集工作日任務資料
             collect_daily_subtask_data(&mut all_task_data, user_id, weekday_task_id, &date_str, "閱讀技術文章 30 分鐘", status);
             collect_daily_subtask_data(&mut all_task_data, user_id, weekday_task_id, &date_str, "練習編程 45 分鐘", status);
             collect_daily_subtask_data(&mut all_task_data, user_id, weekday_task_id, &date_str, "學習新概念", status);
@@ -1591,7 +1591,7 @@ async fn insert_recurring_task_history(
             daily_completed += 1;
         }
         
-        // 收集每日任務數據
+        // 收集每日任務資料
         collect_daily_subtask_data(&mut all_task_data, user_id, daily_task_id, &date_str, "晨間冥想 15 分鐘", status);
         collect_daily_subtask_data(&mut all_task_data, user_id, daily_task_id, &date_str, "正念呼吸練習", status);
     }
@@ -1634,14 +1634,14 @@ async fn insert_recurring_task_history(
                 weekend_completed += 1;
             }
             
-            // 收集週末任務數據
+            // 收集週末任務資料
             collect_daily_subtask_data(&mut all_task_data, user_id, weekend_task_id, &date_str, "戶外健行 2 小時", status);
             collect_daily_subtask_data(&mut all_task_data, user_id, weekend_task_id, &date_str, "攝影記錄", status);
             collect_daily_subtask_data(&mut all_task_data, user_id, weekend_task_id, &date_str, "自然觀察", status);
         }
     }
     
-    // 批量插入所有任務數據
+    // 批量插入所有任務資料
     if !all_task_data.is_empty() {
         batch_insert_daily_subtasks(rb, &all_task_data).await?;
     }
@@ -1652,7 +1652,7 @@ async fn insert_recurring_task_history(
     let weekend_sample_rate = weekend_completed as f64 / weekend_total as f64;
     let weekend_annual_completed = (weekend_sample_rate * weekend_total_annual as f64) as i32;
     
-    // 基於60天樣本計算完成率，但顯示為年度推算數據
+    // 基於60天樣本計算完成率，但顯示為年度推算資料
     let weekday_completion_rate = weekday_completed as f64 / weekday_total as f64;
     let daily_completion_rate = daily_completed as f64 / daily_total_sample as f64;
     let weekend_completion_rate = weekend_completed as f64 / weekend_total as f64;
@@ -1675,7 +1675,7 @@ async fn insert_recurring_task_history(
     Ok(())
 }
 
-/// 收集每日子任務數據（用於批量插入）
+/// 收集每日子任務資料（用於批量插入）
 fn collect_daily_subtask_data(
     all_task_data: &mut Vec<(String, String, String, String, String, i32, String, String)>,
     user_id: &str,

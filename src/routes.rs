@@ -3010,9 +3010,9 @@ pub async fn get_weekly_attributes(
 
 #[derive(serde::Deserialize)]
 pub struct GenerateAchievementRequest {
-    pub user_id: String, // 用户 ID，用于统计分析
+    pub user_id: String, // 使用者 ID，用於統計分析
     #[serde(default)]
-    pub user_input: Option<String>, // 可选：兼容旧版本
+    pub user_input: Option<String>, // 可選：相容舊版本
 }
 
 pub async fn generate_achievement_with_ai(
@@ -3034,8 +3034,8 @@ pub async fn generate_achievement_with_ai(
         }
     };
 
-    // 生成成就 - 使用新的统计摘要策略
-    log::info!("开始为用户 {} 生成成就（使用统计摘要优化）", req.user_id);
+    // 生成成就 - 使用新的統計摘要策略
+    log::info!("開始為使用者 {} 生成成就（使用統計摘要優化）", req.user_id);
 
     match ai_service.generate_achievement_from_user_id(rb.get_ref(), &req.user_id).await {
         Ok(ai_achievement) => {

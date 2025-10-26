@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize, Deserializer};
 use rbatis::{RBatis, Error as RbatisError};
 
-// 成就達成條件類型枚舉
+// 成就達成條件類型列舉
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum AchievementRequirementType {
     #[serde(rename = "task_complete")]
@@ -31,7 +31,7 @@ pub enum AchievementRequirementType {
 }
 
 impl AchievementRequirementType {
-    // 從字符串轉換為枚舉
+    // 從字串轉換為列舉
     pub fn from_string(value: &str) -> Option<AchievementRequirementType> {
         match value {
             "task_complete" => Some(AchievementRequirementType::TaskComplete),
@@ -49,7 +49,7 @@ impl AchievementRequirementType {
         }
     }
 
-    // 轉換為字符串
+    // 轉換為字串
     pub fn to_string(&self) -> &'static str {
         match self {
             AchievementRequirementType::TaskComplete => "task_complete",
@@ -66,7 +66,7 @@ impl AchievementRequirementType {
         }
     }
 
-    // 獲取所有有效的字符串值
+    // 獲取所有有效的字串值
     pub fn all_valid_strings() -> Vec<&'static str> {
         vec![
             "task_complete",
@@ -84,7 +84,7 @@ impl AchievementRequirementType {
     }
 }
 
-// 任務狀態枚舉
+// 任務狀態列舉
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum TaskStatus {
     Pending = 0,          // 待處理
@@ -127,7 +127,7 @@ impl TaskStatus {
         }
     }
 
-    // 轉換為字符串
+    // 轉換為字串
     pub fn to_string(&self) -> &'static str {
         match self {
             TaskStatus::Pending => "pending",
@@ -141,7 +141,7 @@ impl TaskStatus {
         }
     }
 
-    // 從字符串轉換為狀態
+    // 從字串轉換為狀態
     pub fn from_string(value: &str) -> Option<TaskStatus> {
         match value {
             "pending" => Some(TaskStatus::Pending),
@@ -197,7 +197,7 @@ where
     }
 }
 
-// 自定義反序列化函數處理skill_tags字段
+// 自定義反序列化函數處理skill_tags欄位
 fn deserialize_skill_tags<'de, D>(deserializer: D) -> Result<Option<Vec<String>>, D::Error>
 where
     D: Deserializer<'de>,
@@ -207,7 +207,7 @@ where
         Some(value) => {
             match value {
                 serde_json::Value::String(s) => {
-                    // 嘗試解析 JSON 字符串為數組
+                    // 嘗試解析 JSON 字串為陣列
                     if s.is_empty() {
                         Ok(None)
                     } else {
@@ -216,14 +216,14 @@ where
                                 Ok(Some(vec))
                             }
                             Err(_) => {
-                                // 如果解析失敗，將字符串作為單個元素
+                                // 如果解析失敗，將字串作為單個元素
                                 Ok(Some(vec![s]))
                             }
                         }
                     }
                 },
                 serde_json::Value::Array(arr) => {
-                    // 直接處理數組
+                    // 直接處理陣列
                     let string_vec: Vec<String> = arr.into_iter()
                         .map(|v| match v {
                             serde_json::Value::String(s) => s,
@@ -234,7 +234,7 @@ where
                 },
                 serde_json::Value::Null => Ok(None),
                 _ => {
-                    // 其他類型轉換為字符串作為單個元素
+                    // 其他類型轉換為字串作為單個元素
                     Ok(Some(vec![value.to_string()]))
                 },
             }
@@ -760,7 +760,7 @@ fn default_personality_insights() -> String {
     "根據您的測驗結果和職業選擇生成個性化學習計劃。".to_string()
 }
 
-// 自定義反序列化器：將浮點數四捨五入為整數，缺失時使用默認值
+// 自定義反序列化器：將浮點數四捨五入為整數，缺失時使用預設值
 fn deserialize_rounded_i32_with_default<'de, D>(deserializer: D) -> Result<i32, D::Error>
 where
     D: Deserializer<'de>,
@@ -773,11 +773,11 @@ where
             } else if let Some(f) = n.as_f64() {
                 Ok(f.round() as i32)
             } else {
-                Ok(6) // 默認值
+                Ok(6) // 預設值
             }
         }
-        None => Ok(6), // 默認值
-        _ => Ok(6), // 默認值
+        None => Ok(6), // 預設值
+        _ => Ok(6), // 預設值
     }
 }
 

@@ -4,7 +4,7 @@ use rbs::{value, Value};
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 
-// ===== 数据结构定义 =====
+// ===== 資料结构定义 =====
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserBehaviorSummary {
@@ -23,7 +23,7 @@ pub struct UserBehaviorSummary {
     pub top_categories: Vec<CategoryStats>,
     pub top_task_types: Vec<TaskTypeStats>,
 
-    // 样本数据
+    // 样本資料
     pub recent_completions: Vec<TaskSummary>,
     pub recent_cancellations: Vec<TaskSummary>,
     pub milestone_events: Vec<MilestoneEvent>,
@@ -68,7 +68,7 @@ pub struct TaskSummary {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MilestoneEvent {
-    pub event_type: String, // "首次达成", "突破记录", "复出"
+    pub event_type: String, // "首次達成", "突破紀錄", "復出"
     pub description: String,
     pub date: String,
 }
@@ -136,7 +136,7 @@ impl BehaviorAnalytics {
         Ok(result.unwrap_or(0))
     }
 
-    /// 计算活跃天数
+    /// 計算活跃天数
     async fn count_active_days(rb: &RBatis, user_id: &str, days: i64) -> Result<i32> {
         let cutoff_date = (Utc::now() - Duration::days(days)).to_rfc3339();
 
@@ -237,7 +237,7 @@ impl BehaviorAnalytics {
             .collect())
     }
 
-    /// 获取最近的任务样本
+    /// 獲取最近的任务样本
     async fn get_recent_tasks(
         rb: &RBatis,
         user_id: &str,
@@ -274,7 +274,7 @@ impl BehaviorAnalytics {
             .collect())
     }
 
-    /// 计算最长连续记录
+    /// 計算最長連續紀錄
     async fn calculate_longest_streak(rb: &RBatis, user_id: &str) -> Result<StreakInfo> {
         #[derive(Debug, Serialize, Deserialize)]
         struct StreakRow {
@@ -285,7 +285,7 @@ impl BehaviorAnalytics {
             task_category: Option<String>,
         }
 
-        // 使用窗口函数计算连续天数（SQLite 3.25.0+ 支持）
+        // 使用窗口函数計算連續天数（SQLite 3.25.0+ 支持）
         let result: Option<StreakRow> = rb
             .query_decode(
                 "WITH daily_completions AS (
@@ -344,9 +344,9 @@ impl BehaviorAnalytics {
         }
     }
 
-    /// 计算当前连续记录
+    /// 計算当前連續记录
     async fn calculate_current_streak(rb: &RBatis, user_id: &str) -> Result<StreakInfo> {
-        // 获取最近完成的任务日期
+        // 獲取最近完成的任务日期
         #[derive(Debug, Serialize, Deserialize)]
         struct RecentTask {
             completion_date: String,
@@ -379,7 +379,7 @@ impl BehaviorAnalytics {
             });
         }
 
-        // 简化版本：计算从最新任务到今天/昨天的连续性
+        // 简化版本：計算从最新任务到今天/昨天的連續性
         let mut streak_days = 1;
         let first_task = &recent_tasks[0];
 
@@ -392,26 +392,26 @@ impl BehaviorAnalytics {
         })
     }
 
-    /// 检测里程碑事件
+    /// 檢測里程碑事件
     async fn detect_milestones(rb: &RBatis, user_id: &str) -> Result<Vec<MilestoneEvent>> {
         let mut milestones = Vec::new();
 
-        // 检测首次完成 100 次任务
+        // 檢測首次完成 100 次任务
         let total_completed = Self::count_completed_tasks(rb, user_id).await?;
         if total_completed >= 100 {
             milestones.push(MilestoneEvent {
-                event_type: "突破记录".to_string(),
+                event_type: "突破紀錄".to_string(),
                 description: format!("已完成 {} 个任务", total_completed),
                 date: Utc::now().format("%Y-%m-%d").to_string(),
             });
         }
 
-        // 检测最长连续记录
+        // 檢測最長連續紀錄
         let longest = Self::calculate_longest_streak(rb, user_id).await?;
         if longest.days >= 7 {
             milestones.push(MilestoneEvent {
                 event_type: "持续坚持".to_string(),
-                description: format!("「{}」连续 {} 天", longest.task_title, longest.days),
+                description: format!("「{}」連續 {} 天", longest.task_title, longest.days),
                 date: longest.end_date.unwrap_or_else(|| Utc::now().format("%Y-%m-%d").to_string()),
             });
         }
@@ -419,7 +419,7 @@ impl BehaviorAnalytics {
         Ok(milestones)
     }
 
-    /// 获取已解锁成就名称
+    /// 獲取已解鎖成就名称
     async fn get_achievement_names(rb: &RBatis, user_id: &str) -> Result<Vec<String>> {
         #[derive(Debug, Serialize, Deserialize)]
         struct AchievementName {
@@ -440,7 +440,7 @@ impl BehaviorAnalytics {
         Ok(rows.into_iter().map(|row| row.name).collect())
     }
 
-    /// 计算总经验值
+    /// 計算总经验值
     async fn sum_total_experience(rb: &RBatis, user_id: &str) -> Result<i32> {
         let result: Option<i32> = rb
             .query_decode(
