@@ -10,7 +10,7 @@ mod openrouter;
 pub use r#trait::AIService;
 pub use common::{
     AIGeneratedAchievement, AIGeneratedTask, AIGeneratedTaskPlan,
-    ExpertMatch, Expert,
+    ExpertMatch, Expert, ModelTier,
     get_expert_database, convert_to_achievement_model, convert_to_task_model,
     build_task_generation_prompt
 };
@@ -27,12 +27,24 @@ pub fn create_ai_service(config: &AIConfig) -> Result<Box<dyn AIService + Send +
         "OpenAI" => {
             let api_key = config.openai_api_key.as_ref()
                 .ok_or_else(|| anyhow::anyhow!("OpenAI API key 未設定"))?;
-            Ok(Box::new(OpenAIService::new(api_key.clone(), config.openai_model.clone())))
+            Ok(Box::new(OpenAIService::new(
+                api_key.clone(),
+                config.openai_model.clone(),
+                config.model_fast.clone(),
+                config.model_normal.clone(),
+                config.model_think.clone(),
+            )))
         }
         "OpenRouter" => {
             let api_key = config.openrouter_api_key.as_ref()
                 .ok_or_else(|| anyhow::anyhow!("OpenRouter API key 未設定"))?;
-            Ok(Box::new(OpenRouterService::new(api_key.clone(), config.openrouter_model.clone())))
+            Ok(Box::new(OpenRouterService::new(
+                api_key.clone(),
+                config.openrouter_model.clone(),
+                config.model_fast.clone(),
+                config.model_normal.clone(),
+                config.model_think.clone(),
+            )))
         }
         _ => Err(anyhow::anyhow!("不支援的 AI 服務選項: {}", config.api_option))
     }

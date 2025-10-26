@@ -48,15 +48,31 @@ struct Choice {
 pub struct OpenAIService {
     api_key: String,
     model: String,
+    model_fast: String,
+    model_normal: String,
+    model_think: String,
     client: reqwest::Client,
 }
 
 impl OpenAIService {
-    pub fn new(api_key: String, model: String) -> Self {
+    pub fn new(api_key: String, model: String, model_fast: String, model_normal: String, model_think: String) -> Self {
         Self {
             api_key,
             model,
+            model_fast,
+            model_normal,
+            model_think,
             client: reqwest::Client::new(),
+        }
+    }
+
+    // 根據模型等級獲取對應模型
+    fn get_model_by_tier(&self, tier: super::common::ModelTier) -> &str {
+        use super::common::ModelTier;
+        match tier {
+            ModelTier::Fast => &self.model_fast,
+            ModelTier::Normal => &self.model_normal,
+            ModelTier::Think => &self.model_think,
         }
     }
 }
