@@ -118,6 +118,64 @@ pub async fn generate_task_json(
     }
 }
 
+// API: 專門生成每日任務 JSON（使用針對每日任務優化的提示詞）
+pub async fn generate_daily_task_json(
+    req: web::Json<GenerateTaskJsonRequest>,
+) -> Result<HttpResponse> {
+    // 載入配置
+    let config = crate::config::Config::from_env();
+
+    // 創建 AI 服務
+    let ai_service = match crate::ai_service::create_ai_service(&config.app.ai) {
+        Ok(service) => service,
+        Err(e) => {
+            log::error!("AI 服務初始化失敗: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("AI 服務初始化失敗: {}", e),
+            }));
+        }
+    };
+
+    // 使用 AI 生成每日任務 JSON（專門的每日任務方法）
+    match ai_service.generate_daily_task_from_text(&req.description).await {
+        Ok(ai_task) => {
+            log::info!("AI 成功生成每日任務 JSON: {:?}", ai_task);
+
+            // 將 AI 生成的任務轉換為符合 schema 的 JSON
+            let task_json = CreateTaskInput {
+                title: ai_task.title.unwrap_or_else(|| "未命名每日任務".to_string()),
+                description: ai_task.description,
+                task_type: Some("daily".to_string()), // 強制設定為 daily
+                priority: ai_task.priority,
+                difficulty: ai_task.difficulty,
+                experience: ai_task.experience,
+                due_date: None, // 每日任務不設定截止日期
+                is_recurring: Some(false),
+                recurrence_pattern: None,
+                start_date: None,
+                end_date: None,
+                completion_target: None,
+            };
+
+            Ok(HttpResponse::Ok().json(ApiResponse {
+                success: true,
+                data: Some(serde_json::json!({ "task_json": task_json })),
+                message: "AI 成功生成每日任務 JSON".to_string(),
+            }))
+        }
+        Err(e) => {
+            log::error!("AI 生成每日任務 JSON 失敗: {}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("AI 生成每日任務 JSON 失敗: {}", e),
+            }))
+        }
+    }
+}
+
 // ============= 第二步：JSON 插入資料庫 =============
 
 #[derive(Debug, Serialize, Deserialize)]

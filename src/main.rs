@@ -192,6 +192,7 @@ async fn main() -> std::io::Result<()> {
             // AI 任務生成路由
             .route("/api/tasks/generate", web::post().to(crate::ai_tasks::generate_task_with_ai))
             .route("/api/tasks/generate-json", web::post().to(crate::ai_tasks::generate_task_json))
+            .route("/api/tasks/generate-daily-task-json", web::post().to(crate::ai_tasks::generate_daily_task_json))
             .route("/api/tasks/insert-json", web::post().to(crate::ai_tasks::insert_task_from_json))
             .route("/api/tasks/create-from-json", web::post().to(crate::ai_tasks::create_task_from_json))
             .route("/api/tasks/validate-preview", web::post().to(crate::ai_tasks::validate_and_preview_task))

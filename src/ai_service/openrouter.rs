@@ -580,6 +580,126 @@ impl AIService for OpenRouterService {
         Ok(validated_task)
     }
 
+    async fn generate_daily_task_from_text(&self, user_input: &str) -> Result<AIGeneratedTask> {
+        let primary_prompt = r#"你是一個每日任務規劃助手。根據使用者的描述，生成適合每天執行的日常任務。
+
+**每日任務特性：**
+- 這是需要每天重複執行的習慣或例行事項
+- 任務應該簡單明確，容易在一天內完成
+- 通常是健康、學習、工作、生活習慣相關
+- 不設定截止日期（due_date 為 null）
+- task_type 固定為 "daily"
+
+**使用者技能水準適應（重要）：**
+- **務必仔細分析使用者的技能水準**，從描述中推斷其熟悉程度（如「想學」、「初學」、「已經在做」等關鍵字）
+- **初學者/入門階段**：從最基礎、低門檻的任務開始
+  * 例如想學登山 → 「走樓梯10分鐘」、「在平地健走20分鐘」而非直接登山
+  * 例如想學英語 → 「學習5個基礎單字」、「聽英文歌曲10分鐘」而非閱讀文章
+  * 難度設為 1，避免過度挑戰導致放棄
+- **中級階段**：有一定基礎，可適度增加難度
+  * 例如登山中級者 → 「爬郊山步道30分鐘」、「負重健走」
+  * 例如英語中級者 → 「閱讀簡單英文文章」、「練習日常對話」
+  * 難度設為 2
+- **資深/專家階段**：已有豐富經驗，可設定專業挑戰
+  * 例如登山資深者 → 「登小山」、「進階登山訓練」
+  * 例如英語專家 → 「撰寫英文文章」、「英文演講練習」
+  * 難度設為 3
+- **漸進式設計原則**：確保任務符合使用者當前能力，避免一開始就要求過高而導致挫折
+
+**任務難度和經驗值設定：**
+- 簡單的日常習慣（如喝水8杯、記錄心情、走樓梯）：difficulty=1, experience=5
+- 需要一定執行時間的任務（如運動30分鐘、閱讀20頁）：difficulty=2, experience=10
+- 需要專注力和持續性的任務（如學習新技能1小時、冥想30分鐘、專業訓練）：difficulty=3, experience=15
+
+**任務類型說明：**
+- 每日任務的 task_type 必須是 "daily"
+- 這類任務適合養成習慣，每天都可以重複執行
+- 不要設定截止日期，因為這是持續性的習慣
+
+請以 JSON 格式回應：
+{
+  "title": "任務標題（簡潔明確，例如：每日走樓梯10分鐘）",
+  "description": "任務描述（可選，說明如何執行這個習慣，並鼓勵使用者循序漸進）",
+  "task_type": "daily",
+  "priority": 0-2,
+  "difficulty": 1-3,
+  "experience": 5-15,
+  "due_date": null,
+  "is_recurring": false,
+  "recurrence_pattern": null
+}
+"#;
+
+        let request = OpenRouterRequest {
+            model: self.model_fast.clone(),
+            messages: vec![
+                ChatMessage {
+                    role: "system".to_string(),
+                    content: primary_prompt.to_string(),
+                },
+                ChatMessage {
+                    role: "user".to_string(),
+                    content: format!("請根據以下描述生成每日任務：{}", user_input),
+                },
+            ],
+            max_completion_tokens: 1000,
+            response_format: ResponseFormat {
+                format_type: "json_object".to_string(),
+            },
+        };
+
+        if let Ok(body) = serde_json::to_string(&request) {
+            log::info!("[AI INPUT][generate_daily_task_from_text] {}", format_ai_output(&body));
+        }
+
+        let response = self
+            .client
+            .post("https://openrouter.ai/api/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .header("HTTP-Referer", "https://openrouter.ai")
+            .header("X-Title", "LifeUp Backend")
+            .json(&request)
+            .send()
+            .await?;
+
+        let status = response.status();
+        let text = response.text().await?;
+        log::info!("[AI OUTPUT][generate_daily_task_from_text] {}", format_ai_output(&text));
+
+        if !status.is_success() {
+            return Err(anyhow::anyhow!("OpenRouter API 錯誤 ({}): {}", status, text));
+        }
+
+        let parsed: OpenRouterResponse = serde_json::from_str(&text)?;
+        let choice = parsed
+            .choices
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("OpenRouter 未返回有效回應"))?;
+
+        let daily_task: AIGeneratedTask = serde_json::from_str(&choice.message.content)?;
+
+        // 強制設定每日任務的特定屬性
+        let daily_task_normalized = AIGeneratedTask {
+            title: daily_task.title,
+            description: daily_task.description,
+            task_type: Some("daily".to_string()), // 強制為 daily
+            priority: daily_task.priority,
+            difficulty: daily_task.difficulty.or(Some(2)), // 預設難度為 2
+            experience: daily_task.experience.or(Some(10)), // 預設經驗值為 10
+            due_date: None, // 強制為 null
+            is_recurring: Some(false),
+            recurrence_pattern: None,
+            start_date: None,
+            end_date: None,
+            completion_target: None,
+        };
+
+        let validated_task = validate_generated_task(&daily_task_normalized)?;
+
+        Ok(validated_task)
+    }
+
     async fn match_expert_for_task(&self, user_input: &str) -> Result<ExpertMatch> {
         let experts = get_expert_database();
 
@@ -604,17 +724,15 @@ impl AIService for OpenRouterService {
 {}
 
 請分析使用者的任務描述，選擇最適合的專家，並提供匹配理由。
-
-回應格式（JSON）：
+選擇原則：
+1. 根據任務的核心領域選擇專家，只能選一個
+2. 考慮專家的專業領域是否與任務匹配
+回應格式（JSON），必需嚴格遵守：
 {{
   "expert_name": "專家的完整名稱",
   "expert_description": "專家的詳細描述"
 }}
-
-選擇原則：
-1. 根據任務的核心領域選擇專家
-2. 考慮專家的專業領域是否與任務匹配
-3. 如果沒有完全匹配的專家，選擇最接近的"#,
+"#,
             expert_list
         );
 
@@ -822,11 +940,12 @@ impl AIService for OpenRouterService {
 
 使用者需求：{}
 
-請以JSON格式回應，格式如下：
+請以JSON格式加繁體中文回應，格式如下：
 {{
   "directions": [
     {{"title": "方向標題", "description": "簡短描述"}},
     {{"title": "方向標題", "description": "簡短描述"}}
+    ...
   ]
 }}
 
@@ -836,18 +955,16 @@ impl AIService for OpenRouterService {
             "goals" => format!(
                 r#"你是{}，{}
 
-請根據使用者的需求生成5個明確、可衡量的學習目標。目標應該具體、可達成、有時間性。
+請根據使用者的需求生成4-6個明確、可衡量的學習目標。目標應該具體、可達成、有時間性。
 
 使用者需求：{}
 
-請以JSON格式回應，格式如下：
+請以JSON格式加繁體中文回應，格式如下：
 {{
   "goals": [
     {{"title": "目標標題", "description": "具體描述和衡量標準"}},
     {{"title": "目標標題", "description": "具體描述和衡量標準"}},
-    {{"title": "目標標題", "description": "具體描述和衡量標準"}},
-    {{"title": "目標標題", "description": "具體描述和衡量標準"}},
-    {{"title": "目標標題", "description": "具體描述和衡量標準"}}
+    ...
   ]
 }}
 
@@ -857,18 +974,16 @@ impl AIService for OpenRouterService {
             "resources" => format!(
                 r#"你是{}，{}
 
-請根據使用者的需求推薦5個優質的學習資源，包括書籍、課程、網站、工具等。
+請根據使用者的需求推薦4-6個優質的學習資源，包括書籍、課程、網站、工具等。
 
 使用者需求：{}
 
-請以JSON格式回應，格式如下：
+請以JSON格式加繁體中文回應，格式如下：
 {{
   "resources": [
     {{"title": "資源名稱", "description": "資源描述和推薦理由"}},
     {{"title": "資源名稱", "description": "資源描述和推薦理由"}},
-    {{"title": "資源名稱", "description": "資源描述和推薦理由"}},
-    {{"title": "資源名稱", "description": "資源描述和推薦理由"}},
-    {{"title": "資源名稱", "description": "資源描述和推薦理由"}}
+    ...
   ]
 }}
 

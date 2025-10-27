@@ -19,4 +19,7 @@ pub trait AIService {
 
     // 新增：使用指定模型生成文字回應
     async fn generate_with_model(&self, model: &str, prompt: &str) -> Result<String>;
+
+    // 新增：專門生成每日任務（使用針對每日任務優化的提示詞）
+    async fn generate_daily_task_from_text(&self, user_input: &str) -> Result<AIGeneratedTask>;
 }
