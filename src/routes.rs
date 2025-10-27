@@ -57,6 +57,7 @@ pub struct CreateRecurringTaskRequest {
     pub recurrence_pattern: String,
     pub completion_target: Option<f64>,
     pub subtask_templates: Vec<SubTaskTemplate>,
+    pub skill_tags: Option<Vec<String>>,
 }
 
 // 健康檢查
@@ -1329,6 +1330,7 @@ struct SubTaskTemplate {
     difficulty: i32,
     experience: i32,
     order: i32,
+    skill_tags: Option<Vec<String>>,
 }
 
 fn get_subtask_templates(_task_title: &str) -> Vec<SubTaskTemplate> {
@@ -1340,6 +1342,7 @@ fn get_subtask_templates(_task_title: &str) -> Vec<SubTaskTemplate> {
             difficulty: 1,
             experience: 20,
             order: 1,
+            skill_tags: None,
         },
         SubTaskTemplate {
             title: "學習基礎".to_string(),
@@ -1347,6 +1350,7 @@ fn get_subtask_templates(_task_title: &str) -> Vec<SubTaskTemplate> {
             difficulty: 2,
             experience: 30,
             order: 2,
+            skill_tags: None,
         },
         SubTaskTemplate {
             title: "實踐練習".to_string(),
@@ -1354,6 +1358,7 @@ fn get_subtask_templates(_task_title: &str) -> Vec<SubTaskTemplate> {
             difficulty: 3,
             experience: 50,
             order: 3,
+            skill_tags: None,
         },
         SubTaskTemplate {
             title: "深入學習".to_string(),
@@ -1361,6 +1366,7 @@ fn get_subtask_templates(_task_title: &str) -> Vec<SubTaskTemplate> {
             difficulty: 4,
             experience: 60,
             order: 4,
+            skill_tags: None,
         },
         SubTaskTemplate {
             title: "完成項目".to_string(),
@@ -1368,6 +1374,7 @@ fn get_subtask_templates(_task_title: &str) -> Vec<SubTaskTemplate> {
             difficulty: 4,
             experience: 80,
             order: 5,
+            skill_tags: None,
         },
         SubTaskTemplate {
             title: "總結回顧".to_string(),
@@ -1375,6 +1382,7 @@ fn get_subtask_templates(_task_title: &str) -> Vec<SubTaskTemplate> {
             difficulty: 2,
             experience: 30,
             order: 6,
+            skill_tags: None,
         },
     ]
 }
@@ -1875,6 +1883,9 @@ pub async fn get_homepage_tasks(
             t.cancel_count,
             t.last_cancelled_at,
             t.skill_tags,
+            t.career_mainline_id,
+            t.task_category,
+            t.attributes,
             p.title as parent_task_title
         FROM task t
         LEFT JOIN task p ON t.parent_task_id = p.id
@@ -1982,7 +1993,7 @@ pub async fn create_recurring_task(
         task_date: None,
         cancel_count: Some(0),
         last_cancelled_at: None,
-        skill_tags: None, // 重複性任務預設無技能標籤
+        skill_tags: req.skill_tags.clone(), // 從請求中獲取技能標籤
         career_mainline_id: None,
         task_category: None,
         attributes: None,
@@ -2005,8 +2016,9 @@ pub async fn create_recurring_task(
                     task_order: Some(template.order),
                     created_at: Some(now),
                     updated_at: Some(now),
+                    skill_tags: template.skill_tags.clone(), // 從模板複製技能標籤
                 };
-                
+
                 if let Err(e) = RecurringTaskTemplate::insert(rb.get_ref(), &recurring_template).await {
                     log::error!("Failed to create recurring task template: {}", e);
                 }
@@ -2082,7 +2094,7 @@ pub async fn generate_daily_tasks(
                     task_date: Some(today.clone()),
                     cancel_count: Some(0),
                     last_cancelled_at: None,
-                    skill_tags: None, // 每日重複任務預設無技能標籤
+                    skill_tags: template.skill_tags.clone(), // 從模板複製技能標籤
                     career_mainline_id: None,
                     task_category: None,
                     attributes: None,

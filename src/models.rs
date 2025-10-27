@@ -433,6 +433,8 @@ pub struct RecurringTaskTemplate {
     pub created_at: Option<DateTime<Utc>>,
     #[serde(deserialize_with = "deserialize_optional_datetime", default)]
     pub updated_at: Option<DateTime<Utc>>,
+    #[serde(deserialize_with = "deserialize_skill_tags", default)]
+    pub skill_tags: Option<Vec<String>>,
 }
 crud!(RecurringTaskTemplate{});
 
