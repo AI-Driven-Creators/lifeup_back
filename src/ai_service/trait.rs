@@ -22,4 +22,7 @@ pub trait AIService {
 
     // 新增：專門生成每日任務（使用針對每日任務優化的提示詞）
     async fn generate_daily_task_from_text(&self, user_input: &str) -> Result<AIGeneratedTask>;
+
+    // 新增：用戶意圖分類（判斷是詳細任務還是模糊目標）
+    async fn classify_user_intent(&self, user_input: &str) -> Result<crate::ai_tasks::ClassifyIntentResponse>;
 }

@@ -2183,10 +2183,68 @@ pub async fn expert_analysis(
             }
         }
     }
-    
+
     Ok(HttpResponse::Ok().json(ApiResponse {
         success: true,
         data: Some(response),
         message: "專家分析成功".to_string(),
     }))
+}
+
+// ============= 用戶意圖分類 API =============
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ClassifyIntentRequest {
+    pub description: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ClassifyIntentResponse {
+    pub intent_type: String, // "detailed_task" 或 "vague_goal"
+    pub confidence: f32, // 0.0 到 1.0
+    pub suggested_task_type: Option<String>, // "main", "side", "challenge", "daily" 等
+    pub reasoning: String, // AI 的判斷理由
+}
+
+/// API: 分類用戶輸入意圖
+/// 判斷用戶輸入是「詳細任務描述」還是「模糊目標」
+pub async fn classify_user_intent(
+    req: web::Json<ClassifyIntentRequest>,
+) -> Result<HttpResponse> {
+    // 載入配置
+    let config = crate::config::Config::from_env();
+
+    // 創建 AI 服務
+    let ai_service = match crate::ai_service::create_ai_service(&config.app.ai) {
+        Ok(service) => service,
+        Err(e) => {
+            log::error!("AI 服務初始化失敗: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("AI 服務初始化失敗: {}", e),
+            }));
+        }
+    };
+
+    // 調用 AI 服務進行意圖分類
+    log::info!("開始分類用戶意圖: {}", req.description);
+    match ai_service.classify_user_intent(&req.description).await {
+        Ok(classification) => {
+            log::info!("意圖分類成功: {:?}", classification);
+            Ok(HttpResponse::Ok().json(ApiResponse {
+                success: true,
+                data: Some(classification),
+                message: "意圖分類成功".to_string(),
+            }))
+        }
+        Err(e) => {
+            log::error!("意圖分類失敗: {}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("意圖分類失敗: {}", e),
+            }))
+        }
+    }
 }

@@ -1058,4 +1058,87 @@ impl AIService for OpenAIService {
             Err(anyhow::anyhow!("OpenAI 未返回有效回應"))
         }
     }
+
+    async fn classify_user_intent(&self, user_input: &str) -> Result<crate::ai_tasks::ClassifyIntentResponse> {
+        let system_prompt = r#"你是一個智能任務意圖分析助手。你的任務是分析使用者的輸入,判斷他們是想要:
+1. **詳細任務** (detailed_task): 用戶已經有明確的計劃和詳細描述,可以直接轉換為具體任務
+2. **模糊目標** (vague_goal): 用戶只有一個大致的想法或目標,需要專家協助規劃和細化
+
+**判斷標準:**
+
+詳細任務的特徵:
+- 包含明確的行動步驟或具體做法
+- 有時間安排、頻率描述(例如:每天、每週、持續3個月)
+- 描述了具體要達成什麼(例如:閱讀某本書、完成某個項目、練習某個技能30分鐘)
+- 提到了具體的資源、工具或方法
+- 使用了「我要做...」、「計劃...」、「每天...」等行動導向的詞彙
+- 例如: "我想每天早上慢跑30分鐘,持續3個月"、"學習Python,每天寫代碼1小時"、"閱讀《原子習慣》,每天20頁"
+
+模糊目標的特徵:
+- 只表達了一個願望或興趣,沒有具體計劃
+- 使用「想學...」、「對...感興趣」、「希望...」等願望性詞彙
+- 沒有提及具體的執行方式、時間安排
+- 缺乏明確的衡量標準或階段性目標
+- 例如: "我想學寫小說"、"想提升登山能力"、"對攝影感興趣"、"想變得更健康"
+
+**任務類型建議:**
+- 如果是詳細任務且描述每日重複: task_type = "daily"
+- 如果是詳細任務且是長期目標: task_type = "main"
+- 如果是詳細任務且是中短期項目: task_type = "side"
+- 如果是模糊目標: 不建議task_type,需要專家協助規劃
+
+請以 JSON 格式回應:
+{
+  "intent_type": "detailed_task 或 vague_goal",
+  "confidence": 0.0到1.0的信心度,
+  "suggested_task_type": "main/side/daily/null",
+  "reasoning": "簡短說明你的判斷理由(30字以內)"
+}
+"#;
+
+        let request = OpenAIRequest {
+            model: self.model_fast.clone(),
+            messages: vec![
+                ChatMessage {
+                    role: "system".to_string(),
+                    content: system_prompt.to_string(),
+                },
+                ChatMessage {
+                    role: "user".to_string(),
+                    content: format!("請分析以下用戶輸入的意圖:\n\n{}", user_input),
+                },
+            ],
+            max_completion_tokens: 500,
+            response_format: ResponseFormat {
+                format_type: "json_object".to_string(),
+            },
+        };
+
+        let response = self
+            .client
+            .post("https://api.openai.com/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&request)
+            .send()
+            .await?;
+
+        let status = response.status();
+        let text = response.text().await?;
+
+        if !status.is_success() {
+            return Err(anyhow::anyhow!("OpenAI API 錯誤 ({}): {}", status, text));
+        }
+
+        let parsed: OpenAIResponse = serde_json::from_str(&text)?;
+        let choice = parsed
+            .choices
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("OpenAI 未返回有效回應"))?;
+
+        let classification: crate::ai_tasks::ClassifyIntentResponse =
+            serde_json::from_str(&choice.message.content)?;
+
+        Ok(classification)
+    }
 }

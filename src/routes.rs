@@ -869,11 +869,11 @@ pub async fn send_message(
     req: web::Json<ChatRequest>,
 ) -> Result<HttpResponse> {
     let now = Utc::now();
-    
+
     // 儲存使用者訊息
     let user_message = crate::models::ChatMessage {
         id: Some(Uuid::new_v4().to_string()),
-        user_id: Some("d487f83e-dadd-4616-aeb2-959d6af9963b".to_string()),
+        user_id: Some(req.user_id.clone()),
         role: Some("user".to_string()),
         content: Some(req.message.clone()),
         created_at: Some(now),
@@ -889,10 +889,10 @@ pub async fn send_message(
 
     // 模擬 AI 回覆
     let ai_response = format!("收到您的訊息：{}。我是您的 AI 教練，有什麼可以幫助您的嗎？", req.message);
-    
+
     let assistant_message = crate::models::ChatMessage {
         id: Some(Uuid::new_v4().to_string()),
-        user_id: Some("d487f83e-dadd-4616-aeb2-959d6af9963b".to_string()),
+        user_id: Some(req.user_id.clone()),
         role: Some("assistant".to_string()),
         content: Some(ai_response.clone()),
         created_at: Some(now),
@@ -2045,14 +2045,40 @@ pub async fn generate_daily_tasks(
 ) -> Result<HttpResponse> {
     let parent_task_id = path.into_inner();
     let today = Utc::now().format("%Y-%m-%d").to_string();
-    
+
+    // 獲取父任務以取得 user_id
+    let parent_tasks = match Task::select_by_map(rb.get_ref(), value!{"id": parent_task_id.clone()}).await {
+        Ok(tasks) => tasks,
+        Err(e) => {
+            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("查詢父任務失敗: {}", e),
+            }));
+        }
+    };
+
+    if parent_tasks.is_empty() {
+        return Ok(HttpResponse::NotFound().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: "找不到父任務".to_string(),
+        }));
+    }
+
+    let parent_task = &parent_tasks[0];
+    let user_id = parent_task.user_id.clone().unwrap_or_else(|| {
+        log::warn!("Parent task {} has no user_id", parent_task_id);
+        String::new()
+    });
+
     // 檢查今日任務是否已存在
     let existing_tasks_sql = "SELECT COUNT(*) as count FROM task WHERE parent_task_id = ? AND task_date = ?";
     let result = rb.exec(existing_tasks_sql, vec![
         Value::String(parent_task_id.clone()),
         Value::String(today.clone()),
     ]).await;
-    
+
     match result {
         Ok(_exec_result) => {
             // 如果有結果且count > 0，說明今日任務已存在
@@ -2062,16 +2088,16 @@ pub async fn generate_daily_tasks(
             log::error!("Failed to check existing tasks: {}", e);
         }
     }
-    
+
     // 獲取任務模板
     match RecurringTaskTemplate::select_by_map(rb.get_ref(), value!{"parent_task_id": parent_task_id.clone()}).await {
         Ok(templates) => {
             let mut generated_tasks = Vec::new();
-            
+
             for template in templates {
                 let daily_task = crate::models::Task {
                     id: Some(Uuid::new_v4().to_string()),
-                    user_id: Some("d487f83e-dadd-4616-aeb2-959d6af9963b".to_string()),
+                    user_id: Some(user_id.clone()),
                     title: Some(template.title.unwrap_or_default()),
                     description: template.description.clone(),
                     status: Some(0), // 待完成

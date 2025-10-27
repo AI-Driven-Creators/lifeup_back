@@ -594,6 +594,7 @@ pub struct ChatWithPersonalityRequest {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ChatRequest {
     pub message: String,
+    pub user_id: String,
 }
 
 // Requests for tasks and skills

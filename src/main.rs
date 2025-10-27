@@ -201,6 +201,7 @@ async fn main() -> std::io::Result<()> {
             .route("/api/tasks/match-expert", web::post().to(crate::ai_tasks::match_expert_only))
             .route("/api/tasks/expert-analysis", web::post().to(crate::ai_tasks::expert_analysis))
             .route("/api/tasks/generate-subtasks", web::post().to(crate::ai_tasks::generate_subtasks_for_task))
+            .route("/api/tasks/classify-intent", web::post().to(crate::ai_tasks::classify_user_intent))
             // AI 成就生成路由
             .route("/api/achievements/generate", web::post().to(generate_achievement_with_ai))
             .route(
