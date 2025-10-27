@@ -1832,6 +1832,17 @@ pub async fn generate_subtasks_for_task(
         // 獲取數據庫連接的克隆
         let rb_clone = rb.get_ref().clone();
 
+        // 在啟動異步任務前，標記主任務為「子任務生成中」
+        let update_generating_sql = "UPDATE task SET task_category = ? WHERE id = ?";
+        if let Err(e) = rb.exec(update_generating_sql, vec![
+            rbs::Value::String("coach_generating_subtasks".to_string()),
+            rbs::Value::String(req.parent_task_id.clone()),
+        ]).await {
+            log::warn!("[generate_subtasks_for_task] 標記生成中狀態失敗: {}", e);
+        } else {
+            log::info!("[generate_subtasks_for_task] 已標記任務 {} 為子任務生成中", req.parent_task_id);
+        }
+
         // 啟動異步任務處理
         tokio::spawn(async move {
             log::info!("[異步任務] 開始生成子任務 for task {}", parent_task_id_clone);
@@ -1911,16 +1922,27 @@ pub async fn generate_subtasks_for_task(
                 task_order += 1;
             }
 
-            // 更新父任務狀態
+            // 更新父任務狀態並標記生成完成
             if created_count > 0 {
-                let update_sql = "UPDATE task SET is_parent_task = 1 WHERE id = ?";
+                let update_sql = "UPDATE task SET is_parent_task = 1, task_category = ? WHERE id = ?";
                 if let Err(e) = rb_clone.exec(update_sql, vec![
+                    rbs::Value::String("coach_task".to_string()),
                     rbs::Value::String(parent_task_id_clone.clone()),
                 ]).await {
                     log::warn!("[異步任務] 更新父任務狀態失敗: {}", e);
+                } else {
+                    log::info!("[異步任務] 已將任務 {} 標記為小教練任務（生成完成）", parent_task_id_clone);
                 }
 
                 log::info!("[異步任務] 成功為任務 {} 創建了 {} 個子任務", parent_task_id_clone, created_count);
+            } else {
+                // 如果沒有成功創建子任務，也要移除「生成中」標記
+                let clear_generating_sql = "UPDATE task SET task_category = NULL WHERE id = ?";
+                if let Err(e) = rb_clone.exec(clear_generating_sql, vec![
+                    rbs::Value::String(parent_task_id_clone.clone()),
+                ]).await {
+                    log::warn!("[異步任務] 清除生成中標記失敗: {}", e);
+                }
             }
         });
 
