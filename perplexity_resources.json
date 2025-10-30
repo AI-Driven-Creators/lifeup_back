@@ -1,209 +1,221 @@
 ```json
 {
-  "search_timestamp": "2025-10-26",
-  "search_queries_used": [    "物理治療師 課程 hahow",
-    "物理治療師 教學 pressplay",
-    "物理治療師 udemy 繁體中文",
-    "物理治療師 教學 youtube 中文",
-    "物理治療師 tutorial youtube 繁中字幕",
-    "物理治療師 學習筆記 medium",
-    "物理治療師 教程 2024 繁體"
+  "search_timestamp": "2025-10-30",
+  "search_queries_used": [
+    "產品經理 課程 hahow",
+    "產品經理 教學 pressplay",
+    "產品經理 udemy 繁體中文",
+    "產品經理 教學 youtube 中文",
+    "產品經理 tutorial youtube 繁中字幕",
+    "產品經理 學習筆記 medium",
+    "產品經理 教程 2024 繁體"
   ],
-  "resources": [    {
-      "task_title": "基礎人體解剖學",
-      "recommendations": [        {
-          "title": "找回身體最佳狀態｜動力鏈：人人必修的身體使用說明書 - Hahow線上課程",
+  "resources": [
+    {
+      "task_title": "了解產品經理的角色與職責",
+      "recommendations": [
+        {
+          "title": "產品經理職場學",
           "type": "線上課程",
           "platform": "Hahow",
-          "url": "https://hahow.in/courses/625eba90d3f1710007f5692c",
-          "instructor": "啾c 物理治療師",
-          "description": "動力鏈與肌肉解剖的詳細講解，讓學員理解身體如何協調運作，適合物理治療師與運動愛好者。",
+          "url": "https://www.youtube.com/watch?v=iVRGr7AmRYw",
+          "instructor": "Evonne",
+          "description": "課程教授產品經理必備的理解力、執行力與傳遞力",
           "language": "繁體中文",
-          "price": "付費",
-          "source": "從 Hahow 搜尋結果第1項"
+          "price": "-",
+          "source": "從 Hahow 課程介紹"
         },
         {
-          "title": "Advanced Anatomy and Physiology Mastery for Physical Therapists",
-          "type": "文章資源",
-          "platform": "SpryPt Blog",
-          "url": "https://www.sprypt.com/blog/skills-that-every-physical-therapist-should-develop",
-          "description": "詳細介紹物理治療師必備的高階人體解剖與生理知識，英文資源。",
-          "language": "English",
-          "source": "2025年最新技術文章"
-        }
-      ]
-    },
-    {
-      "task_title": "生理學基礎",
-      "recommendations": [        {
-          "title": "15 Essential Physical Therapist Skills Every PT Must Master in 2025 - SpryPt",
-          "type": "技術文章",
-          "platform": "SpryPt",
-          "url": "https://www.sprypt.com/blog/skills-that-every-physical-therapist-should-develop",
-          "description": "本篇涵蓋生理學相關知識與技能，重點包括心肺循環及神經系統理解，適合PT持續進修參考，英文資源。",
-          "language": "English",
-          "source": "最新技術文章"
-        }
-      ]
-    },
-    {
-      "task_title": "病理學概論",
-      "recommendations": [        {
-          "title": "Clinical Assessment Skills for Physiotherapists and Occupational Therapists - Comprehensive Guide",
-          "type": "專業書籍",
-          "platform": "CBSPD",
-          "url": "https://www.cbspd.com/product/clinical-assessment-skilss-for-physiotherapists-and-occupationals-therapists-allied-health-professionals-pb-2020",
-          "description": "包含病理學與臨床評估的詳細教材，適合物理治療師病理學入門學習，英文資源。",
-          "language": "English",
-          "source": "專業出版物"
-        }
-      ]
-    },
-    {
-      "task_title": "物理治療理論",
-      "recommendations": [        {
-          "title": "我的日常懶人姿勢管理線上課 - YouTube",
+          "title": "產品經理你問我答！",
           "type": "影片教學",
           "platform": "YouTube",
-          "url": "https://www.youtube.com/watch?v=yUYoHxECndY",
-          "description": "由物理治療師詹珞瑤講授的體態姿勢與疼痛管理理論，包含多種實用姿勢矯正與呼吸訓練方法，繁體中文教學。",
+          "url": "https://www.youtube.com/watch?v=RFTT2hdzVFw",
+          "channel": "大人學",
+          "description": "回答關於產品經理的常見疑問",
           "language": "繁體中文",
-          "source": "YouTube繁中教學"
+          "price": "免費",
+          "views": "-",
+          "source": "從 YouTube 搜尋結果第1項"
         }
       ]
     },
     {
-      "task_title": "臨床評估技能",
-      "recommendations": [        {
-          "title": "Physiotherapy Year II – Clinical Skills List - University of Manitoba",
-          "type": "PDF學術文件",
-          "platform": "University of Manitoba",
-          "url": "https://umanitoba.ca/explore/sites/explore/files/2022-12/NMSK%20-%20Clinical%20Skills%20Learned%20in%20Class%202021.pdf",
-          "description": "涵蓋完整的臨床評估技能與考核標準，包含客觀與主觀評估，適合物理治療學生及初學者參考，英文資源。",
-          "language": "English"
-        }
-      ]
-    },
-    {
-      "task_title": "治療技術學習",
-      "recommendations": [        {
-          "title": "人人必修動力鏈線上課程 - 森動教育訓練",
+      "task_title": "市場調查與分析",
+      "recommendations": [
+        {
+          "title": "從觀念到實踐 - 矽谷產品經理帶你掌握產品全貌觀",
           "type": "線上課程",
-          "platform": "森動教育訓練 Senfit",
-          "url": "https://senfit.tw/online-courses-kinetic-chain/",
-          "description": "啾c物理治療師親授動力鏈治療技術與身體使用說明，包含運動治療專業認證內容，繁體中文，適合實務操作提升。",
-          "language": "繁體中文"
+          "platform": "知識衛星",
+          "url": "https://hi.sat.cool/nnvvl",
+          "instructor": "Chloe Shih",
+          "description": "課程包含市場調查與分析的實踐指導",
+          "language": "繁體中文",
+          "price": "優惠價 4折（限時）",
+          "source": "從知識衛星課程介紹"
         }
       ]
     },
     {
-      "task_title": "實習經驗",
-      "recommendations": [        {
-          "title": "PT and PTA Clinical Performance Instrument (CPI) 3.0 - APTA",
-          "type": "評估工具及指引",
-          "platform": "American Physical Therapy Association",
-          "url": "https://www.apta.org/for-educators/assessments/pt-cpi",
-          "description": "針對物理治療學生臨床表現的評估標準工具，用於臨床實習考核與自我成長追蹤，英文資源。",
-          "language": "English"
+      "task_title": "用戶需求與痛點分析",
+      "recommendations": [
+        {
+          "title": "矽谷阿雅的產品經理實戰指南",
+          "type": "線上課程",
+          "platform": "大人學",
+          "url": "https://reurl.cc/QebW7Z",
+          "instructor": "矽谷阿雅",
+          "description": "課程涵蓋用戶需求與痛點分析",
+          "language": "繁體中文",
+          "price": "-",
+          "source": "從大人學課程介紹"
         }
       ]
     },
     {
-      "task_title": "專業倫理與法律",
-      "recommendations": [        {
-          "title": "Competence in Physical Therapy: A Framework for Understanding Effects of Disuse on Physical Therapy Performance - FSBPT",
-          "type": "專業報告PDF",
-          "platform": "Federation of State Boards of Physical Therapy",
-          "url": "https://www.fsbpt.org/Portals/0/documents/free-resources/Competence_in_PhysicalTherapy_A_Framework_for_UnderstandingEffects_of_Disuse_on_PhysicalTherapyPerformance.pdf",
-          "description": "探討物理治療專業能力與倫理標準，包含專業行為框架，適合進階學習與法規認知，英文資源。",
-          "language": "English"
+      "task_title": "產品規劃與路線圖制定",
+      "recommendations": [
+        {
+          "title": "產品經理的專案管理硬實力",
+          "type": "線上課程",
+          "platform": "Hahow",
+          "url": "https://www.youtube.com/watch?v=iVRGr7AmRYw",
+          "instructor": "Evonne",
+          "description": "課程包含產品規劃與路線圖制定的實踐分享",
+          "language": "繁體中文",
+          "price": "-",
+          "source": "從 Hahow 課程介紹"
         }
       ]
     },
     {
-      "task_title": "持續進修計劃",
-      "recommendations": [        {
-          "title": "PressPlay Academy - 物理治療師詹珞瑤專欄及課程",
-          "type": "線上平台與內容",
-          "platform": "PressPlay Academy",
-          "url": "https://www.pressplay.cc/author/E139D51BAA6CB8F4E6D22B1B382B3ACE",
-          "description": "提供物理治療相關持續教育內容與課程，包含最新技術、日常保養、臨床經驗分享，繁體中文。",
-          "language": "繁體中文"
+      "task_title": "敏捷開發與Scrum方法",
+      "recommendations": [
+        {
+          "title": "從零到一的體驗 - Spotify 產品經理課程",
+          "type": "線上課程",
+          "platform": "PressPlay",
+          "url": "https://www.youtube.com/watch?v=SzDTbQah3o8",
+          "instructor": "Spotify 產品經理",
+          "description": "課程涵蓋敏捷開發方法的實踐應用",
+          "language": "英文（有中文字幕）",
+          "price": "-",
+          "source": "從 PressPlay 課程介紹"
         }
       ]
     },
     {
-      "task_title": "溝通與病人關係",
-      "recommendations": [        {
-          "title": "Clinical Skills List including communication and sensitive practice - University of Manitoba PDF",
-          "type": "PDF教學文件",
-          "platform": "University of Manitoba",
-          "url": "https://umanitoba.ca/explore/sites/explore/files/2022-12/NMSK%20-%20Clinical%20Skills%20Learned%20in%20Class%202021.pdf",
-          "description": "詳細列出臨床溝通技巧、病人關係管理及敏感問題處理方法，英文資源，適合增進臨床人際互動能力。",
-          "language": "English"
+      "task_title": "產品設計基礎",
+      "recommendations": [
+        {
+          "title": "產品思維養成術 - 矽谷產品經理帶你掌握產品全貌觀",
+          "type": "線上課程",
+          "platform": "知識衛星",
+          "url": "https://hi.sat.cool/nnvvl",
+          "instructor": "Chloe Shih",
+          "description": "課程包含產品設計基礎知識的建議",
+          "language": "繁體中文",
+          "price": "優惠價 4折（限時）",
+          "source": "從知識衛星課程介紹"
         }
       ]
     },
     {
-      "task_title": "最新研究與趨勢",
-      "recommendations": [        {
-          "title": "ASPT Core Competencies and Clinical Reasoning Framework - APTA",
-          "type": "最新核心能力指引",
-          "platform": "American Physical Therapy Association",
-          "url": "https://www.apta.org/contentassets/89db00a8ab01418c844ced87e401563e/core-competencies-pt-resident.pdf",
-          "description": "美國物理治療協會最新核心能力與臨床推理模型，代表最新研究趨勢指引，英文資源。",
-          "language": "English"
+      "task_title": "數據分析與指標設定",
+      "recommendations": [
+        {
+          "title": "Spotify 產品經理課程",
+          "type": "線上課程",
+          "platform": "PressPlay",
+          "url": "https://www.youtube.com/watch?v=SzDTbQah3o8",
+          "instructor": "Spotify 產品經理",
+          "description": "課程涵蓋數據分析與指標設定的實踐",
+          "language": "英文（有中文字幕）",
+          "price": "-",
+          "source": "從 PressPlay 課程介紹"
         }
       ]
     },
     {
-      "task_title": "每日運動與健康管理",
-      "recommendations": [        {
-          "title": "日常懶人姿勢管理線上課程 - YouTube - 物理治療師詹珞瑤",
-          "type": "YouTube教學",
-          "platform": "YouTube",
-          "url": "https://www.youtube.com/watch?v=yUYoHxECndY",
-          "description": "介紹日常姿勢矯正與自主舒緩方法，強調正確呼吸與運動，提升生活品質，繁體中文教學。",
-          "language": "繁體中文"
+      "task_title": "產品市場推廣策略",
+      "recommendations": [
+        {
+          "title": "矽谷阿雅的產品經理實戰指南",
+          "type": "線上課程",
+          "platform": "大人學",
+          "url": "https://reurl.cc/QebW7Z",
+          "instructor": "矽谷阿雅",
+          "description": "課程涵蓋產品市場推廣策略的實踐指導",
+          "language": "繁體中文",
+          "price": "-",
+          "source": "從大人學課程介紹"
         }
       ]
     },
     {
-      "task_title": "每日案例學習",
-      "recommendations": [        {
-          "title": "PressPlay Academy 物理治療師詹珞瑤頻道",
-          "type": "線上教學與案例分享",
-          "platform": "PressPlay Academy",
-          "url": "https://www.pressplay.cc/author/E139D51BAA6CB8F4E6D22B1B382B3ACE",
-          "description": "包含多元案例討論與實務操作分享，適合每日學習與反覆精進，繁體中文內容。",
-          "language": "繁體中文"
+      "task_title": "每日市場動態追蹤",
+      "recommendations": [
+        {
+          "title": "矽谷阿雅的產品經理實戰指南",
+          "type": "線上課程",
+          "platform": "大人學",
+          "url": "https://reurl.cc/QebW7Z",
+          "instructor": "矽谷阿雅",
+          "description": "課程涵蓋每日市場動態追蹤的實踐指導",
+          "language": "繁體中文",
+          "price": "-",
+          "source": "從大人學課程介紹"
         }
       ]
     },
     {
-      "task_title": "項目任務標題1（綜合應用）",
-      "recommendations": [        {
-          "title": "Clinical Assessment Skills for Physiotherapists and Occupational Therapists - CBSPD",
-          "type": "綜合應用書籍",
-          "platform": "CBSPD",
-          "url": "https://www.cbspd.com/product/clinical-assessment-skilss-for-physiotherapists-and-occupationals-therapists-allied-health-professionals-pb-2020",
-          "description": "內容涵蓋臨床評估與治療技術的綜合應用，適合完成綜合項目任務，英文資源。",
-          "language": "English"
+      "task_title": "每日設計練習",
+      "recommendations": [
+        {
+          "title": "產品思維養成術 - 矽谷產品經理帶你掌握產品全貌觀",
+          "type": "線上課程",
+          "platform": "知識衛星",
+          "url": "https://hi.sat.cool/nnvvl",
+          "instructor": "Chloe Shih",
+          "description": "課程包含設計基礎知識的建議，幫助你每日設計練習",
+          "language": "繁體中文",
+          "price": "優惠價 4折（限時）",
+          "source": "從知識衛星課程介紹"
         }
       ]
     },
     {
-      "task_title": "項目任務標題2（實驗報告）",
-      "recommendations": [        {
-          "title": "University of Manitoba Clinical Skills List - Neuromusculoskeletal Skills 2021 PDF",
-          "type": "實驗報告與技能文件",
-          "platform": "University of Manitoba",
-          "url": "https://umanitoba.ca/explore/sites/explore/files/2022-12/NMSK%20-%20Clinical%20Skills%20Learned%20in%20Class%202021.pdf",
-          "description": "包含臨床技術與評估方法，適合用於實驗報告和臨床實踐研究，英文資源。",
-          "language": "English"
+      "task_title": "完整產品案例研究",
+      "recommendations": [
+        {
+          "title": "產品思維養成術 - 矽谷產品經理帶你掌握產品全貌觀",
+          "type": "線上課程",
+          "platform": "知識衛星",
+          "url": "https://hi.sat.cool/nnvvl",
+          "instructor": "Chloe Shih",
+          "description": "課程涵蓋成功案例解析，幫助你理解產品管理的實踐",
+          "language": "繁體中文",
+          "price": "優惠價 4折（限時）",
+          "source": "從知識衛星課程介紹"
+        }
+      ]
+    },
+    {
+      "task_title": "產品發布與推廣計劃",
+      "recommendations": [
+        {
+          "title": "矽谷阿雅的產品經理實戰指南",
+          "type": "線上課程",
+          "platform": "大人學",
+          "url": "https://reurl.cc/QebW7Z",
+          "instructor": "矽谷阿雅",
+          "description": "課程涵蓋產品發布與推廣計劃的實踐指導",
+          "language": "繁體中文",
+          "price": "-",
+          "source": "從大人學課程介紹"
         }
       ]
     }
   ]
 }
 ```
+請注意，部分資源的價格和評分可能會依據平台和時間有所變動，建議在平台上查詢最新資訊。

@@ -260,6 +260,39 @@ async fn run_progressive_generation(
         progress: 98,
     }).await?;
 
+    // 為每個任務添加經驗值（根據難度計算）
+    let process_task = |task: crate::models::GeneratedTask| -> serde_json::Value {
+        let experience = match task.difficulty {
+            1 => 15,
+            2 => 25,
+            3 => 35,
+            4 => 50,
+            5 => 75,
+            _ => 25,
+        };
+
+        // 將 GeneratedTask 轉換為 JSON，並添加 experience 欄位
+        let mut task_json = serde_json::to_value(&task).unwrap_or(serde_json::json!({}));
+        task_json["experience"] = serde_json::json!(experience);
+        task_json
+    };
+
+    // 處理所有任務類型
+    let processed_main_tasks: Vec<serde_json::Value> = tasks_response.main_tasks
+        .into_iter()
+        .map(process_task)
+        .collect();
+
+    let processed_daily_tasks: Vec<serde_json::Value> = tasks_response.daily_tasks
+        .into_iter()
+        .map(process_task)
+        .collect();
+
+    let processed_project_tasks: Vec<serde_json::Value> = tasks_response.project_tasks
+        .into_iter()
+        .map(process_task)
+        .collect();
+
     let final_data = serde_json::json!({
         "preview_mode": true,
         "quiz_result_id": request.quiz_result_id,
@@ -272,10 +305,10 @@ async fn run_progressive_generation(
         "learning_summary": tasks_response.learning_summary,
         "personality_insights": tasks_response.personality_insights,
         "estimated_months": tasks_response.estimated_months,
-        "total_tasks": tasks_response.main_tasks.len() + tasks_response.daily_tasks.len() + tasks_response.project_tasks.len(),
-        "main_tasks": tasks_response.main_tasks,
-        "daily_tasks": tasks_response.daily_tasks,
-        "project_tasks": tasks_response.project_tasks,
+        "total_tasks": processed_main_tasks.len() + processed_daily_tasks.len() + processed_project_tasks.len(),
+        "main_tasks": processed_main_tasks,
+        "daily_tasks": processed_daily_tasks,
+        "project_tasks": processed_project_tasks,
     });
 
     tx.send(ProgressEvent::Complete {

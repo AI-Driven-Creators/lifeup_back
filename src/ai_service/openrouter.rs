@@ -1155,10 +1155,14 @@ impl AIService for OpenRouterService {
         // 根據模型類型動態調整 max_tokens
         let max_tokens = if model.contains("perplexity") {
             16000  // Perplexity 模型給予更大的空間
+        } else if model.contains("gpt-oss-120b") {
+            12000  // GPT-OSS-120B 大模型需要更多空間來生成完整的任務細節
         } else if model.contains("claude") || model.contains("anthropic") {
             8000   // Claude 模型需要更多空間來生成完整的任務細節
         } else if model.contains("gpt-4o") && !model.contains("mini") {
             8000   // GPT-4o (非 mini) 支持更長的輸出
+        } else if model.contains("deepseek") || model.contains("o1") || model.contains("gpt-5") {
+            6000   // DeepSeek/o1/gpt-5 等新模型給予較多空間
         } else if model.contains("gpt") {
             6000   // 其他 GPT 模型（包括 gpt-4o-mini）給予較多空間
         } else {
