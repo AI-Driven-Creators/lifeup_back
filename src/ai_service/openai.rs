@@ -6,7 +6,7 @@ use rbatis::RBatis;
 use crate::behavior_analytics::BehaviorAnalytics;
 use super::r#trait::AIService;
 use super::common::{
-    AIGeneratedAchievement, AIGeneratedTask, AIGeneratedTaskPlan, ExpertMatch, Expert,
+    AIGeneratedAchievement, AIGeneratedTask, AIGeneratedTaskPlan, AIGeneratedSkillTags, ExpertMatch, Expert,
     format_ai_output, get_expert_database, build_achievement_prompt_from_summary,
     validate_generated_achievement, validate_generated_task,
     AITaskPrimaryFields, AITaskSecondaryFields, AIPlanPrimaryFields, AIPlanSecondaryFields
@@ -1140,5 +1140,110 @@ impl AIService for OpenAIService {
             serde_json::from_str(&choice.message.content)?;
 
         Ok(classification)
+    }
+
+    async fn generate_skill_tags(
+        &self,
+        task_title: &str,
+        task_description: Option<&str>,
+        user_existing_skills: &[String]
+    ) -> Result<AIGeneratedSkillTags> {
+        // 使用 Fast 模型進行快速技能標籤生成
+        let model = self.get_model_by_tier(super::common::ModelTier::Fast);
+
+        // 構建提示詞
+        let existing_skills_str = if user_existing_skills.is_empty() {
+            "（使用者目前還沒有任何技能）".to_string()
+        } else {
+            user_existing_skills.join("、")
+        };
+
+        let description_part = task_description
+            .map(|d| format!("\n任務描述：{}", d))
+            .unwrap_or_default();
+
+        let system_prompt = format!(
+            r#"你是一個技能標籤生成助手。根據任務資訊，為任務生成 1-3 個相關的技能標籤。
+
+**使用者現有技能：**
+{}
+
+**規則：**
+1. 優先使用使用者現有的技能名稱（如果相關的話）
+2. 如果現有技能不足以描述任務，可以生成新的技能名稱
+3. 技能名稱要簡潔明確，最多 6 個字
+4. 返回 1-3 個技能即可，不要太多
+5. 技能名稱應該是通用的技能類型，而非具體任務名稱
+   - 好的例子：「Python 程式設計」「時間管理」「UI 設計」
+   - 不好的例子：「完成報告」「學習新技能」「寫程式碼」
+
+返回 JSON 格式：
+{{
+  "skills": ["技能1", "技能2"],
+  "reasoning": "選擇理由（可選）"
+}}"#,
+            existing_skills_str
+        );
+
+        let user_prompt = format!(
+            "任務名稱：{}{}",
+            task_title,
+            description_part
+        );
+
+        log::info!("🎯 生成技能標籤 - 任務: {}", task_title);
+        log::debug!("現有技能數量: {}", user_existing_skills.len());
+
+        let request = OpenAIRequest {
+            model: model.to_string(),
+            messages: vec![
+                ChatMessage {
+                    role: "system".to_string(),
+                    content: system_prompt,
+                },
+                ChatMessage {
+                    role: "user".to_string(),
+                    content: user_prompt,
+                },
+            ],
+            max_completion_tokens: 500,
+            response_format: ResponseFormat {
+                format_type: "json_object".to_string(),
+            },
+        };
+
+        let response = self
+            .client
+            .post("https://api.openai.com/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&request)
+            .send()
+            .await?;
+
+        let status = response.status();
+        let text = response.text().await?;
+
+        if !status.is_success() {
+            log::error!("OpenAI API 錯誤 ({}): {}", status, text);
+            return Err(anyhow::anyhow!("OpenAI API 錯誤 ({}): {}", status, text));
+        }
+
+        let parsed: OpenAIResponse = serde_json::from_str(&text)?;
+        let choice = parsed
+            .choices
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("OpenAI 未返回有效回應"))?;
+
+        let skill_tags: AIGeneratedSkillTags = serde_json::from_str(&choice.message.content)
+            .map_err(|e| {
+                log::error!("解析技能標籤失敗: {}", e);
+                log::error!("AI 回應內容: {}", choice.message.content);
+                anyhow::anyhow!("解析 AI 回應失敗: {}", e)
+            })?;
+
+        log::info!("✅ 生成技能標籤成功: {:?}", skill_tags.skills);
+
+        Ok(skill_tags)
     }
 }

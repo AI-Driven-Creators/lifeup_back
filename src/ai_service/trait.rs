@@ -1,6 +1,6 @@
 use anyhow::Result;
 use rbatis::RBatis;
-use super::common::{AIGeneratedAchievement, AIGeneratedTask, AIGeneratedTaskPlan, ExpertMatch};
+use super::common::{AIGeneratedAchievement, AIGeneratedTask, AIGeneratedTaskPlan, AIGeneratedSkillTags, ExpertMatch};
 
 // AI 服務 trait
 #[async_trait::async_trait]
@@ -25,4 +25,12 @@ pub trait AIService {
 
     // 新增：用戶意圖分類（判斷是詳細任務還是模糊目標）
     async fn classify_user_intent(&self, user_input: &str) -> Result<crate::ai_tasks::ClassifyIntentResponse>;
+
+    // 新增：根據任務資訊生成技能標籤
+    async fn generate_skill_tags(
+        &self,
+        task_title: &str,
+        task_description: Option<&str>,
+        user_existing_skills: &[String]
+    ) -> Result<AIGeneratedSkillTags>;
 }

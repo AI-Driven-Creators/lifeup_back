@@ -9,7 +9,7 @@ mod openrouter;
 // 重新導出公開的 API
 pub use r#trait::AIService;
 pub use common::{
-    AIGeneratedAchievement, AIGeneratedTask, AIGeneratedTaskPlan,
+    AIGeneratedAchievement, AIGeneratedTask, AIGeneratedTaskPlan, AIGeneratedSkillTags,
     ExpertMatch, Expert, ModelTier,
     get_expert_database, convert_to_achievement_model, convert_to_task_model,
     build_task_generation_prompt

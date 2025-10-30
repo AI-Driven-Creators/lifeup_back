@@ -6,7 +6,7 @@ use rbatis::RBatis;
 use crate::behavior_analytics::BehaviorAnalytics;
 use super::r#trait::AIService;
 use super::common::{
-    AIGeneratedAchievement, AIGeneratedTask, AIGeneratedTaskPlan, ExpertMatch, Expert,
+    AIGeneratedAchievement, AIGeneratedTask, AIGeneratedTaskPlan, AIGeneratedSkillTags, ExpertMatch, Expert,
     format_ai_output, get_expert_database, build_achievement_prompt_from_summary,
     validate_generated_achievement, validate_generated_task,
     AITaskPrimaryFields, AITaskSecondaryFields, AIPlanPrimaryFields, AIPlanSecondaryFields
@@ -1299,5 +1299,134 @@ impl AIService for OpenRouterService {
             serde_json::from_str(&choice.message.content)?;
 
         Ok(classification)
+    }
+
+    async fn generate_skill_tags(
+        &self,
+        task_title: &str,
+        task_description: Option<&str>,
+        user_existing_skills: &[String]
+    ) -> Result<AIGeneratedSkillTags> {
+        // 使用 Fast 模型進行快速技能標籤生成
+        let model = self.get_model_by_tier(super::common::ModelTier::Fast);
+
+        // 構建提示詞
+        let existing_skills_str = if user_existing_skills.is_empty() {
+            "（使用者目前還沒有任何技能）".to_string()
+        } else {
+            user_existing_skills.join("、")
+        };
+
+        let description_part = task_description
+            .map(|d| format!("\n任務描述：{}", d))
+            .unwrap_or_default();
+
+        let system_prompt = format!(
+            r#"你是一個技能標籤生成助手。你的任務是為使用者的任務生成 1-3 個相關技能標籤。
+
+**重要：你必須只返回 JSON 格式，不要返回其他內容！**
+
+使用者現有技能：{}
+
+規則：
+1. 優先使用使用者現有的技能名稱
+2. 技能名稱要簡潔明確，使用繁體中文，最多 6 個字
+3. 返回 1-3 個技能
+4. 技能應該是通用類型，例如：「烹飪」「Python 程式設計」「時間管理」
+
+必須返回此 JSON 格式：
+{{
+  "skills": ["技能1", "技能2"],
+  "reasoning": "選擇理由"
+}}"#,
+            existing_skills_str
+        );
+
+        let user_prompt = format!(
+            "任務名稱：{}{}",
+            task_title,
+            description_part
+        );
+
+        log::info!("🎯 生成技能標籤 - 任務: {}", task_title);
+        log::debug!("現有技能數量: {}", user_existing_skills.len());
+
+        // 合併 system prompt 和 user prompt
+        let combined_prompt = format!("{}\n\n{}", system_prompt, user_prompt);
+
+        let request = OpenRouterRequest {
+            model: model.to_string(),
+            messages: vec![
+                ChatMessage {
+                    role: "user".to_string(),
+                    content: combined_prompt,
+                },
+            ],
+            max_completion_tokens: 500,
+            response_format: ResponseFormat {
+                format_type: "json_object".to_string(),
+            },
+        };
+
+        let response = self
+            .client
+            .post("https://openrouter.ai/api/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&request)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response.text().await.unwrap_or_else(|_| "無法讀取錯誤訊息".to_string());
+            log::error!("OpenRouter API 錯誤 ({}): {}", status, error_text);
+            return Err(anyhow::anyhow!("OpenRouter API 錯誤: {} - {}", status, error_text));
+        }
+
+        let text = response.text().await?;
+        log::debug!("OpenRouter 原始回應: {}", text);
+
+        let parsed: OpenRouterResponse = serde_json::from_str(&text)?;
+        let choice = parsed
+            .choices
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("OpenRouter 未返回有效回應"))?;
+
+        // 清理 AI 回應內容，移除可能的代碼塊標記
+        let content = choice.message.content.trim();
+        let cleaned_content = if content.starts_with("```json") {
+            // 移除 ```json 開頭和 ``` 結尾
+            content
+                .strip_prefix("```json")
+                .unwrap_or(content)
+                .strip_suffix("```")
+                .unwrap_or(content)
+                .trim()
+        } else if content.starts_with("```") {
+            // 移除 ``` 開頭和 ``` 結尾
+            content
+                .strip_prefix("```")
+                .unwrap_or(content)
+                .strip_suffix("```")
+                .unwrap_or(content)
+                .trim()
+        } else {
+            content
+        };
+
+        log::debug!("清理後的內容: {}", cleaned_content);
+
+        let skill_tags: AIGeneratedSkillTags = serde_json::from_str(cleaned_content)
+            .map_err(|e| {
+                log::error!("解析技能標籤失敗: {}", e);
+                log::error!("AI 回應內容: {}", choice.message.content);
+                log::error!("清理後內容: {}", cleaned_content);
+                anyhow::anyhow!("解析 AI 回應失敗: {}", e)
+            })?;
+
+        log::info!("✅ 生成技能標籤成功: {:?}", skill_tags.skills);
+
+        Ok(skill_tags)
     }
 }

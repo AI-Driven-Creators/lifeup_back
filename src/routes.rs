@@ -4784,4 +4784,87 @@ pub async fn get_task_history(
     }
 }
 
+// ============= AI 技能標籤生成 =============
+
+#[derive(serde::Deserialize)]
+pub struct GenerateSkillTagsRequest {
+    pub task_title: String,
+    pub task_description: Option<String>,
+    pub user_id: String,
+}
+
+#[derive(serde::Serialize)]
+pub struct GenerateSkillTagsResponse {
+    pub skills: Vec<String>,
+    pub reasoning: Option<String>,
+}
+
+/// AI 生成技能標籤
+pub async fn generate_skill_tags(
+    rb: web::Data<RBatis>,
+    req: web::Json<GenerateSkillTagsRequest>,
+) -> Result<HttpResponse> {
+    log::info!("📝 收到技能標籤生成請求 - 任務: {}", req.task_title);
+
+    // 載入 AI 配置
+    let config = crate::config::Config::from_env();
+
+    // 創建 AI 服務
+    let ai_service = match crate::ai_service::create_ai_service(&config.app.ai) {
+        Ok(service) => service,
+        Err(e) => {
+            log::error!("AI 服務初始化失敗: {}", e);
+            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("AI 服務初始化失敗: {}", e),
+            }));
+        }
+    };
+
+    // 獲取使用者現有的技能列表
+    let user_existing_skills: Vec<String> = match Skill::select_by_map(
+        rb.get_ref(),
+        value!{"user_id": &req.user_id}
+    ).await {
+        Ok(skills) => skills
+            .iter()
+            .filter_map(|s| s.name.clone())
+            .collect(),
+        Err(e) => {
+            log::warn!("獲取使用者技能失敗，將使用空列表: {}", e);
+            Vec::new()
+        }
+    };
+
+    log::debug!("使用者現有技能: {:?}", user_existing_skills);
+
+    // 調用 AI 生成技能標籤
+    match ai_service.generate_skill_tags(
+        &req.task_title,
+        req.task_description.as_deref(),
+        &user_existing_skills
+    ).await {
+        Ok(result) => {
+            log::info!("✅ 成功生成技能標籤: {:?}", result.skills);
+            Ok(HttpResponse::Ok().json(ApiResponse {
+                success: true,
+                data: Some(GenerateSkillTagsResponse {
+                    skills: result.skills,
+                    reasoning: result.reasoning,
+                }),
+                message: "成功生成技能標籤".to_string(),
+            }))
+        }
+        Err(e) => {
+            log::error!("生成技能標籤失敗: {}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("生成技能標籤失敗: {}", e),
+            }))
+        }
+    }
+}
+
 

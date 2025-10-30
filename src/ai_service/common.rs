@@ -81,6 +81,13 @@ pub struct AIGeneratedAchievement {
     pub experience_reward: i32,
 }
 
+// AI 生成的技能標籤結構
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AIGeneratedSkillTags {
+    pub skills: Vec<String>,           // AI 生成的技能名稱列表
+    pub reasoning: Option<String>,     // AI 的選擇理由（可選）
+}
+
 // 內部使用的輔助結構
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AITaskPrimaryFields {
