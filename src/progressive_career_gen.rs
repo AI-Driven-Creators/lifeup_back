@@ -527,6 +527,7 @@ fn build_resource_prompt(tasks_json: &str, career: &str) -> String {
 - ⚠️ **優先推薦 2024-2025 年的最新內容**
 - ⚠️ **只回傳 JSON，不要其他文字**
 - ⚠️ **如果搜尋不到繁體中文資源，才推薦高品質英文資源**
+- ⚠️ **所有輸出內容（包括 description、title 等）必須使用繁體中文書寫**
 
 現在請開始搜尋並推薦資源："#,
         career,      // 第1個: 主標題
