@@ -10,7 +10,7 @@ warnings = "allow"
 
 [dependencies]
 # Web 框架
-actix-web = "4.4"
+actix-web = { version = "4.4", features = ["rustls-0_21"] }
 actix-rt = "2.9"
 
 # ORM 框架
@@ -76,3 +76,7 @@ async-trait = "0.1"
 # Async stream 支援 (for SSE)
 async-stream = "0.3"
 futures = "0.3"
+
+# SSL/TLS 支援
+rustls = "0.21"
+rustls-pemfile = "1.0"

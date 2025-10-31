@@ -14,6 +14,10 @@ use actix_web::{web, App, HttpServer};
 use actix_web::middleware::Logger;
 use rbatis::RBatis;
 use rbdc_sqlite::driver::SqliteDriver;
+use rustls::{Certificate, PrivateKey, ServerConfig};
+use rustls_pemfile::{certs, pkcs8_private_keys};
+use std::fs::File;
+use std::io::BufReader;
 
 use config::Config;
 use routes::*;
@@ -22,17 +26,23 @@ use seed_data::{seed_database, seed_minimum_user_data};
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    // 載入 .env 文件
-    dotenv::dotenv().ok();
-    
     // 處理命令行參數
     let args: Vec<String> = std::env::args().collect();
+    let is_production = args.contains(&"prod".to_string());
     let reset_db = args.contains(&"--reset-db".to_string());
     let init_db = args.contains(&"--init-db".to_string());
     let seed_only = args.contains(&"--seed".to_string());
+
+    // 根據命令行參數載入對應的 .env 文件
+    if is_production {
+        dotenv::from_filename(".env.production").ok();
+    } else {
+        dotenv::from_filename(".env.development").ok();
+    }
+
     // 載入配置
     let config = Config::from_env();
-    
+
     // 初始化日誌 - 根據配置設置日誌級別
     let log_level = match config.app.log_level.to_lowercase().as_str() {
         "error" => log::LevelFilter::Error,
@@ -48,7 +58,12 @@ async fn main() -> std::io::Result<()> {
             .console()
             .level(log_level)
     ).expect("日誌初始化失敗");
-    log::info!("LifeUp Backend 啟動中...");
+
+    if is_production {
+        log::info!("LifeUp Backend 啟動中... [生產模式]");
+    } else {
+        log::info!("LifeUp Backend 啟動中... [開發模式]");
+    }
     log::info!("配置: {:?}", config);
     
     // AI 配置調試日誌
@@ -111,28 +126,56 @@ async fn main() -> std::io::Result<()> {
     migrate_database(&rb).await;
 
     let server_addr = config.server_addr();
-    log::info!("啟動 HTTP 伺服器在 http://{}", &server_addr);
 
     // 共享資料庫連線
     let rb_data = web::Data::new(rb.clone());
 
-    HttpServer::new(move || {
-        // 設定 CORS
-        let cors = Cors::default()
-            .allow_any_origin()
-            .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
-            .allowed_headers(vec![
-                actix_web::http::header::AUTHORIZATION,
-                actix_web::http::header::ACCEPT,
-                actix_web::http::header::CONTENT_TYPE,
-            ])
-            .max_age(3600);
+    // 根據環境決定使用 HTTP 還是 HTTPS
+    if is_production {
+        // 生產模式：使用 HTTPS
+        log::info!("啟動 HTTPS 伺服器在 https://{}", &server_addr);
 
-        App::new()
-            // HTTP 請求日誌
-            .wrap(Logger::default())
-            .wrap(cors)
-            .app_data(rb_data.clone())
+        // 載入 SSL 證書和私鑰
+        let cert_file = &mut BufReader::new(File::open("/root/lfup/ssl/fullchain.crt")?);
+        let key_file = &mut BufReader::new(File::open("/root/lfup/ssl/lifeup.key")?);
+
+        let cert_chain: Vec<Certificate> = certs(cert_file)?
+            .into_iter()
+            .map(Certificate)
+            .collect();
+
+        let mut keys: Vec<PrivateKey> = pkcs8_private_keys(key_file)?
+            .into_iter()
+            .map(PrivateKey)
+            .collect();
+
+        if keys.is_empty() {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "找不到私鑰"));
+        }
+
+        let rustls_config = ServerConfig::builder()
+            .with_safe_defaults()
+            .with_no_client_auth()
+            .with_single_cert(cert_chain, keys.remove(0))
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+
+        HttpServer::new(move || {
+            // 設定 CORS
+            let cors = Cors::default()
+                .allow_any_origin()
+                .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+                .allowed_headers(vec![
+                    actix_web::http::header::AUTHORIZATION,
+                    actix_web::http::header::ACCEPT,
+                    actix_web::http::header::CONTENT_TYPE,
+                ])
+                .max_age(3600);
+
+            App::new()
+                // HTTP 請求日誌
+                .wrap(Logger::default())
+                .wrap(cors)
+                .app_data(rb_data.clone())
             // 健康檢查
             .route("/health", web::get().to(health_check))
             // 使用者相關路由
@@ -222,11 +265,127 @@ async fn main() -> std::io::Result<()> {
             .route("/api/users/{user_id}/reset", web::post().to(reset_user_data_selective))
             // 任務歷史路由
             .route("/api/users/{user_id}/task-history", web::get().to(get_task_history))
-    })
-    .workers(2)
-    .bind(&server_addr)?
-    .run()
-    .await
+        })
+        .workers(2)
+        .bind_rustls_021(&server_addr, rustls_config)?
+        .run()
+        .await
+    } else {
+        // 開發模式：使用 HTTP
+        log::info!("啟動 HTTP 伺服器在 http://{}", &server_addr);
+
+        HttpServer::new(move || {
+            // 設定 CORS
+            let cors = Cors::default()
+                .allow_any_origin()
+                .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+                .allowed_headers(vec![
+                    actix_web::http::header::AUTHORIZATION,
+                    actix_web::http::header::ACCEPT,
+                    actix_web::http::header::CONTENT_TYPE,
+                ])
+                .max_age(3600);
+
+            App::new()
+                // HTTP 請求日誌
+                .wrap(Logger::default())
+                .wrap(cors)
+                .app_data(rb_data.clone())
+            // 健康檢查
+            .route("/health", web::get().to(health_check))
+            // 使用者相關路由
+            .route("/api/users", web::get().to(get_users))
+            .route("/api/users", web::post().to(create_user))
+            .route("/api/auth/login", web::post().to(login))
+            .route("/api/auth/logout", web::post().to(logout))
+            .route("/api/users/{id}", web::get().to(get_user))
+            // 任務相關路由
+            .route("/api/tasks", web::get().to(get_tasks))
+            .route("/api/tasks", web::post().to(create_task))
+            .route("/api/tasks/homepage", web::get().to(get_homepage_tasks))
+            .route("/api/tasks/type/{task_type}", web::get().to(get_tasks_by_type))
+            .route("/api/tasks/{id}", web::get().to(get_task))
+            .route("/api/tasks/{id}", web::put().to(update_task))
+            .route("/api/tasks/{id}", web::delete().to(delete_task))
+            .route("/api/tasks/{id}/start", web::post().to(start_task))
+            .route("/api/tasks/{id}/subtasks", web::get().to(get_subtasks))
+            .route("/api/tasks/{id}/pause", web::put().to(pause_task))
+            .route("/api/tasks/{id}/cancel", web::put().to(cancel_task))
+            .route("/api/tasks/{id}/restart", web::put().to(restart_task))
+            // 重複性任務路由
+            .route("/api/recurring-tasks", web::post().to(create_recurring_task))
+            .route("/api/tasks/{id}/generate-daily", web::post().to(generate_daily_tasks))
+            .route("/api/tasks/{id}/progress", web::get().to(get_task_progress))
+            // 技能相關路由
+            .route("/api/skills", web::get().to(get_skills))
+            .route("/api/skills", web::post().to(create_skill))
+            .route("/api/skills/{id}/experience", web::post().to(update_skill_experience))
+            .route("/api/skills/{skill_name}/tasks", web::get().to(get_tasks_by_skill))
+            .route("/api/tasks/generate-skill-tags", web::post().to(generate_skill_tags))
+            // 聊天相關路由
+            .route("/api/chat/messages", web::get().to(get_chat_messages))
+            .route("/api/chat/messages/all", web::get().to(get_all_chat_messages))
+            .route("/api/chat/send", web::post().to(send_message))
+            .route("/api/chat/save-message", web::post().to(save_chat_message))
+            .route("/api/chat/chatgpt", web::post().to(send_message_to_chatgpt))
+            .route("/api/chat/personality", web::post().to(send_message_with_personality))
+            .route("/api/chat/test-personality", web::post().to(send_message_with_direct_personality))
+            .route("/api/chat/test", web::get().to(test_endpoint))
+            // 教練個性相關路由
+            .route("/api/coach/personalities", web::get().to(get_available_personalities))
+            .route("/api/coach/personality", web::post().to(set_coach_personality))
+            .route("/api/coach/personality/current", web::get().to(get_current_personality))
+            // 遊戲化數據相關路由
+            .route("/api/users/{id}/gamified", web::get().to(get_gamified_user_data))
+            .route("/api/users/{id}/experience", web::post().to(update_user_experience))
+            .route("/api/users/{id}/attributes", web::post().to(update_user_attributes))
+            // 成就相關路由
+            .route("/api/achievements", web::get().to(get_achievements))
+            .route("/api/achievements/{id}", web::get().to(get_achievement_details))
+            .route("/api/achievements/sync-stats", web::post().to(sync_achievement_statistics))
+            .route("/api/users/{user_id}/achievements", web::get().to(get_user_achievements))
+            .route("/api/users/{user_id}/achievements/status", web::get().to(get_user_achievements_status))
+            .route("/api/users/{user_id}/achievements/{achievement_id}/unlock", web::post().to(unlock_user_achievement))
+            // 週屬性相關路由
+            .route("/api/users/{user_id}/attributes/weekly/{weeks_ago}", web::get().to(get_weekly_attributes))
+            // AI 任務生成路由
+            .route("/api/tasks/generate", web::post().to(crate::ai_tasks::generate_task_with_ai))
+            .route("/api/tasks/generate-json", web::post().to(crate::ai_tasks::generate_task_json))
+            .route("/api/tasks/generate-daily-task-json", web::post().to(crate::ai_tasks::generate_daily_task_json))
+            .route("/api/tasks/insert-json", web::post().to(crate::ai_tasks::insert_task_from_json))
+            .route("/api/tasks/create-from-json", web::post().to(crate::ai_tasks::create_task_from_json))
+            .route("/api/tasks/validate-preview", web::post().to(crate::ai_tasks::validate_and_preview_task))
+            .route("/api/tasks/generate-from-chat", web::post().to(crate::ai_tasks::generate_task_from_chat))
+            .route("/api/tasks/generate-with-expert", web::post().to(crate::ai_tasks::generate_task_with_expert))
+            .route("/api/tasks/match-expert", web::post().to(crate::ai_tasks::match_expert_only))
+            .route("/api/tasks/expert-analysis", web::post().to(crate::ai_tasks::expert_analysis))
+            .route("/api/tasks/generate-subtasks", web::post().to(crate::ai_tasks::generate_subtasks_for_task))
+            .route("/api/tasks/classify-intent", web::post().to(crate::ai_tasks::classify_user_intent))
+            // AI 成就生成路由
+            .route("/api/achievements/generate", web::post().to(generate_achievement_with_ai))
+            .route(
+                "/api/achievements/generate-from-tasks/{user_id}",
+                web::post().to(crate::ai_tasks::generate_achievement_from_tasks),
+            )
+            // 職業主線任務系統路由
+            .route("/api/quiz/save-results", web::post().to(crate::career_routes::save_quiz_results))
+            .route("/api/career/generate-tasks", web::post().to(crate::career_routes::generate_career_tasks))
+            .route("/api/career/accept-tasks", web::post().to(crate::career_routes::accept_career_tasks))
+            .route("/api/career/import", web::post().to(crate::career_routes::import_career_tasks))
+            // 多步驟漸進式任務生成（SSE）
+            .route("/api/career/generate-tasks-progressive", web::post().to(crate::progressive_career_gen::generate_career_tasks_progressive_sse))
+            .app_data(web::Data::new(config.clone()))
+            // 使用者資料重置路由
+            .route("/api/users/{user_id}/reset", web::delete().to(reset_user_data))
+            .route("/api/users/{user_id}/reset", web::post().to(reset_user_data_selective))
+            // 任務歷史路由
+            .route("/api/users/{user_id}/task-history", web::get().to(get_task_history))
+        })
+        .workers(2)
+        .bind(&server_addr)?
+        .run()
+        .await
+    }
 }
 
 async fn create_tables(rb: &RBatis) {
