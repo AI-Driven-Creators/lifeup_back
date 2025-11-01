@@ -79,3 +79,11 @@ futures = "0.3"
 # SSL/TLS 支援
 rustls = "0.21"
 rustls-pemfile = "1.0"
+
+# Web Push 推送通知
+web-push = "0.9"
+base64 = "0.21"
+url = "2.5"
+
+# 定時任務調度
+tokio-cron-scheduler = "0.9"

@@ -8,6 +8,8 @@ use rbs::{Value, value};
 use bcrypt::{hash, verify, DEFAULT_COST};
 use serde_json::json;
 use rand;
+use log::{info, error};
+use serde::Deserialize;
 // API 回應結構
 #[derive(serde::Serialize)]
 struct ApiResponse<T> {
@@ -4864,6 +4866,218 @@ pub async fn generate_skill_tags(
                 message: format!("生成技能標籤失敗: {}", e),
             }))
         }
+    }
+}
+
+// ================= Push Notification Routes =================
+
+use crate::push_service::PushService;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
+/// 訂閱推送通知
+pub async fn subscribe_push(
+    rb: web::Data<RBatis>,
+    req: web::Json<SubscribeRequest>,
+) -> Result<HttpResponse> {
+    match PushService::new() {
+        Ok(service) => {
+            match service.save_subscription(rb.get_ref(), req.into_inner()).await {
+                Ok(subscription) => Ok(HttpResponse::Ok().json(ApiResponse {
+                    success: true,
+                    data: Some(subscription),
+                    message: "訂閱推送通知成功".to_string(),
+                })),
+                Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: format!("訂閱失敗: {}", e),
+                })),
+            }
+        }
+        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: format!("推送服務初始化失敗: {}", e),
+        })),
+    }
+}
+
+/// 取消訂閱推送通知
+pub async fn unsubscribe_push(
+    rb: web::Data<RBatis>,
+    req: web::Json<UnsubscribeRequest>,
+) -> Result<HttpResponse> {
+    match PushService::new() {
+        Ok(service) => {
+            match service.remove_subscription(rb.get_ref(), req.into_inner()).await {
+                Ok(success) => Ok(HttpResponse::Ok().json(ApiResponse {
+                    success,
+                    data: Some(success),
+                    message: if success { "取消訂閱成功".to_string() } else { "找不到該訂閱".to_string() },
+                })),
+                Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: format!("取消訂閱失敗: {}", e),
+                })),
+            }
+        }
+        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: format!("推送服務初始化失敗: {}", e),
+        })),
+    }
+}
+
+/// 發送測試推送通知
+pub async fn send_test_push(rb: web::Data<RBatis>) -> Result<HttpResponse> {
+    match PushService::new() {
+        Ok(service) => {
+            let payload = PushNotificationPayload {
+                title: "測試通知".to_string(),
+                body: "這是一條測試推送通知！".to_string(),
+                icon: Some("/icon.svg".to_string()),
+                badge: Some("/icon.svg".to_string()),
+                tag: Some("test-notification".to_string()),
+                data: Some(serde_json::json!({
+                    "url": "/",
+                    "timestamp": Utc::now().to_rfc3339()
+                })),
+            };
+
+            match service.broadcast_notification(rb.get_ref(), &payload).await {
+                Ok((success, failed)) => Ok(HttpResponse::Ok().json(ApiResponse {
+                    success: true,
+                    data: Some(serde_json::json!({
+                        "success_count": success,
+                        "failed_count": failed
+                    })),
+                    message: format!("發送完成：成功 {} 個，失敗 {} 個", success, failed),
+                })),
+                Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: format!("發送測試通知失敗: {}", e),
+                })),
+            }
+        }
+        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: format!("推送服務初始化失敗: {}", e),
+        })),
+    }
+}
+
+/// 發送延遲測試推送通知
+#[derive(Deserialize)]
+pub struct DelayedTestPushRequest {
+    user_id: Option<String>,
+    delay_seconds: u64,
+}
+
+pub async fn send_delayed_test_push(
+    rb: web::Data<RBatis>,
+    req: web::Json<DelayedTestPushRequest>,
+) -> Result<HttpResponse> {
+    let delay = req.delay_seconds;
+    let rb_clone = rb.get_ref().clone();
+
+    // 在後台任務中執行延遲發送
+    tokio::spawn(async move {
+        // 等待指定的秒數
+        tokio::time::sleep(tokio::time::Duration::from_secs(delay)).await;
+
+        info!("開始發送延遲測試推送（延遲 {} 秒後）", delay);
+
+        match PushService::new() {
+            Ok(service) => {
+                let payload = PushNotificationPayload {
+                    title: "測試通知".to_string(),
+                    body: format!("這是一條延遲 {} 秒的測試推送通知！", delay),
+                    icon: Some("/icon.svg".to_string()),
+                    badge: Some("/icon.svg".to_string()),
+                    tag: Some("delayed-test-notification".to_string()),
+                    data: Some(serde_json::json!({
+                        "url": "/",
+                        "timestamp": Utc::now().to_rfc3339(),
+                        "delay_seconds": delay
+                    })),
+                };
+
+                match service.broadcast_notification(&rb_clone, &payload).await {
+                    Ok((success, failed)) => {
+                        info!("延遲測試推送發送完成：成功 {} 個，失敗 {} 個", success, failed);
+                    }
+                    Err(e) => {
+                        error!("發送延遲測試通知失敗: {}", e);
+                    }
+                }
+            }
+            Err(e) => {
+                error!("推送服務初始化失敗: {}", e);
+            }
+        }
+    });
+
+    Ok(HttpResponse::Ok().json(ApiResponse {
+        success: true,
+        data: Some(serde_json::json!({
+            "delay_seconds": delay,
+            "scheduled_at": Utc::now().to_rfc3339()
+        })),
+        message: format!("測試推送已排程，將在 {} 秒後發送", delay),
+    }))
+}
+
+/// 獲取所有推送訂閱
+pub async fn get_all_subscriptions(rb: web::Data<RBatis>) -> Result<HttpResponse> {
+    match PushService::new() {
+        Ok(service) => {
+            match service.get_all_subscriptions(rb.get_ref()).await {
+                Ok(subscriptions) => {
+                    let count = subscriptions.len();
+                    Ok(HttpResponse::Ok().json(ApiResponse {
+                        success: true,
+                        data: Some(subscriptions),
+                        message: format!("成功獲取 {} 個訂閱", count),
+                    }))
+                },
+                Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: format!("獲取訂閱列表失敗: {}", e),
+                })),
+            }
+        }
+        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: format!("推送服務初始化失敗: {}", e),
+        })),
+    }
+}
+
+/// 獲取VAPID公鑰
+pub async fn get_vapid_public_key() -> Result<HttpResponse> {
+    match PushService::new() {
+        Ok(service) => {
+            let public_key = service.get_public_key();
+            Ok(HttpResponse::Ok().json(ApiResponse {
+                success: true,
+                data: Some(serde_json::json!({
+                    "public_key": public_key
+                })),
+                message: "獲取VAPID公鑰成功".to_string(),
+            }))
+        }
+        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: format!("推送服務初始化失敗: {}", e),
+        })),
     }
 }
 

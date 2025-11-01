@@ -45,6 +45,7 @@ pub async fn reset_database(rb: &RBatis) -> Result<(), Box<dyn std::error::Error
         "DROP TABLE IF EXISTS career_mainlines",
         "DROP TABLE IF EXISTS quiz_results",
         "DROP TABLE IF EXISTS user_coach_preference",
+        "DROP TABLE IF EXISTS push_subscription",
         // 再刪引用 user 的資料表
         "DROP TABLE IF EXISTS task",
         "DROP TABLE IF EXISTS skill",
@@ -267,6 +268,19 @@ async fn create_all_tables(rb: &RBatis) -> Result<(), Box<dyn std::error::Error>
             adaptability INTEGER DEFAULT 50,
             created_at TEXT,
             UNIQUE(user_id, year, week_number),
+            FOREIGN KEY (user_id) REFERENCES user (id)
+        )
+        "#,
+        // 推送訂閱表
+        r#"
+        CREATE TABLE IF NOT EXISTS push_subscription (
+            id TEXT PRIMARY KEY,
+            user_id TEXT,
+            endpoint TEXT NOT NULL UNIQUE,
+            p256dh_key TEXT NOT NULL,
+            auth_key TEXT NOT NULL,
+            created_at TEXT,
+            updated_at TEXT,
             FOREIGN KEY (user_id) REFERENCES user (id)
         )
         "#,

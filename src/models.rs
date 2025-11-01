@@ -858,3 +858,51 @@ pub struct TaskHistoryResponse {
     pub total_count: i64,
     pub has_more: bool,
 }
+
+// ================= Push Notification Models =================
+
+// 推送訂閱模型
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PushSubscription {
+    pub id: Option<String>,
+    pub user_id: Option<String>,
+    pub endpoint: Option<String>,
+    pub p256dh_key: Option<String>,
+    pub auth_key: Option<String>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
+    pub created_at: Option<DateTime<Utc>>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
+    pub updated_at: Option<DateTime<Utc>>,
+}
+crud!(PushSubscription{});
+
+// 訂閱請求
+#[derive(Clone, Debug, Deserialize)]
+pub struct SubscribeRequest {
+    pub endpoint: String,
+    pub keys: SubscriptionKeys,
+    pub user_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct SubscriptionKeys {
+    pub p256dh: String,
+    pub auth: String,
+}
+
+// 取消訂閱請求
+#[derive(Clone, Debug, Deserialize)]
+pub struct UnsubscribeRequest {
+    pub endpoint: String,
+}
+
+// 推送通知內容
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PushNotificationPayload {
+    pub title: String,
+    pub body: String,
+    pub icon: Option<String>,
+    pub badge: Option<String>,
+    pub tag: Option<String>,
+    pub data: Option<serde_json::Value>,
+}

@@ -9,6 +9,8 @@ mod achievement_service;
 mod career_routes;
 mod behavior_analytics;
 mod progressive_career_gen;
+mod push_service;
+mod push_scheduler;
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
 use actix_web::middleware::Logger;
@@ -150,6 +152,14 @@ async fn main() -> std::io::Result<()> {
     create_tables(&rb).await;
     migrate_database(&rb).await;
 
+    // 啟動推送通知調度器
+    if let Err(e) = push_scheduler::start_push_scheduler(rb.clone()).await {
+        log::warn!("推送通知調度器啟動失敗（可能是 VAPID 金鑰未配置）: {}", e);
+        log::info!("推送通知功能將不可用，但不影響其他服務運行");
+    } else {
+        log::info!("推送通知調度器已成功啟動");
+    }
+
     let server_addr = config.server_addr();
 
     // 共享資料庫連線
@@ -290,6 +300,13 @@ async fn main() -> std::io::Result<()> {
             .route("/api/users/{user_id}/reset", web::post().to(reset_user_data_selective))
             // 任務歷史路由
             .route("/api/users/{user_id}/task-history", web::get().to(get_task_history))
+            // 推送通知路由
+            .route("/api/push/subscribe", web::post().to(subscribe_push))
+            .route("/api/push/unsubscribe", web::post().to(unsubscribe_push))
+            .route("/api/push/test", web::post().to(send_test_push))
+            .route("/api/push/vapid-public-key", web::get().to(get_vapid_public_key))
+            .route("/api/push/subscriptions", web::get().to(get_all_subscriptions))
+            .route("/api/notifications/test-push", web::post().to(send_delayed_test_push))
         })
         .workers(2)
         .bind_rustls_021(&server_addr, rustls_config)?
@@ -405,6 +422,13 @@ async fn main() -> std::io::Result<()> {
             .route("/api/users/{user_id}/reset", web::post().to(reset_user_data_selective))
             // 任務歷史路由
             .route("/api/users/{user_id}/task-history", web::get().to(get_task_history))
+            // 推送通知路由
+            .route("/api/push/subscribe", web::post().to(subscribe_push))
+            .route("/api/push/unsubscribe", web::post().to(unsubscribe_push))
+            .route("/api/push/test", web::post().to(send_test_push))
+            .route("/api/push/vapid-public-key", web::get().to(get_vapid_public_key))
+            .route("/api/push/subscriptions", web::get().to(get_all_subscriptions))
+            .route("/api/notifications/test-push", web::post().to(send_delayed_test_push))
         })
         .workers(2)
         .bind(&server_addr)?
