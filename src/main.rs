@@ -52,12 +52,37 @@ async fn main() -> std::io::Result<()> {
         "trace" => log::LevelFilter::Trace,
         _ => log::LevelFilter::Info,  // 默認為 Info 級別
     };
-    
-    fast_log::init(
-        fast_log::Config::new()
-            .console()
-            .level(log_level)
-    ).expect("日誌初始化失敗");
+
+    // 使用 log4rs 初始化日誌系統
+    use log4rs::{
+        append::{console::ConsoleAppender, file::FileAppender},
+        config::{Appender, Root},
+        encode::pattern::PatternEncoder,
+        Config as Log4rsConfig,
+    };
+
+    // 創建控制台輸出器（stdout）
+    let stdout = ConsoleAppender::builder()
+        .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S)} [{l}] {t} - {m}{n}")))
+        .build();
+
+    // 創建文件輸出器
+    let logfile = FileAppender::builder()
+        .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S)} [{l}] {t} - {m}{n}")))
+        .build("logs/lifeup.log")
+        .expect("無法創建日誌文件");
+
+    // 配置 log4rs
+    let log_config = Log4rsConfig::builder()
+        .appender(Appender::builder().build("stdout", Box::new(stdout)))
+        .appender(Appender::builder().build("logfile", Box::new(logfile)))
+        .build(Root::builder()
+            .appender("stdout")
+            .appender("logfile")
+            .build(log_level))
+        .expect("日誌配置失敗");
+
+    log4rs::init_config(log_config).expect("日誌初始化失敗");
 
     if is_production {
         log::info!("LifeUp Backend 啟動中... [生產模式]");

@@ -29,8 +29,7 @@ tokio = { version = "1.0", features = ["full"] }
 
 # 日志
 log = "0.4"
-fast_log = "1.6"
-env_logger = "0.10"
+log4rs = { version = "1.4", features = ["console_appender", "file_appender", "rolling_file_appender"] }
 
 # 错误处理
 anyhow = "1.0"
