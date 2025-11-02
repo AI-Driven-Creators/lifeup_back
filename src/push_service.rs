@@ -132,6 +132,33 @@ impl PushService {
         Ok(result.rows_affected > 0)
     }
 
+    /// 刪除指定用戶的所有推送訂閱
+    pub async fn remove_all_user_subscriptions(
+        &self,
+        rb: &RBatis,
+        user_id: Option<String>,
+    ) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
+        let result = if let Some(uid) = user_id {
+            // 刪除指定用戶的所有訂閱
+            rb.exec(
+                "DELETE FROM push_subscription WHERE user_id = ?",
+                vec![rbs::to_value!(uid.clone())],
+            )
+            .await?
+        } else {
+            // 如果沒有提供 user_id，刪除所有未關聯用戶的訂閱
+            rb.exec(
+                "DELETE FROM push_subscription WHERE user_id IS NULL",
+                vec![],
+            )
+            .await?
+        };
+
+        let deleted_count = result.rows_affected;
+        info!("刪除 {} 個推送訂閱", deleted_count);
+        Ok(deleted_count)
+    }
+
     /// 獲取所有訂閱
     pub async fn get_all_subscriptions(
         &self,

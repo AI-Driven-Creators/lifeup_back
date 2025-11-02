@@ -5060,6 +5060,41 @@ pub async fn get_all_subscriptions(rb: web::Data<RBatis>) -> Result<HttpResponse
     }
 }
 
+/// 清除用戶的所有推送訂閱
+#[derive(Deserialize)]
+pub struct ClearSubscriptionsRequest {
+    user_id: Option<String>,
+}
+
+pub async fn clear_all_subscriptions(
+    rb: web::Data<RBatis>,
+    req: web::Json<ClearSubscriptionsRequest>,
+) -> Result<HttpResponse> {
+    match PushService::new() {
+        Ok(service) => {
+            match service.remove_all_user_subscriptions(rb.get_ref(), req.user_id.clone()).await {
+                Ok(deleted_count) => Ok(HttpResponse::Ok().json(ApiResponse {
+                    success: true,
+                    data: Some(serde_json::json!({
+                        "deleted_count": deleted_count
+                    })),
+                    message: format!("成功清除 {} 個訂閱", deleted_count),
+                })),
+                Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: format!("清除訂閱失敗: {}", e),
+                })),
+            }
+        }
+        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: format!("推送服務初始化失敗: {}", e),
+        })),
+    }
+}
+
 /// 獲取VAPID公鑰
 pub async fn get_vapid_public_key() -> Result<HttpResponse> {
     match PushService::new() {
