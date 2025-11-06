@@ -379,6 +379,7 @@ pub struct UserProfile {
     pub title: Option<String>,
     pub adventure_days: Option<i32>,
     pub consecutive_login_days: Option<i32>,
+    pub last_login_date: Option<String>,
     pub persona_type: Option<String>,
     #[serde(deserialize_with = "deserialize_optional_datetime", default)]
     pub created_at: Option<DateTime<Utc>>,

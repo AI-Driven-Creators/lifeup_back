@@ -707,6 +707,8 @@ async fn migrate_database(rb: &RBatis) {
         "ALTER TABLE achievement ADD COLUMN related_task_id TEXT",
         // 確保 email 唯一
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_user_email_unique ON user(email)",
+        // 添加最後登入日期欄位，用於計算連續登入天數
+        "ALTER TABLE user_profile ADD COLUMN last_login_date TEXT",
     ];
 
     // SQLite 不支援直接修改欄位約束，需要重建表

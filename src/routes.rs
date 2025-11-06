@@ -1,7 +1,7 @@
 use actix_web::{web, HttpResponse, Result};
 use rbatis::RBatis;
 use uuid::Uuid;
-use chrono::{Utc, Datelike};
+use chrono::{Utc, Datelike, FixedOffset};
 use crate::models::*;
 use crate::ai_service::convert_to_achievement_model;
 use rbs::{Value, value};
@@ -206,6 +206,55 @@ pub async fn login(
                 if let Some(password_hash) = &user.password_hash {
                     match verify(&req.password, password_hash) {
                         Ok(true) => {
+                            // 更新連續登入天數
+                            if let Some(user_id) = &user.id {
+                                // 使用 UTC+8 時區（台灣/中國時區）
+                                let taiwan_tz = FixedOffset::east_opt(8 * 3600).unwrap();
+                                let today = Utc::now().with_timezone(&taiwan_tz).format("%Y-%m-%d").to_string();
+
+                                // 查詢用戶資料
+                                if let Ok(profiles) = UserProfile::select_by_map(rb.get_ref(), value!{"user_id": user_id.clone()}).await {
+                                    if let Some(profile) = profiles.first() {
+                                        let mut new_consecutive_days = 1;
+
+                                        // 計算連續登入天數
+                                        if let Some(last_login) = &profile.last_login_date {
+                                            if last_login == &today {
+                                                // 今天已經登入過，保持不變
+                                                new_consecutive_days = profile.consecutive_login_days.unwrap_or(1);
+                                            } else {
+                                                // 解析日期並比較
+                                                if let (Ok(last_date), Ok(today_date)) = (
+                                                    chrono::NaiveDate::parse_from_str(last_login, "%Y-%m-%d"),
+                                                    chrono::NaiveDate::parse_from_str(&today, "%Y-%m-%d")
+                                                ) {
+                                                    let days_diff = (today_date - last_date).num_days();
+                                                    if days_diff == 1 {
+                                                        // 連續登入
+                                                        new_consecutive_days = profile.consecutive_login_days.unwrap_or(0) + 1;
+                                                    } else {
+                                                        // 中斷了，重置為1
+                                                        new_consecutive_days = 1;
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        // 更新資料庫
+                                        let update_sql = "UPDATE user_profile SET consecutive_login_days = ?, last_login_date = ?, updated_at = ? WHERE user_id = ?";
+                                        let now = Utc::now().to_rfc3339();
+                                        let _ = rb.exec(update_sql, vec![
+                                            rbs::Value::I32(new_consecutive_days),
+                                            rbs::Value::String(today),
+                                            rbs::Value::String(now),
+                                            rbs::Value::String(user_id.clone())
+                                        ]).await;
+
+                                        log::info!("用戶 {} 連續登入天數更新為: {}", user_id, new_consecutive_days);
+                                    }
+                                }
+                            }
+
                             // 登入成功，返回用戶信息（不包含密碼哈希）
                             let mut user_response = user.clone();
                             user_response.password_hash = None; // 不返回密碼哈希
@@ -2535,8 +2584,9 @@ pub async fn get_gamified_user_data(rb: web::Data<RBatis>, path: web::Path<Strin
             format!("獲取屬性失敗: {}", e)
         });
     
-    // 獲取今日進度
-    let today = Utc::now().format("%Y-%m-%d").to_string();
+    // 獲取今日進度（使用 UTC+8 時區）
+    let taiwan_tz = FixedOffset::east_opt(8 * 3600).unwrap();
+    let today = Utc::now().with_timezone(&taiwan_tz).format("%Y-%m-%d").to_string();
     log::info!("步驟 4: 獲取今日進度, 日期: {}", today);
     let today_progress = DailyProgress::select_by_map(rb.get_ref(), value!{"user_id": user_id.clone(), "date": today}).await
         .map_err(|e| {
@@ -2648,11 +2698,77 @@ pub async fn get_gamified_user_data(rb: web::Data<RBatis>, path: web::Path<Strin
             }
             
             let user = user.unwrap();
-            let profile = profile.unwrap();
+            let mut profile = profile.unwrap();
             let attr = attr.unwrap();
-            
+
             log::info!("成功獲取用戶數據: user={:?}, profile={:?}, attr={:?}", user.name, profile.level, attr.intelligence);
-            
+
+            // 檢查並更新連續登入天數（使用 UTC+8 時區）
+            let taiwan_tz = FixedOffset::east_opt(8 * 3600).unwrap();
+            let today = Utc::now().with_timezone(&taiwan_tz).format("%Y-%m-%d").to_string();
+            let mut should_update_streak = false;
+            let mut new_consecutive_days = profile.consecutive_login_days.unwrap_or(1);
+
+            if let Some(last_login) = &profile.last_login_date {
+                if last_login != &today {
+                    // 不是今天登入過，需要更新
+                    should_update_streak = true;
+
+                    // 解析日期並比較
+                    if let (Ok(last_date), Ok(today_date)) = (
+                        chrono::NaiveDate::parse_from_str(last_login, "%Y-%m-%d"),
+                        chrono::NaiveDate::parse_from_str(&today, "%Y-%m-%d")
+                    ) {
+                        let days_diff = (today_date - last_date).num_days();
+                        if days_diff == 1 {
+                            // 連續登入
+                            new_consecutive_days = profile.consecutive_login_days.unwrap_or(0) + 1;
+                            log::info!("用戶 {} 連續登入，天數 +1: {}", user_id, new_consecutive_days);
+                        } else {
+                            // 中斷了，重置為1
+                            new_consecutive_days = 1;
+                            log::info!("用戶 {} 登入中斷，重置為 1 天", user_id);
+                        }
+                    }
+                }
+            } else {
+                // 第一次記錄登入日期
+                should_update_streak = true;
+                new_consecutive_days = 1;
+                log::info!("用戶 {} 首次記錄登入日期", user_id);
+            }
+
+            // 如果需要更新，執行資料庫更新
+            if should_update_streak {
+                let update_sql = "UPDATE user_profile SET consecutive_login_days = ?, last_login_date = ?, updated_at = ? WHERE user_id = ?";
+                let now = Utc::now().to_rfc3339();
+                if let Err(e) = rb.exec(update_sql, vec![
+                    rbs::Value::I32(new_consecutive_days),
+                    rbs::Value::String(today.clone()),
+                    rbs::Value::String(now),
+                    rbs::Value::String(user_id.clone())
+                ]).await {
+                    log::error!("更新連續登入天數失敗: {}", e);
+                } else {
+                    // 更新成功，同步到當前 profile 物件
+                    profile.consecutive_login_days = Some(new_consecutive_days);
+                    profile.last_login_date = Some(today.clone());
+                    log::info!("用戶 {} 連續登入天數已更新為: {}", user_id, new_consecutive_days);
+                }
+            }
+
+            // 計算冒險天數（從賬號創建日期算起）
+            let adventure_days = if let Some(created_at) = profile.created_at {
+                let created_date = created_at.with_timezone(&taiwan_tz).date_naive();
+                let today_date = Utc::now().with_timezone(&taiwan_tz).date_naive();
+                let days_diff = (today_date - created_date).num_days();
+                // 創建當天算第1天，所以要 +1
+                (days_diff + 1) as i32
+            } else {
+                profile.adventure_days.unwrap_or(1)
+            };
+            log::info!("用戶 {} 冒險天數: {}", user_id, adventure_days);
+
             // 處理今日進度 - 如果沒有數據就返回空值
             let today_progress_data = if let Some(progress) = progress_list.first() {
                 log::info!("找到今日進度數據: {:?}", progress);
@@ -2690,7 +2806,7 @@ pub async fn get_gamified_user_data(rb: web::Data<RBatis>, path: web::Path<Strin
                 "experience": profile.experience,
                 "maxExperience": profile.max_experience,
                 "title": profile.title,
-                "adventureDays": profile.adventure_days,
+                "adventureDays": adventure_days,
                 "consecutiveLoginDays": profile.consecutive_login_days,
                 "personaType": profile.persona_type,
                 "attributes": {
