@@ -703,9 +703,66 @@ async fn migrate_database(rb: &RBatis) {
         "ALTER TABLE task ADD COLUMN attributes TEXT",
         "ALTER TABLE quiz_results ADD COLUMN updated_at TEXT",
         "ALTER TABLE skill ADD COLUMN attribute TEXT DEFAULT 'intelligence'",
+        "ALTER TABLE achievement ADD COLUMN career_mainline_id TEXT",
+        "ALTER TABLE achievement ADD COLUMN related_task_id TEXT",
         // 確保 email 唯一
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_user_email_unique ON user(email)",
     ];
+
+    // SQLite 不支援直接修改欄位約束，需要重建表
+    // 先檢查是否需要處理 requirement_type 的 NOT NULL 約束
+    let check_nullable = rb.query_decode::<Vec<serde_json::Value>>(
+        "PRAGMA table_info(achievement)",
+        vec![]
+    ).await;
+
+    if let Ok(columns) = check_nullable {
+        let requirement_type_col = columns.iter().find(|col| {
+            col.get("name").and_then(|v| v.as_str()) == Some("requirement_type")
+        });
+
+        if let Some(col) = requirement_type_col {
+            let is_not_null = col.get("notnull").and_then(|v| v.as_i64()).unwrap_or(0) == 1;
+            if is_not_null {
+                log::info!("檢測到 achievement.requirement_type 為 NOT NULL，開始遷移...");
+
+                // 重建 achievement 表，讓 requirement_type 可為 NULL
+                let rebuild_queries = vec![
+                    // 1. 備份現有數據
+                    "CREATE TABLE achievement_backup AS SELECT * FROM achievement",
+                    // 2. 刪除舊表
+                    "DROP TABLE achievement",
+                    // 3. 創建新表（requirement_type 允許 NULL）
+                    r#"CREATE TABLE achievement (
+                        id TEXT PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        description TEXT,
+                        icon TEXT,
+                        category TEXT DEFAULT 'general',
+                        requirement_type TEXT,
+                        requirement_value INTEGER DEFAULT 1,
+                        experience_reward INTEGER DEFAULT 50,
+                        career_mainline_id TEXT,
+                        related_task_id TEXT,
+                        created_at TEXT
+                    )"#,
+                    // 4. 恢復數據
+                    "INSERT INTO achievement SELECT * FROM achievement_backup",
+                    // 5. 刪除備份表
+                    "DROP TABLE achievement_backup",
+                ];
+
+                for query in rebuild_queries {
+                    match rb.exec(query, vec![]).await {
+                        Ok(_) => log::info!("✅ 執行成功: {}", query.chars().take(50).collect::<String>()),
+                        Err(e) => log::error!("❌ 執行失敗: {} - {}", query.chars().take(50).collect::<String>(), e),
+                    }
+                }
+
+                log::info!("✅ achievement 表遷移完成，requirement_type 現在允許 NULL");
+            }
+        }
+    }
 
     for query in alter_table_queries {
         match rb.exec(query, vec![]).await {

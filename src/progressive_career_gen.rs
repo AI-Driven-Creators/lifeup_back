@@ -43,6 +43,10 @@ pub enum ProgressEvent {
     ResourcesComplete {
         content: serde_json::Value,
     },
+    #[serde(rename = "achievements_complete")]
+    AchievementsComplete {
+        content: serde_json::Value,
+    },
     #[serde(rename = "complete")]
     Complete {
         final_data: serde_json::Value,
@@ -250,6 +254,50 @@ async fn run_progressive_generation(
     tx.send(ProgressEvent::Status {
         stage: "resources_done".to_string(),
         message: "✅ 資源推薦完成".to_string(),
+        progress: 80,
+    }).await?;
+
+    // ===== 階段 4：成就生成 =====
+    log::info!("🏆 開始階段 4：成就生成（模型：{}）", config.app.ai.openai_model);
+
+    tx.send(ProgressEvent::Status {
+        stage: "generating_achievements".to_string(),
+        message: "🏆 AI 正在生成專屬成就...".to_string(),
+        progress: 85,
+    }).await?;
+
+    let achievements_prompt = build_achievements_prompt(
+        &request.selected_career,
+        &tasks_response,
+    );
+
+    let achievements_result = ai_service.generate_with_model(&config.app.ai.openai_model, &achievements_prompt).await?;
+
+    log::info!("✅ 成就生成 API 呼叫完成，回應長度: {} 字元", achievements_result.len());
+
+    // 解析成就結果
+    let cleaned_achievements_result = achievements_result.trim()
+        .trim_start_matches("```json")
+        .trim_start_matches("```")
+        .trim_end_matches("```")
+        .trim();
+
+    let achievements_json: serde_json::Value = serde_json::from_str(cleaned_achievements_result)
+        .unwrap_or_else(|e| {
+            log::error!("❌ 成就 JSON 解析失敗: {}", e);
+            log::error!("前 500 字元: {}", truncate_str_safe(cleaned_achievements_result, 500));
+            serde_json::json!({"achievements": []})
+        });
+
+    log::info!("📊 解析後的成就數據: {}", serde_json::to_string_pretty(&achievements_json).unwrap_or_else(|_| "無法序列化".to_string()));
+
+    tx.send(ProgressEvent::AchievementsComplete {
+        content: achievements_json.clone(),
+    }).await?;
+
+    tx.send(ProgressEvent::Status {
+        stage: "achievements_done".to_string(),
+        message: "✅ 成就生成完成".to_string(),
         progress: 95,
     }).await?;
 
@@ -302,6 +350,7 @@ async fn run_progressive_generation(
         "outline": outline_json,
         "tasks": tasks_json,
         "resources": resources_json,
+        "achievements": achievements_json,
         "learning_summary": tasks_response.learning_summary,
         "personality_insights": tasks_response.personality_insights,
         "estimated_months": tasks_response.estimated_months,
@@ -541,6 +590,70 @@ fn build_resource_prompt(tasks_json: &str, career: &str) -> String {
         career,      // 搜尋2-2
         career,      // 搜尋3-1
         career       // 搜尋3-2
+    )
+}
+
+fn build_achievements_prompt(
+    career: &str,
+    tasks_response: &crate::models::GeneratedTasksResponse,
+) -> String {
+    // 提取主線任務標題
+    let main_task_titles: Vec<String> = tasks_response.main_tasks
+        .iter()
+        .map(|t| t.title.clone())
+        .collect();
+
+    let tasks_list = main_task_titles.iter()
+        .enumerate()
+        .map(|(i, title)| format!("{}. {}", i + 1, title))
+        .collect::<Vec<String>>()
+        .join("\n");
+
+    format!(
+        r#"你是專業的遊戲化成就設計師。請為「{}」職業主線任務生成 4-8 個專屬成就。
+
+## 任務列表
+{}
+
+## 成就設計原則
+1. **與具體任務內容相關**：每個成就應該與具體的任務或學習里程碑綁定
+2. **有成就感**：選擇最有里程碑意義的時刻（如「第一次體驗」「關鍵技能突破」「實戰項目完成」）
+3. **命名有趣**：使用生動、有創意的成就名稱（如「Hello World 工程師」「Debug 大魔王」）
+4. **描述清晰**：簡潔說明如何達成此成就
+5. **數量彈性**：根據任務內容決定生成 4-8 個成就，挑選最重要的里程碑
+
+## 成就類型建議
+- **入門成就**：完成第一個關鍵任務（如「踏出第一步」）
+- **技能突破**：掌握某項核心技能（如「物件導向大師」）
+- **實戰項目**：完成第一個作品（如「作品誕生」）
+- **困難挑戰**：克服高難度任務（如「效能優化達人」）
+
+## 輸出格式（JSON）
+```json
+{{
+  "achievements": [
+    {{
+      "name": "成就名稱（有趣、簡潔）",
+      "description": "成就描述（如何達成）",
+      "icon": "適合的 emoji 圖標",
+      "related_task_title": "關聯的任務標題（從上面任務列表中選擇）",
+      "category": "career_specific",
+      "experience_reward": 50
+    }}
+  ]
+}}
+```
+
+## 重要提醒
+- ⚠️ **只回傳 JSON，不要其他文字**
+- ⚠️ **所有內容必須使用繁體中文**
+- ⚠️ **生成 4-8 個成就，挑選最有意義的里程碑**
+- ⚠️ **每個成就必須關聯到具體的任務**
+- ⚠️ **experience_reward 根據難度設定為 30-100**
+
+現在請開始生成成就："#,
+        career,
+        tasks_list
     )
 }
 

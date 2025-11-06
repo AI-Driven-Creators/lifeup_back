@@ -337,6 +337,15 @@ pub async fn accept_career_tasks(
     let daily_tasks: Vec<GeneratedTask> = serde_json::from_value(request["daily_tasks"].clone()).unwrap_or_default();
     let project_tasks: Vec<GeneratedTask> = serde_json::from_value(request["project_tasks"].clone()).unwrap_or_default();
 
+    // 解析生成的成就數據
+    let achievements_data = request.get("achievements")
+        .and_then(|v| v.get("achievements"))
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    log::info!("📊 解析到 {} 個AI生成的成就", achievements_data.len());
+
     let total_tasks = main_tasks.len() + daily_tasks.len() + project_tasks.len();
 
     // 檢查是否已經為此測驗結果和職業生成過任務 - 如果有則先刪除
@@ -506,7 +515,61 @@ pub async fn accept_career_tasks(
         log::warn!("更新父任務經驗值時發生錯誤: {}", e);
     }
 
-    // 7. 記錄到聊天記錄（作為 AI 互動記錄）
+    // 7. 保存AI生成的成就到資料庫
+    let mut saved_achievements = 0;
+    for ach_data in &achievements_data {
+        if let (Some(name), Some(description), Some(icon)) = (
+            ach_data.get("name").and_then(|v| v.as_str()),
+            ach_data.get("description").and_then(|v| v.as_str()),
+            ach_data.get("icon").and_then(|v| v.as_str()),
+        ) {
+            let experience_reward = ach_data.get("experience_reward")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(50) as i32;
+
+            let category = ach_data.get("category")
+                .and_then(|v| v.as_str())
+                .unwrap_or("career_specific");
+
+            let related_task_title = ach_data.get("related_task_title")
+                .and_then(|v| v.as_str());
+
+            // 尋找對應的任務ID
+            let related_task_id = if let Some(task_title) = related_task_title {
+                created_tasks.iter()
+                    .find(|t| t.title.as_ref().map(|s| s.as_str()) == Some(task_title))
+                    .and_then(|t| t.id.clone())
+            } else {
+                None
+            };
+
+            let achievement = crate::models::Achievement {
+                id: Some(Uuid::new_v4().to_string()),
+                name: Some(name.to_string()),
+                description: Some(description.to_string()),
+                icon: Some(icon.to_string()),
+                category: Some(category.to_string()),
+                requirement_type: None,  // 職業專屬成就不使用傳統的需求類型
+                requirement_value: None,
+                experience_reward: Some(experience_reward),
+                career_mainline_id: Some(mainline_id.clone()),
+                related_task_id,
+                created_at: Some(Utc::now()),
+            };
+
+            match crate::models::Achievement::insert(rb.get_ref(), &achievement).await {
+                Ok(_) => {
+                    saved_achievements += 1;
+                    log::info!("✅ 保存成就: {}", name);
+                }
+                Err(e) => log::error!("❌ 保存成就失敗: {} - {}", name, e),
+            }
+        }
+    }
+
+    log::info!("🏆 成功保存 {} 個職業專屬成就", saved_achievements);
+
+    // 8. 記錄到聊天記錄（作為 AI 互動記錄）
     let chat_message = crate::models::ChatMessage {
         id: Some(Uuid::new_v4().to_string()),
         user_id: Some(user_id.clone()),
@@ -522,7 +585,7 @@ pub async fn accept_career_tasks(
         log::warn!("保存聊天記錄失敗: {}", e);
     }
 
-    // 8. 返回成功回應
+    // 9. 返回成功回應
     Ok(HttpResponse::Ok().json(ApiResponse {
         success: true,
         data: Some(serde_json::json!({
@@ -536,6 +599,7 @@ pub async fn accept_career_tasks(
                 "subtasks_count": created_tasks.len()
             },
             "subtasks_created": created_tasks.len(),
+            "achievements_created": saved_achievements,
             "learning_summary": learning_summary,
             "estimated_months": estimated_months,
             "subtasks": created_tasks

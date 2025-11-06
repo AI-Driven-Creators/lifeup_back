@@ -539,6 +539,8 @@ pub fn convert_to_achievement_model(
         requirement_type,
         requirement_value: Some(ai_achievement.requirement_value),
         experience_reward: Some(ai_achievement.experience_reward),
+        career_mainline_id: None,
+        related_task_id: None,
         created_at: Some(now),
     }
 }

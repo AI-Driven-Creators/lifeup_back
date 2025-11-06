@@ -450,6 +450,8 @@ pub struct Achievement {
     pub requirement_type: Option<AchievementRequirementType>,
     pub requirement_value: Option<i32>,
     pub experience_reward: Option<i32>,
+    pub career_mainline_id: Option<String>,  // 關聯的職業主線 ID
+    pub related_task_id: Option<String>,     // 關聯的任務 ID
     #[serde(deserialize_with = "deserialize_optional_datetime", default)]
     pub created_at: Option<DateTime<Utc>>,
 }

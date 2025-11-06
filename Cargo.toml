@@ -85,5 +85,8 @@ web-push = "0.9"
 base64 = "0.21"
 url = "2.5"
 
+# OpenSSL (Windows 相容性)
+openssl = { version = "0.10", features = ["vendored"] }
+
 # 定時任務調度
 tokio-cron-scheduler = "0.9"
