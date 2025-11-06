@@ -3,17 +3,21 @@
 *.db
 *.db-shm
 *.db-wal
-backend.log
 
-*.db-shm
-*.db-wal
-*.db
+# 日誌文件
+*.log
 
-lifeup.db-shm
-lifeup.db-wal
 # 臨時測試文件
 bug.json
 last.json
 
 # 日誌目錄
 logs/
+
+# Node.js
+node_modules/
+package-lock.json
+
+# VAPID 私鑰
+vapid_private.pem
+*.pem
