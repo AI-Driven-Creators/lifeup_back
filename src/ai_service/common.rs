@@ -81,11 +81,17 @@ pub struct AIGeneratedAchievement {
     pub experience_reward: i32,
 }
 
+// 技能標籤與屬性映射
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SkillWithAttribute {
+    pub skill: String,                 // 技能名稱
+    pub attribute: String,             // 對應的六大屬性之一: intelligence, endurance, creativity, social, focus, adaptability
+}
+
 // AI 生成的技能標籤結構
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AIGeneratedSkillTags {
-    pub skills: Vec<String>,           // AI 生成的技能名稱列表
-    pub reasoning: Option<String>,     // AI 的選擇理由（可選）
+    pub skills: Vec<SkillWithAttribute>,  // AI 生成的技能名稱及其對應屬性列表
 }
 
 // 內部使用的輔助結構

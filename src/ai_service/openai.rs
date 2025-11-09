@@ -1163,10 +1163,18 @@ impl AIService for OpenAIService {
             .unwrap_or_default();
 
         let system_prompt = format!(
-            r#"你是一個技能標籤生成助手。根據任務資訊，為任務生成 1-3 個相關的技能標籤。
+            r#"你是一個技能標籤生成助手。根據任務資訊，為任務生成 1-3 個相關的技能標籤，並標註每個技能對應的六大屬性。
 
 **使用者現有技能：**
 {}
+
+**六大屬性定義：**
+- intelligence (智力): 學習、分析、邏輯思考、程式設計、研究等
+- endurance (毅力): 堅持、健身、長期目標、自律、耐力等
+- creativity (創造力): 藝術、設計、創意思考、寫作、音樂等
+- social (社交力): 溝通、團隊合作、人際關係、演講、領導等
+- focus (專注力): 專注、效率、時間管理、任務執行、細節處理等
+- adaptability (適應力): 學習新事物、解決問題、應變能力、多任務處理等
 
 **規則：**
 1. 優先使用使用者現有的技能名稱（如果相關的話）
@@ -1176,11 +1184,14 @@ impl AIService for OpenAIService {
 5. 技能名稱應該是通用的技能類型，而非具體任務名稱
    - 好的例子：「Python 程式設計」「時間管理」「UI 設計」
    - 不好的例子：「完成報告」「學習新技能」「寫程式碼」
+6. 為每個技能選擇最相關的屬性（從六大屬性中選一個）
 
 返回 JSON 格式：
 {{
-  "skills": ["技能1", "技能2"],
-  "reasoning": "選擇理由（可選）"
+  "skills": [
+    {{"skill": "技能名稱", "attribute": "intelligence"}},
+    {{"skill": "技能名稱", "attribute": "focus"}}
+  ]
 }}"#,
             existing_skills_str
         );

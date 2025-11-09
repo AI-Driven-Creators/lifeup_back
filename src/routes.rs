@@ -4912,9 +4912,14 @@ pub struct GenerateSkillTagsRequest {
 }
 
 #[derive(serde::Serialize)]
+pub struct SkillWithAttribute {
+    pub skill: String,
+    pub attribute: String,
+}
+
+#[derive(serde::Serialize)]
 pub struct GenerateSkillTagsResponse {
-    pub skills: Vec<String>,
-    pub reasoning: Option<String>,
+    pub skills: Vec<SkillWithAttribute>,
 }
 
 /// AI 生成技能標籤
@@ -4965,11 +4970,16 @@ pub async fn generate_skill_tags(
     ).await {
         Ok(result) => {
             log::info!("✅ 成功生成技能標籤: {:?}", result.skills);
+            // 轉換 AI 服務返回的結構為 API 響應結構
+            let response_skills = result.skills.into_iter().map(|s| SkillWithAttribute {
+                skill: s.skill,
+                attribute: s.attribute,
+            }).collect();
+
             Ok(HttpResponse::Ok().json(ApiResponse {
                 success: true,
                 data: Some(GenerateSkillTagsResponse {
-                    skills: result.skills,
-                    reasoning: result.reasoning,
+                    skills: response_skills,
                 }),
                 message: "成功生成技能標籤".to_string(),
             }))
