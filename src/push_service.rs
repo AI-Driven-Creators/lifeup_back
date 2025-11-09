@@ -18,9 +18,9 @@ impl PushService {
     /// 創建新的推送服務實例
     pub fn new() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let vapid_private_key = env::var("VAPID_PRIVATE_KEY")
-            .map_err(|_| "VAPID_PRIVATE_KEY not found in environment")?;
+            .map_err(|_| "環境變數中找不到 VAPID_PRIVATE_KEY")?;
         let vapid_public_key = env::var("VAPID_PUBLIC_KEY")
-            .map_err(|_| "VAPID_PUBLIC_KEY not found in environment")?;
+            .map_err(|_| "環境變數中找不到 VAPID_PUBLIC_KEY")?;
 
         Ok(Self {
             vapid_private_key,
@@ -193,12 +193,12 @@ impl PushService {
 
         // 構建 VAPID 簽名構建器 - 從 PEM 文件讀取
         let pem_file = File::open("vapid_private.pem")
-            .map_err(|e| format!("Failed to open PEM file: {}", e))?;
+            .map_err(|e| format!("無法開啟 PEM 檔案: {}", e))?;
 
         let mut builder = VapidSignatureBuilder::from_pem(
             pem_file,
             &subscription_info,
-        ).map_err(|e| format!("Failed to create VAPID signature builder: {:?}", e))?;
+        ).map_err(|e| format!("無法建立 VAPID 簽名構建器: {:?}", e))?;
 
         builder.add_claim("sub", "mailto:noreply@lifeup-study.top");
 

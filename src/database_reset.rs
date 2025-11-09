@@ -25,7 +25,7 @@ pub async fn reset_database(rb: &RBatis) -> Result<(), Box<dyn std::error::Error
     let environment = env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string());
     if environment != "development" {
         error!("數據庫重置僅允許在開發環境執行！當前環境: {}", environment);
-        return Err("Production environment reset not allowed".into());
+        return Err("不允許在生產環境重置資料庫".into());
     }
 
     info!("開始重置數據庫...");
