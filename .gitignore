@@ -1,5 +1,14 @@
 /target
+
+# 環境配置文件（包含敏感資訊）
 .env
+.env.development
+.env.production
+.env.*.local
+.env.bak
+*.env.bak
+
+# 資料庫文件
 *.db
 *.db-shm
 *.db-wal
