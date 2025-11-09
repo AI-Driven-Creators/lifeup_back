@@ -5242,4 +5242,216 @@ pub async fn get_vapid_public_key() -> Result<HttpResponse> {
     }
 }
 
+// ================= Notification Settings Routes =================
+
+use crate::notification_generator::NotificationGenerator;
+
+/// 獲取用戶通知設定
+pub async fn get_notification_settings(
+    rb: web::Data<RBatis>,
+    user_id: web::Path<String>,
+) -> Result<HttpResponse> {
+    let user_id = user_id.into_inner();
+
+    let result: Option<UserNotificationSettings> = rb
+        .query_decode(
+            "SELECT * FROM user_notification_settings WHERE user_id = ?",
+            vec![rbs::to_value!(&user_id)],
+        )
+        .await
+        .unwrap_or(None);
+
+    match result {
+        Some(settings) => Ok(HttpResponse::Ok().json(ApiResponse {
+            success: true,
+            data: Some(settings),
+            message: "獲取通知設定成功".to_string(),
+        })),
+        None => {
+            // 如果不存在，創建默認設定
+            let default_settings = UserNotificationSettings {
+                id: Some(uuid::Uuid::new_v4().to_string()),
+                user_id: Some(user_id),
+                enabled: Some(true),
+                notify_on_workdays: Some(true),
+                notify_on_holidays: Some(false),
+                morning_enabled: Some(true),
+                morning_time: Some("08:00".to_string()),
+                evening_enabled: Some(true),
+                evening_time: Some("22:00".to_string()),
+                custom_schedules: Some("[]".to_string()),
+                created_at: Some(Utc::now()),
+                updated_at: Some(Utc::now()),
+            };
+
+            match UserNotificationSettings::insert(rb.get_ref(), &default_settings).await {
+                Ok(_) => Ok(HttpResponse::Ok().json(ApiResponse {
+                    success: true,
+                    data: Some(default_settings),
+                    message: "創建默認通知設定成功".to_string(),
+                })),
+                Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                    success: false,
+                    data: None,
+                    message: format!("創建默認通知設定失敗: {}", e),
+                })),
+            }
+        }
+    }
+}
+
+/// 更新用戶通知設定
+pub async fn update_notification_settings(
+    rb: web::Data<RBatis>,
+    user_id: web::Path<String>,
+    req: web::Json<UpdateNotificationSettingsRequest>,
+) -> Result<HttpResponse> {
+    let user_id = user_id.into_inner();
+    let updates = req.into_inner();
+
+    // 先獲取現有設定
+    let mut existing: Option<UserNotificationSettings> = rb
+        .query_decode(
+            "SELECT * FROM user_notification_settings WHERE user_id = ?",
+            vec![rbs::to_value!(user_id.clone())],
+        )
+        .await
+        .unwrap_or(None);
+
+    let settings = match &mut existing {
+        Some(settings) => {
+            // 更新字段
+            if let Some(enabled) = updates.enabled {
+                settings.enabled = Some(enabled);
+            }
+            if let Some(notify_on_workdays) = updates.notify_on_workdays {
+                settings.notify_on_workdays = Some(notify_on_workdays);
+            }
+            if let Some(notify_on_holidays) = updates.notify_on_holidays {
+                settings.notify_on_holidays = Some(notify_on_holidays);
+            }
+            if let Some(morning_enabled) = updates.morning_enabled {
+                settings.morning_enabled = Some(morning_enabled);
+            }
+            if let Some(morning_time) = updates.morning_time {
+                settings.morning_time = Some(morning_time);
+            }
+            if let Some(evening_enabled) = updates.evening_enabled {
+                settings.evening_enabled = Some(evening_enabled);
+            }
+            if let Some(evening_time) = updates.evening_time {
+                settings.evening_time = Some(evening_time);
+            }
+            if let Some(custom_schedules) = updates.custom_schedules {
+                settings.custom_schedules = Some(serde_json::to_string(&custom_schedules).unwrap_or_else(|_| "[]".to_string()));
+            }
+            settings.updated_at = Some(Utc::now());
+            settings.clone()
+        }
+        None => {
+            // 創建新設定
+            UserNotificationSettings {
+                id: Some(uuid::Uuid::new_v4().to_string()),
+                user_id: Some(user_id.clone()),
+                enabled: updates.enabled.or(Some(true)),
+                notify_on_workdays: updates.notify_on_workdays.or(Some(true)),
+                notify_on_holidays: updates.notify_on_holidays.or(Some(false)),
+                morning_enabled: updates.morning_enabled.or(Some(true)),
+                morning_time: updates.morning_time.or(Some("08:00".to_string())),
+                evening_enabled: updates.evening_enabled.or(Some(true)),
+                evening_time: updates.evening_time.or(Some("22:00".to_string())),
+                custom_schedules: updates
+                    .custom_schedules
+                    .map(|s| serde_json::to_string(&s).unwrap_or_else(|_| "[]".to_string()))
+                    .or(Some("[]".to_string())),
+                created_at: Some(Utc::now()),
+                updated_at: Some(Utc::now()),
+            }
+        }
+    };
+
+    // 保存到數據庫
+    let is_update = existing.is_some();
+    let settings_clone = settings.clone();
+
+    let save_result = if is_update {
+        rb.exec(
+            "UPDATE user_notification_settings
+             SET enabled = ?, notify_on_workdays = ?, notify_on_holidays = ?,
+                 morning_enabled = ?, morning_time = ?, evening_enabled = ?, evening_time = ?,
+                 custom_schedules = ?, updated_at = datetime('now')
+             WHERE user_id = ?",
+            vec![
+                rbs::to_value!(settings_clone.enabled.clone()),
+                rbs::to_value!(settings_clone.notify_on_workdays.clone()),
+                rbs::to_value!(settings_clone.notify_on_holidays.clone()),
+                rbs::to_value!(settings_clone.morning_enabled.clone()),
+                rbs::to_value!(settings_clone.morning_time.clone()),
+                rbs::to_value!(settings_clone.evening_enabled.clone()),
+                rbs::to_value!(settings_clone.evening_time.clone()),
+                rbs::to_value!(settings_clone.custom_schedules.clone()),
+                rbs::to_value!(user_id),
+            ],
+        )
+        .await
+    } else {
+        UserNotificationSettings::insert(rb.get_ref(), &settings_clone).await
+    };
+
+    match save_result {
+        Ok(_) => Ok(HttpResponse::Ok().json(ApiResponse {
+            success: true,
+            data: Some(settings),
+            message: "更新通知設定成功".to_string(),
+        })),
+        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: format!("更新通知設定失敗: {}", e),
+        })),
+    }
+}
+
+/// 預覽早上通知內容
+pub async fn preview_morning_notification(
+    rb: web::Data<RBatis>,
+    user_id: web::Path<String>,
+) -> Result<HttpResponse> {
+    let user_id = user_id.into_inner();
+
+    match NotificationGenerator::generate_morning_notification(rb.get_ref(), &user_id).await {
+        Ok(notification) => Ok(HttpResponse::Ok().json(ApiResponse {
+            success: true,
+            data: Some(notification),
+            message: "生成早上通知預覽成功".to_string(),
+        })),
+        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: format!("生成通知預覽失敗: {}", e),
+        })),
+    }
+}
+
+/// 預覽晚上通知內容
+pub async fn preview_evening_notification(
+    rb: web::Data<RBatis>,
+    user_id: web::Path<String>,
+) -> Result<HttpResponse> {
+    let user_id = user_id.into_inner();
+
+    match NotificationGenerator::generate_evening_notification(rb.get_ref(), &user_id).await {
+        Ok(notification) => Ok(HttpResponse::Ok().json(ApiResponse {
+            success: true,
+            data: Some(notification),
+            message: "生成晚上通知預覽成功".to_string(),
+        })),
+        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: format!("生成通知預覽失敗: {}", e),
+        })),
+    }
+}
+
 

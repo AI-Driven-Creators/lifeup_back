@@ -231,6 +231,51 @@ impl PushService {
         }
     }
 
+    /// 發送推送通知到指定用戶的所有訂閱
+    pub async fn send_notification_to_user(
+        &self,
+        rb: &RBatis,
+        user_id: &str,
+        payload: &PushNotificationPayload,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // 查找該用戶的所有訂閱
+        let subscriptions: Vec<PushSubscription> = rb
+            .query_decode(
+                "SELECT * FROM push_subscription WHERE user_id = ?",
+                vec![rbs::to_value!(user_id)],
+            )
+            .await?;
+
+        if subscriptions.is_empty() {
+            info!("用戶 {} 沒有訂閱", user_id);
+            return Ok(());
+        }
+
+        info!("為用戶 {} 發送通知到 {} 個訂閱", user_id, subscriptions.len());
+
+        for subscription in subscriptions {
+            let endpoint_clone = subscription.endpoint.clone();
+
+            match self.send_notification(&subscription, payload).await {
+                Ok(_) => {},
+                Err(e) => {
+                    error!("發送到 {} 失敗: {}",
+                        endpoint_clone.clone().unwrap_or_default(), e);
+
+                    // 如果訂閱失效（410 Gone），從資料庫中刪除
+                    if e.to_string().contains("410") || e.to_string().contains("expired") {
+                        let _ = rb.exec(
+                            "DELETE FROM push_subscription WHERE endpoint = ?",
+                            vec![rbs::to_value!(endpoint_clone.unwrap_or_default())],
+                        ).await;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// 批量發送推送通知到所有訂閱
     pub async fn broadcast_notification(
         &self,

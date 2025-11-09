@@ -11,6 +11,8 @@ mod behavior_analytics;
 mod progressive_career_gen;
 mod push_service;
 mod push_scheduler;
+mod calendar_service;
+mod notification_generator;
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
 use actix_web::middleware::Logger;
@@ -152,8 +154,21 @@ async fn main() -> std::io::Result<()> {
     create_tables(&rb).await;
     migrate_database(&rb).await;
 
+    // 初始化日曆服務（用於假日判斷）
+    let calendar_service = match calendar_service::CalendarService::new() {
+        Ok(service) => {
+            log::info!("日曆服務初始化成功，載入 {} 個假日", service.get_holiday_count());
+            service
+        }
+        Err(e) => {
+            log::warn!("日曆服務初始化失敗: {}", e);
+            log::info!("將使用簡單的週末判斷作為備用");
+            calendar_service::CalendarService::new().unwrap()
+        }
+    };
+
     // 啟動推送通知調度器
-    if let Err(e) = push_scheduler::start_push_scheduler(rb.clone()).await {
+    if let Err(e) = push_scheduler::start_push_scheduler(rb.clone(), calendar_service).await {
         log::warn!("推送通知調度器啟動失敗（可能是 VAPID 金鑰未配置）: {}", e);
         log::info!("推送通知功能將不可用，但不影響其他服務運行");
     } else {
@@ -308,6 +323,11 @@ async fn main() -> std::io::Result<()> {
             .route("/api/push/subscriptions", web::get().to(get_all_subscriptions))
             .route("/api/push/clear-all", web::post().to(clear_all_subscriptions))
             .route("/api/notifications/test-push", web::post().to(send_delayed_test_push))
+            // 通知設定路由
+            .route("/api/notification-settings/{user_id}", web::get().to(get_notification_settings))
+            .route("/api/notification-settings/{user_id}", web::put().to(update_notification_settings))
+            .route("/api/notifications/preview-morning/{user_id}", web::post().to(preview_morning_notification))
+            .route("/api/notifications/preview-evening/{user_id}", web::post().to(preview_evening_notification))
         })
         .workers(2)
         .bind_rustls_021(&server_addr, rustls_config)?
@@ -431,6 +451,11 @@ async fn main() -> std::io::Result<()> {
             .route("/api/push/subscriptions", web::get().to(get_all_subscriptions))
             .route("/api/push/clear-all", web::post().to(clear_all_subscriptions))
             .route("/api/notifications/test-push", web::post().to(send_delayed_test_push))
+            // 通知設定路由
+            .route("/api/notification-settings/{user_id}", web::get().to(get_notification_settings))
+            .route("/api/notification-settings/{user_id}", web::put().to(update_notification_settings))
+            .route("/api/notifications/preview-morning/{user_id}", web::post().to(preview_morning_notification))
+            .route("/api/notifications/preview-evening/{user_id}", web::post().to(preview_evening_notification))
         })
         .workers(2)
         .bind(&server_addr)?
@@ -695,6 +720,30 @@ async fn create_tables(rb: &RBatis) {
 }
 
 async fn migrate_database(rb: &RBatis) {
+    // 創建用戶通知設定表
+    let create_table_query = r#"
+        CREATE TABLE IF NOT EXISTS user_notification_settings (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL UNIQUE,
+            enabled INTEGER DEFAULT 1,
+            notify_on_workdays INTEGER DEFAULT 1,
+            notify_on_holidays INTEGER DEFAULT 0,
+            morning_enabled INTEGER DEFAULT 1,
+            morning_time TEXT DEFAULT '08:00',
+            evening_enabled INTEGER DEFAULT 1,
+            evening_time TEXT DEFAULT '22:00',
+            custom_schedules TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (user_id) REFERENCES user(id)
+        )
+    "#;
+
+    match rb.exec(create_table_query, vec![]).await {
+        Ok(_) => log::info!("✅ user_notification_settings 表創建成功"),
+        Err(e) => log::warn!("user_notification_settings 表創建警告: {}", e),
+    }
+
     // 添加職業任務相關欄位到 task 表
     let alter_table_queries = vec![
         "ALTER TABLE user ADD COLUMN password_hash TEXT",

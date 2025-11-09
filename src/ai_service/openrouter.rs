@@ -727,6 +727,7 @@ impl AIService for OpenRouterService {
 選擇原則：
 1. 根據任務的核心領域選擇專家，只能選一個
 2. 考慮專家的專業領域是否與任務匹配
+3. 如果無法確定最合適的專家，或任務描述不清楚，請選擇「學習方法顧問」作為預設專家
 回應格式（JSON），必需嚴格遵守：
 {{
   "expert_name": "專家的完整名稱",
@@ -780,17 +781,62 @@ impl AIService for OpenRouterService {
 
         let openrouter_response: OpenRouterResponse = serde_json::from_str(&response_text)?;
 
+        // 定義預設專家（學習方法顧問）
+        let get_default_expert = || -> ExpertMatch {
+            ExpertMatch {
+                expert: Expert {
+                    name: "學習方法顧問".to_string(),
+                    description: "教育心理學專家，專精於學習方法和記憶技巧".to_string(),
+                    expertise_areas: vec![
+                        "學習方法".to_string(),
+                        "記憶技巧".to_string(),
+                        "考試準備".to_string(),
+                        "知識管理".to_string(),
+                    ],
+                    emoji: "📖".to_string(),
+                },
+                ai_expert_name: "學習方法顧問".to_string(),
+                ai_expert_description: "教育心理學專家，專精於學習方法和記憶技巧".to_string(),
+            }
+        };
+
         if let Some(choice) = openrouter_response.choices.first() {
             let match_json = &choice.message.content;
-            let match_result: serde_json::Value = serde_json::from_str(match_json)?;
 
-            let expert_name = match_result["expert_name"].as_str()
-                .ok_or_else(|| anyhow::anyhow!("無效的專家名稱"))?.to_string();
+            // 檢查是否為空響應，使用預設專家
+            if match_json.trim().is_empty() {
+                log::warn!("AI 返回空響應，使用預設專家：學習方法顧問");
+                return Ok(get_default_expert());
+            }
 
-            let expert_description = match_result["expert_description"].as_str()
-                .ok_or_else(|| anyhow::anyhow!("無效的專家描述"))?.to_string();
+            // 嘗試解析 JSON，失敗時使用預設專家
+            let match_result: serde_json::Value = match serde_json::from_str(match_json) {
+                Ok(result) => result,
+                Err(e) => {
+                    log::warn!("JSON 解析失敗: {}，使用預設專家：學習方法顧問", e);
+                    return Ok(get_default_expert());
+                }
+            };
 
-            // 直接使用AI返回的專家信息，創建虛擬專家對象
+            // 提取專家名稱，失敗時使用預設專家
+            let expert_name = match match_result["expert_name"].as_str() {
+                Some(name) if !name.trim().is_empty() => name.to_string(),
+                _ => {
+                    log::warn!("缺少或無效的 expert_name 字段，使用預設專家：學習方法顧問");
+                    return Ok(get_default_expert());
+                }
+            };
+
+            // 提取專家描述，失敗時使用預設專家
+            let expert_description = match match_result["expert_description"].as_str() {
+                Some(desc) if !desc.trim().is_empty() => desc.to_string(),
+                _ => {
+                    log::warn!("缺少或無效的 expert_description 字段，使用預設專家：學習方法顧問");
+                    return Ok(get_default_expert());
+                }
+            };
+
+            // 直接使用AI返回的專家資訊，創建虛擬專家對象
             let virtual_expert = Expert {
                 name: expert_name.clone(),
                 description: expert_description.clone(),
@@ -804,7 +850,8 @@ impl AIService for OpenRouterService {
                 ai_expert_description: expert_description,
             })
         } else {
-            Err(anyhow::anyhow!("OpenRouter 未返回有效回應"))
+            log::warn!("OpenRouter 未返回有效回應，使用預設專家：學習方法顧問");
+            Ok(get_default_expert())
         }
     }
 

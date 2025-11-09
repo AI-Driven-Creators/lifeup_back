@@ -909,3 +909,44 @@ pub struct PushNotificationPayload {
     pub tag: Option<String>,
     pub data: Option<serde_json::Value>,
 }
+
+// 用戶通知設定模型
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct UserNotificationSettings {
+    pub id: Option<String>,
+    pub user_id: Option<String>,
+    pub enabled: Option<bool>,
+    pub notify_on_workdays: Option<bool>,
+    pub notify_on_holidays: Option<bool>,
+    pub morning_enabled: Option<bool>,
+    pub morning_time: Option<String>,
+    pub evening_enabled: Option<bool>,
+    pub evening_time: Option<String>,
+    pub custom_schedules: Option<String>, // JSON string
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
+    pub created_at: Option<DateTime<Utc>>,
+    #[serde(deserialize_with = "deserialize_optional_datetime", default)]
+    pub updated_at: Option<DateTime<Utc>>,
+}
+crud!(UserNotificationSettings{});
+
+// 更新通知設定請求
+#[derive(Clone, Debug, Deserialize)]
+pub struct UpdateNotificationSettingsRequest {
+    pub enabled: Option<bool>,
+    pub notify_on_workdays: Option<bool>,
+    pub notify_on_holidays: Option<bool>,
+    pub morning_enabled: Option<bool>,
+    pub morning_time: Option<String>,
+    pub evening_enabled: Option<bool>,
+    pub evening_time: Option<String>,
+    pub custom_schedules: Option<Vec<CustomSchedule>>,
+}
+
+// 自定義通知時段
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CustomSchedule {
+    pub time: String,           // HH:MM 格式
+    pub enabled: bool,
+    pub schedule_type: String,  // "custom", "reminder", etc.
+}
