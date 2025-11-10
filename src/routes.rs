@@ -415,6 +415,18 @@ pub async fn create_task(
                 }
             }
 
+            // 異步生成任務對應的成就（不阻塞響應）
+            // 只為非子任務生成成就
+            if new_task.parent_task_id.is_none() {
+                let rb_clone = rb.get_ref().clone();
+                let task_clone = new_task.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = crate::ai_tasks_achievement::generate_achievement_for_task(&rb_clone, &task_clone).await {
+                        log::error!("異步生成成就失敗: {}", e);
+                    }
+                });
+            }
+
             Ok(HttpResponse::Created().json(ApiResponse {
                 success: true,
                 data: Some(new_task),
@@ -1084,7 +1096,29 @@ pub async fn update_task(
                                 log::warn!("更新父任務經驗值時發生錯誤: {}", e);
                             }
                         }
-                        
+
+                        // 如果任務狀態變為已完成，檢查並解鎖成就
+                        if task.status == Some(crate::models::TaskStatus::Completed.to_i32()) {
+                            if let Some(user_id) = &task.user_id {
+                                let rb_clone = rb.get_ref().clone();
+                                let user_id_clone = user_id.clone();
+                                tokio::spawn(async move {
+                                    match crate::achievement_service::AchievementService::check_and_unlock_achievements(&rb_clone, &user_id_clone).await {
+                                        Ok(unlocked) if !unlocked.is_empty() => {
+                                            let names: Vec<String> = unlocked.iter()
+                                                .map(|a| a.name.clone().unwrap_or_default())
+                                                .collect();
+                                            log::info!("🎉 用戶 {} 解鎖了 {} 個成就: {}", user_id_clone, unlocked.len(), names.join(", "));
+                                        }
+                                        Ok(_) => {}
+                                        Err(e) => {
+                                            log::error!("檢查成就解鎖失敗: {}", e);
+                                        }
+                                    }
+                                });
+                            }
+                        }
+
                         Ok(HttpResponse::Ok().json(ApiResponse {
                             success: true,
                             data: Some(task),

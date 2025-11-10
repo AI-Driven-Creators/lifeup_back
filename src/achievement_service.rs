@@ -27,10 +27,23 @@ impl AchievementService {
 
             let should_unlock = match &achievement.requirement_type {
                 Some(AchievementRequirementType::TaskComplete) => {
-                    let sql = "SELECT COUNT(*) FROM task WHERE user_id = ? AND status = ?";
-                    let args = vec![user_id.into(), TaskStatus::Completed.to_i32().into()];
-                    let count: u64 = rb.query_decode(sql, args).await?;
-                    count >= requirement_value as u64
+                    // 如果成就有 related_task_id，檢查該特定任務是否完成
+                    if let Some(related_task_id) = &achievement.related_task_id {
+                        let sql = "SELECT COUNT(*) FROM task WHERE id = ? AND user_id = ? AND status = ?";
+                        let args = vec![
+                            related_task_id.clone().into(),
+                            user_id.into(),
+                            TaskStatus::Completed.to_i32().into()
+                        ];
+                        let count: u64 = rb.query_decode(sql, args).await?;
+                        count > 0
+                    } else {
+                        // 沒有 related_task_id，檢查完成任務總數
+                        let sql = "SELECT COUNT(*) FROM task WHERE user_id = ? AND status = ?";
+                        let args = vec![user_id.into(), TaskStatus::Completed.to_i32().into()];
+                        let count: u64 = rb.query_decode(sql, args).await?;
+                        count >= requirement_value as u64
+                    }
                 },
                 Some(AchievementRequirementType::LearningTaskComplete) => {
                     let sql = "SELECT COUNT(*) FROM task WHERE user_id = ? AND status = ? AND skill_tags LIKE ?";

@@ -5,6 +5,7 @@ mod database_reset;
 mod seed_data;
 mod ai_service;
 mod ai_tasks;
+mod ai_tasks_achievement;
 mod achievement_service;
 mod career_routes;
 mod behavior_analytics;
