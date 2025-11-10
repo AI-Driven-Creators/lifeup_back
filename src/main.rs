@@ -319,11 +319,11 @@ async fn main() -> std::io::Result<()> {
             // 推送通知路由
             .route("/api/push/subscribe", web::post().to(subscribe_push))
             .route("/api/push/unsubscribe", web::post().to(unsubscribe_push))
-            .route("/api/push/test", web::post().to(send_test_push))
+            .route("/api/push/test/{user_id}", web::post().to(send_test_push))
             .route("/api/push/vapid-public-key", web::get().to(get_vapid_public_key))
             .route("/api/push/subscriptions", web::get().to(get_all_subscriptions))
             .route("/api/push/clear-all", web::post().to(clear_all_subscriptions))
-            .route("/api/notifications/test-push", web::post().to(send_delayed_test_push))
+            .route("/api/notifications/test-push/{user_id}", web::post().to(send_delayed_test_push))
             // 通知設定路由
             .route("/api/notification-settings/{user_id}", web::get().to(get_notification_settings))
             .route("/api/notification-settings/{user_id}", web::put().to(update_notification_settings))
@@ -447,11 +447,11 @@ async fn main() -> std::io::Result<()> {
             // 推送通知路由
             .route("/api/push/subscribe", web::post().to(subscribe_push))
             .route("/api/push/unsubscribe", web::post().to(unsubscribe_push))
-            .route("/api/push/test", web::post().to(send_test_push))
+            .route("/api/push/test/{user_id}", web::post().to(send_test_push))
             .route("/api/push/vapid-public-key", web::get().to(get_vapid_public_key))
             .route("/api/push/subscriptions", web::get().to(get_all_subscriptions))
             .route("/api/push/clear-all", web::post().to(clear_all_subscriptions))
-            .route("/api/notifications/test-push", web::post().to(send_delayed_test_push))
+            .route("/api/notifications/test-push/{user_id}", web::post().to(send_delayed_test_push))
             // 通知設定路由
             .route("/api/notification-settings/{user_id}", web::get().to(get_notification_settings))
             .route("/api/notification-settings/{user_id}", web::put().to(update_notification_settings))

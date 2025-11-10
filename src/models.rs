@@ -1,6 +1,7 @@
 use rbatis::crud;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize, Deserializer};
+use serde_json;
 use rbatis::{RBatis, Error as RbatisError};
 
 // 成就達成條件類型列舉
@@ -162,10 +163,29 @@ fn deserialize_optional_datetime<'de, D>(deserializer: D) -> Result<Option<DateT
 where
     D: Deserializer<'de>,
 {
+    use chrono::NaiveDateTime;
+
     let opt: Option<String> = Option::deserialize(deserializer)?;
     match opt {
         Some(s) if s.is_empty() => Ok(None),
-        Some(s) => s.parse::<DateTime<Utc>>().map(Some).map_err(serde::de::Error::custom),
+        Some(s) => {
+            // 嘗試解析 ISO 8601 格式（RFC3339）
+            if let Ok(dt) = s.parse::<DateTime<Utc>>() {
+                return Ok(Some(dt));
+            }
+
+            // 嘗試解析 SQLite datetime 格式：YYYY-MM-DD HH:MM:SS
+            if let Ok(naive) = NaiveDateTime::parse_from_str(&s, "%Y-%m-%d %H:%M:%S") {
+                return Ok(Some(DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc)));
+            }
+
+            // 嘗試解析 SQLite datetime 格式（帶毫秒）：YYYY-MM-DD HH:MM:SS.fff
+            if let Ok(naive) = NaiveDateTime::parse_from_str(&s, "%Y-%m-%d %H:%M:%S%.f") {
+                return Ok(Some(DateTime::<Utc>::from_naive_utc_and_offset(naive, Utc)));
+            }
+
+            Err(serde::de::Error::custom(format!("無法解析日期時間格式: {}", s)))
+        },
         None => Ok(None),
     }
 }
@@ -183,6 +203,78 @@ where
             None => Err(serde::de::Error::custom(format!("Unknown requirement type: {}", s))),
         },
         None => Ok(None),
+    }
+}
+
+// 自定義反序列化函數處理 custom_schedules 字段（可能是字串或陣列）
+fn deserialize_custom_schedules<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Error;
+    use serde_json::Value;
+
+    let opt: Option<Value> = Option::deserialize(deserializer)?;
+    match opt {
+        None => Ok(None),
+        Some(Value::String(s)) => {
+            if s.is_empty() {
+                Ok(Some("[]".to_string()))
+            } else {
+                Ok(Some(s))
+            }
+        }
+        Some(Value::Array(_)) => {
+            // 如果收到陣列，將其序列化為 JSON 字串
+            Ok(Some(serde_json::to_string(&opt.unwrap()).map_err(Error::custom)?))
+        }
+        Some(Value::Null) => Ok(None),
+        Some(other) => {
+            // 嘗試將其他類型轉換為 JSON 字串
+            Ok(Some(serde_json::to_string(&other).map_err(Error::custom)?))
+        }
+    }
+}
+
+// 自定義反序列化函數處理 SQLite 的 boolean 欄位（可能是 integer 0/1）
+fn deserialize_optional_bool<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde_json::Value;
+
+    let opt: Option<Value> = Option::deserialize(deserializer)?;
+    match opt {
+        None => Ok(None),
+        Some(Value::Bool(b)) => Ok(Some(b)),
+        Some(Value::Number(n)) => {
+            if let Some(i) = n.as_i64() {
+                Ok(Some(i != 0))
+            } else {
+                Ok(None)
+            }
+        }
+        Some(Value::String(s)) => {
+            match s.as_str() {
+                "true" | "1" => Ok(Some(true)),
+                "false" | "0" => Ok(Some(false)),
+                _ => Ok(None),
+            }
+        }
+        Some(Value::Null) => Ok(None),
+        _ => Ok(None),
+    }
+}
+
+// 自定義序列化函數處理 SQLite 的 boolean 欄位（轉換為 integer 0/1）
+fn serialize_optional_bool<S>(value: &Option<bool>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    match value {
+        Some(true) => serializer.serialize_some(&1),
+        Some(false) => serializer.serialize_some(&0),
+        None => serializer.serialize_none(),
     }
 }
 
@@ -915,13 +1007,19 @@ pub struct PushNotificationPayload {
 pub struct UserNotificationSettings {
     pub id: Option<String>,
     pub user_id: Option<String>,
+    #[serde(deserialize_with = "deserialize_optional_bool", default)]
     pub enabled: Option<bool>,
+    #[serde(deserialize_with = "deserialize_optional_bool", default)]
     pub notify_on_workdays: Option<bool>,
+    #[serde(deserialize_with = "deserialize_optional_bool", default)]
     pub notify_on_holidays: Option<bool>,
+    #[serde(deserialize_with = "deserialize_optional_bool", default)]
     pub morning_enabled: Option<bool>,
     pub morning_time: Option<String>,
+    #[serde(deserialize_with = "deserialize_optional_bool", default)]
     pub evening_enabled: Option<bool>,
     pub evening_time: Option<String>,
+    #[serde(deserialize_with = "deserialize_custom_schedules", default)]
     pub custom_schedules: Option<String>, // JSON string
     #[serde(deserialize_with = "deserialize_optional_datetime", default)]
     pub created_at: Option<DateTime<Utc>>,

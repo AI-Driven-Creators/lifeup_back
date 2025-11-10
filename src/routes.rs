@@ -5092,7 +5092,12 @@ pub async fn unsubscribe_push(
 }
 
 /// 發送測試推送通知
-pub async fn send_test_push(rb: web::Data<RBatis>) -> Result<HttpResponse> {
+pub async fn send_test_push(
+    rb: web::Data<RBatis>,
+    user_id: web::Path<String>,
+) -> Result<HttpResponse> {
+    let user_id = user_id.into_inner();
+
     match PushService::new() {
         Ok(service) => {
             let payload = PushNotificationPayload {
@@ -5107,14 +5112,13 @@ pub async fn send_test_push(rb: web::Data<RBatis>) -> Result<HttpResponse> {
                 })),
             };
 
-            match service.broadcast_notification(rb.get_ref(), &payload).await {
-                Ok((success, failed)) => Ok(HttpResponse::Ok().json(ApiResponse {
+            match service.send_notification_to_user(rb.get_ref(), &user_id, &payload).await {
+                Ok(_) => Ok(HttpResponse::Ok().json(ApiResponse {
                     success: true,
                     data: Some(serde_json::json!({
-                        "success_count": success,
-                        "failed_count": failed
+                        "user_id": user_id
                     })),
-                    message: format!("發送完成：成功 {} 個，失敗 {} 個", success, failed),
+                    message: format!("已向用戶 {} 發送測試通知", user_id),
                 })),
                 Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
                     success: false,
@@ -5134,42 +5138,45 @@ pub async fn send_test_push(rb: web::Data<RBatis>) -> Result<HttpResponse> {
 /// 發送延遲測試推送通知
 #[derive(Deserialize)]
 pub struct DelayedTestPushRequest {
-    user_id: Option<String>,
-    delay_seconds: u64,
+    delay_seconds: Option<u64>,
 }
 
 pub async fn send_delayed_test_push(
     rb: web::Data<RBatis>,
+    user_id: web::Path<String>,
     req: web::Json<DelayedTestPushRequest>,
 ) -> Result<HttpResponse> {
-    let delay = req.delay_seconds;
+    let user_id = user_id.into_inner();
+    let user_id_clone = user_id.clone();
+    let delay = req.delay_seconds.unwrap_or(5);  // 默認5秒
     let rb_clone = rb.get_ref().clone();
 
     // 在後台任務中執行延遲發送
     tokio::spawn(async move {
+        info!("延遲 {} 秒後發送測試通知給用戶: {}", delay, user_id_clone);
+
         // 等待指定的秒數
         tokio::time::sleep(tokio::time::Duration::from_secs(delay)).await;
-
-        info!("開始發送延遲測試推送（延遲 {} 秒後）", delay);
 
         match PushService::new() {
             Ok(service) => {
                 let payload = PushNotificationPayload {
-                    title: "測試通知".to_string(),
-                    body: format!("這是一條延遲 {} 秒的測試推送通知！", delay),
+                    title: "延遲測試通知".to_string(),
+                    body: format!("這是延遲 {} 秒的測試推送！", delay),
                     icon: Some("/icon.svg".to_string()),
                     badge: Some("/icon.svg".to_string()),
                     tag: Some("delayed-test-notification".to_string()),
                     data: Some(serde_json::json!({
                         "url": "/",
+                        "type": "delayed-test",
                         "timestamp": Utc::now().to_rfc3339(),
                         "delay_seconds": delay
                     })),
                 };
 
-                match service.broadcast_notification(&rb_clone, &payload).await {
-                    Ok((success, failed)) => {
-                        info!("延遲測試推送發送完成：成功 {} 個，失敗 {} 個", success, failed);
+                match service.send_notification_to_user(&rb_clone, &user_id_clone, &payload).await {
+                    Ok(_) => {
+                        info!("延遲測試通知已發送給用戶: {}", user_id_clone);
                     }
                     Err(e) => {
                         error!("發送延遲測試通知失敗: {}", e);
@@ -5185,10 +5192,11 @@ pub async fn send_delayed_test_push(
     Ok(HttpResponse::Ok().json(ApiResponse {
         success: true,
         data: Some(serde_json::json!({
+            "user_id": user_id,
             "delay_seconds": delay,
             "scheduled_at": Utc::now().to_rfc3339()
         })),
-        message: format!("測試推送已排程，將在 {} 秒後發送", delay),
+        message: format!("已排程延遲測試通知給用戶 {}，將在 {} 秒後發送", user_id, delay),
     }))
 }
 
@@ -5287,13 +5295,23 @@ pub async fn get_notification_settings(
 ) -> Result<HttpResponse> {
     let user_id = user_id.into_inner();
 
-    let result: Option<UserNotificationSettings> = rb
+    let result: Option<UserNotificationSettings> = match rb
         .query_decode(
             "SELECT * FROM user_notification_settings WHERE user_id = ?",
             vec![rbs::to_value!(&user_id)],
         )
         .await
-        .unwrap_or(None);
+    {
+        Ok(settings) => settings,
+        Err(e) => {
+            log::error!("查詢通知設定失敗 (user_id: {}): {}", user_id, e);
+            return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: format!("載入通知設定失敗: {}", e),
+            }));
+        }
+    };
 
     match result {
         Some(settings) => Ok(HttpResponse::Ok().json(ApiResponse {

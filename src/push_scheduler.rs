@@ -1,7 +1,7 @@
 use rbatis::RBatis;
 use tokio_cron_scheduler::{Job, JobScheduler};
 use log::{info, error};
-use chrono::{Utc, Timelike, Local, NaiveDate};
+use chrono::{Utc, Timelike, FixedOffset, NaiveDate, TimeZone};
 use crate::models::{PushNotificationPayload, UserNotificationSettings};
 use crate::push_service::PushService;
 use crate::notification_generator::NotificationGenerator;
@@ -29,11 +29,13 @@ pub async fn start_push_scheduler(
         let calendar = calendar_for_job.clone();
 
         Box::pin(async move {
-            let now = Local::now();
+            // 使用 UTC+8 時區
+            let tz = FixedOffset::east_opt(8 * 3600).unwrap();
+            let now = Utc::now().with_timezone(&tz);
             let current_time = format!("{:02}:{:02}", now.hour(), now.minute());
             let today = now.date_naive();
 
-            info!("檢查定時推送通知任務 - 當前時間: {}", current_time);
+            info!("檢查定時推送通知任務 - 當前時間: {} (UTC+8)", current_time);
 
             match process_scheduled_notifications(&rb, &calendar, &current_time, today).await {
                 Ok(total_sent) => {
