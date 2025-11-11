@@ -83,7 +83,7 @@ impl NotificationGenerator {
             "badge": "/icon.svg",
             "tag": "morning-notification",
             "data": {
-                "url": "/tasks",
+                "url": "/mission",
                 "type": "morning",
                 "timestamp": chrono::Utc::now().to_rfc3339(),
             }
@@ -192,7 +192,7 @@ impl NotificationGenerator {
             "badge": "/icon.svg",
             "tag": "evening-notification",
             "data": {
-                "url": "/progress",
+                "url": "/mission",
                 "type": "evening",
                 "timestamp": chrono::Utc::now().to_rfc3339(),
             }
@@ -232,7 +232,7 @@ impl NotificationGenerator {
             "badge": "/icon.svg",
             "tag": "custom-notification",
             "data": {
-                "url": "/tasks",
+                "url": "/mission",
                 "type": "custom",
                 "timestamp": chrono::Utc::now().to_rfc3339(),
             }

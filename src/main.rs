@@ -94,16 +94,17 @@ async fn main() -> std::io::Result<()> {
     } else {
         log::info!("LifeUp Backend 啟動中... [開發模式]");
     }
-    log::info!("配置: {:?}", config);
-    
-    // AI 配置調試日誌
+
+    // 基本配置日誌 (不記錄敏感資訊)
+    log::info!("環境: {}", config.app.environment);
+    log::info!("日誌級別: {}", config.app.log_level);
+    log::info!("數據庫: {}", if config.database.url.contains("sqlite") { "SQLite" } else { "其他" });
+    log::info!("允許的 CORS 來源: {:?}", config.server.allowed_origins);
+
+    // AI 配置調試日誌 (不記錄 API 金鑰)
     log::info!("AI 配置載入: API_OPTION={}", config.app.ai.api_option);
-    log::info!("OpenAI API Key 存在: {}", config.app.ai.openai_api_key.is_some());
-    log::info!("OpenRouter API Key 存在: {}", config.app.ai.openrouter_api_key.is_some());
-    if let Some(key) = &config.app.ai.openrouter_api_key {
-        let prefix = key.chars().take(10).collect::<String>();
-        log::info!("OpenRouter API Key 前綴: {}", prefix);
-    }
+    log::info!("OpenAI API Key: {}", if config.app.ai.openai_api_key.is_some() { "已設置" } else { "未設置" });
+    log::info!("OpenRouter API Key: {}", if config.app.ai.openrouter_api_key.is_some() { "已設置" } else { "未設置" });
     log::info!("OpenAI 模型: {}", config.app.ai.openai_model);
     log::info!("OpenRouter 模型: {}", config.app.ai.openrouter_model);
 
@@ -211,16 +212,26 @@ async fn main() -> std::io::Result<()> {
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
 
         HttpServer::new(move || {
-            // 設定 CORS
-            let cors = Cors::default()
-                .allow_any_origin()
-                .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+            // 設定 CORS - 只允許配置的來源 (HTTPS)
+            log::info!("配置 CORS，允許的來源: {:?}", config.server.allowed_origins);
+
+            let mut cors = Cors::default()
+                .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"])
                 .allowed_headers(vec![
                     actix_web::http::header::AUTHORIZATION,
                     actix_web::http::header::ACCEPT,
                     actix_web::http::header::CONTENT_TYPE,
+                    actix_web::http::header::HeaderName::from_static("x-requested-with"),
                 ])
+                .expose_headers(vec![actix_web::http::header::CONTENT_TYPE])
+                .supports_credentials()
                 .max_age(3600);
+
+            // 添加允許的來源
+            for origin in &config.server.allowed_origins {
+                log::info!("添加 CORS 來源: {}", origin);
+                cors = cors.allowed_origin(origin.as_str());
+            }
 
             App::new()
                 // HTTP 請求日誌
@@ -339,16 +350,26 @@ async fn main() -> std::io::Result<()> {
         log::info!("啟動 HTTP 伺服器在 http://{}", &server_addr);
 
         HttpServer::new(move || {
-            // 設定 CORS
-            let cors = Cors::default()
-                .allow_any_origin()
-                .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+            // 設定 CORS - 只允許配置的來源 (HTTP)
+            log::info!("配置 CORS，允許的來源: {:?}", config.server.allowed_origins);
+
+            let mut cors = Cors::default()
+                .allowed_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"])
                 .allowed_headers(vec![
                     actix_web::http::header::AUTHORIZATION,
                     actix_web::http::header::ACCEPT,
                     actix_web::http::header::CONTENT_TYPE,
+                    actix_web::http::header::HeaderName::from_static("x-requested-with"),
                 ])
+                .expose_headers(vec![actix_web::http::header::CONTENT_TYPE])
+                .supports_credentials()
                 .max_age(3600);
+
+            // 添加允許的來源
+            for origin in &config.server.allowed_origins {
+                log::info!("添加 CORS 來源: {}", origin);
+                cors = cors.allowed_origin(origin.as_str());
+            }
 
             App::new()
                 // HTTP 請求日誌

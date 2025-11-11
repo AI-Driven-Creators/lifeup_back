@@ -17,6 +17,7 @@ pub struct DatabaseConfig {
 pub struct ServerConfig {
     pub host: String,
     pub port: u16,
+    pub allowed_origins: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -55,7 +56,7 @@ pub struct AIConfig {
     pub recent_cancellations_sample_size: usize,
     pub top_categories_limit: usize,
 
-    // 时间窗口配置
+    // 時間窗口配置
     pub analysis_window_days: i64,
     pub recent_activity_days: i64,
 
@@ -72,6 +73,15 @@ impl Config {
             .unwrap_or_else(|_| "8080".to_string())
             .parse()
             .unwrap_or(8080);
+
+        // CORS 配置 - 讀取允許的來源列表
+        let allowed_origins = env::var("ALLOWED_ORIGINS")
+            .unwrap_or_else(|_| "http://localhost:5173".to_string())
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<String>>();
+
         let environment = env::var("ENVIRONMENT").unwrap_or_else(|_| "development".to_string());
         let log_level = env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
 
@@ -161,7 +171,7 @@ impl Config {
             .and_then(|v| v.parse().ok())
             .unwrap_or(5);
 
-        // 时间窗口配置
+        // 時間窗口配置
         let analysis_window_days = env::var("AI_ANALYSIS_WINDOW_DAYS")
             .ok()
             .and_then(|v| v.parse().ok())
@@ -189,6 +199,7 @@ impl Config {
             server: ServerConfig {
                 host: server_host,
                 port: server_port,
+                allowed_origins,
             },
             app: AppConfig {
                 environment,

@@ -13,7 +13,7 @@ pub struct UserBehaviorSummary {
     pub total_tasks_cancelled: i32,
     pub total_tasks_pending: i32,
 
-    // 时间维度统计
+    // 時間維度統計
     pub longest_streak: StreakInfo,
     pub current_streak: StreakInfo,
     pub active_days_last_30: i32,

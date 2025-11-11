@@ -5,11 +5,15 @@ use chrono::{Utc, Datelike, FixedOffset};
 use crate::models::*;
 use crate::ai_service::convert_to_achievement_model;
 use rbs::{Value, value};
-use bcrypt::{hash, verify, DEFAULT_COST};
+use bcrypt::{hash, verify};
 use serde_json::json;
 use rand;
 use log::{info, error};
 use serde::Deserialize;
+
+// Bcrypt 密碼雜湊成本 (14 比預設的 12 更安全)
+const BCRYPT_COST: u32 = 14;
+
 // API 回應結構
 #[derive(serde::Serialize)]
 struct ApiResponse<T> {
@@ -142,8 +146,8 @@ pub async fn create_user(
         }
     }
 
-    // 哈希密碼
-    let password_hash = match hash(&req.password, DEFAULT_COST) {
+    // 哈希密碼 - 使用 cost 14 提升安全性
+    let password_hash = match hash(&req.password, BCRYPT_COST) {
         Ok(hash) => hash,
         Err(e) => {
             return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
@@ -4048,8 +4052,8 @@ async fn call_ai_api_with_personality(rb: &RBatis, message: &str, user_id: Optio
             created_at: Option<String>,
         }
         
-        let sql = format!("SELECT * FROM chat_message WHERE user_id = '{}' ORDER BY created_at DESC LIMIT 10", uid);
-        match rb.query_decode::<Vec<SimpleChatMessage>>(&sql, vec![]).await {
+        let sql = "SELECT * FROM chat_message WHERE user_id = ? ORDER BY created_at DESC LIMIT 10";
+        match rb.query_decode::<Vec<SimpleChatMessage>>(sql, vec![rbs::to_value!(uid)]).await {
             Ok(messages) => {
                 log::info!("找到 {} 條聊天記錄", messages.len());
                 
@@ -4471,37 +4475,94 @@ async fn reset_user_all_data(rb: &RBatis, user_id: &str) -> Result<ResetResult, 
     let mut total_deleted = 0i32;
     let mut details = std::collections::HashMap::new();
 
-    // 定義要重置的表和對應的條件
-    // 按照外鍵依賴關係的順序刪除
-    let delete_operations = vec![
-        // 1. 先刪除依賴其他表的記錄
-        ("user_achievement", format!("user_id = '{}'", user_id)),
-        ("weekly_attribute_snapshot", format!("user_id = '{}'", user_id)),
-        ("daily_progress", format!("user_id = '{}'", user_id)),
-        ("chat_message", format!("user_id = '{}'", user_id)),
-
-        // 2. 刪除重複任務模板（通過父任務關聯）
-        ("recurring_task_template", format!("parent_task_id IN (SELECT id FROM task WHERE user_id = '{}')", user_id)),
-
-        // 3. 刪除任務相關的記錄（子任務先於父任務）
-        ("task", format!("user_id = '{}' AND parent_task_id IS NOT NULL", user_id)),
-        ("task", format!("user_id = '{}' AND parent_task_id IS NULL", user_id)),
-
-        // 4. 刪除技能記錄
-        ("skill", format!("user_id = '{}'", user_id)),
-
-        // 5. 刪除用戶相關記錄（但保留用戶主記錄）
-        ("user_attributes", format!("user_id = '{}'", user_id)),
-        ("user_profile", format!("user_id = '{}'", user_id)),
-        ("user_coach_preference", format!("user_id = '{}'", user_id)),
-        ("career_mainlines", format!("user_id = '{}'", user_id)),
-        ("quiz_results", format!("user_id = '{}'", user_id)),
+    // 定義要重置的表，按照外鍵依賴關係的順序刪除
+    // 使用參數化查詢防止 SQL 注入
+    let simple_tables = vec![
+        "user_achievement",
+        "weekly_attribute_snapshot",
+        "daily_progress",
+        "chat_message",
     ];
 
-    for (table, condition) in delete_operations {
-        let sql = format!("DELETE FROM {} WHERE {}", table, condition);
+    // 1. 先刪除簡單的 user_id 條件的表
+    for table in simple_tables {
+        let sql = format!("DELETE FROM {} WHERE user_id = ?", table);
+        match rb.exec(&sql, vec![rbs::to_value!(user_id)]).await {
+            Ok(result) => {
+                let deleted = result.rows_affected as i32;
+                if deleted > 0 {
+                    log::info!("從 {} 表刪除了 {} 筆記錄", table, deleted);
+                    details.insert(table.to_string(), deleted);
+                    total_deleted += deleted;
+                }
+            }
+            Err(e) => {
+                log::warn!("刪除 {} 表時出現錯誤: {}", table, e);
+            }
+        }
+    }
 
-        match rb.exec(&sql, vec![]).await {
+    // 2. 刪除重複任務模板（通過父任務關聯）- 使用參數化子查詢
+    let sql = "DELETE FROM recurring_task_template WHERE parent_task_id IN (SELECT id FROM task WHERE user_id = ?)";
+    match rb.exec(sql, vec![rbs::to_value!(user_id)]).await {
+        Ok(result) => {
+            let deleted = result.rows_affected as i32;
+            if deleted > 0 {
+                log::info!("從 recurring_task_template 表刪除了 {} 筆記錄", deleted);
+                details.insert("recurring_task_template".to_string(), deleted);
+                total_deleted += deleted;
+            }
+        }
+        Err(e) => {
+            log::warn!("刪除 recurring_task_template 表時出現錯誤: {}", e);
+        }
+    }
+
+    // 3. 刪除子任務
+    let sql = "DELETE FROM task WHERE user_id = ? AND parent_task_id IS NOT NULL";
+    match rb.exec(sql, vec![rbs::to_value!(user_id)]).await {
+        Ok(result) => {
+            let deleted = result.rows_affected as i32;
+            if deleted > 0 {
+                log::info!("從 task 表刪除了 {} 筆子任務", deleted);
+                total_deleted += deleted;
+            }
+        }
+        Err(e) => {
+            log::warn!("刪除子任務時出現錯誤: {}", e);
+        }
+    }
+
+    // 4. 刪除父任務
+    let sql = "DELETE FROM task WHERE user_id = ? AND parent_task_id IS NULL";
+    match rb.exec(sql, vec![rbs::to_value!(user_id)]).await {
+        Ok(result) => {
+            let deleted = result.rows_affected as i32;
+            if deleted > 0 {
+                log::info!("從 task 表刪除了 {} 筆父任務", deleted);
+                let task_total = deleted + *details.get("task").unwrap_or(&0);
+                details.insert("task".to_string(), task_total);
+                total_deleted += deleted;
+            }
+        }
+        Err(e) => {
+            log::warn!("刪除父任務時出現錯誤: {}", e);
+        }
+    }
+
+    // 5. 刪除其他用戶相關記錄
+    let other_tables = vec![
+        "skill",
+        "user_attributes",
+        "user_profile",
+        "user_coach_preference",
+        "career_mainlines",
+        "quiz_results",
+    ];
+
+    for table in other_tables {
+        let sql = format!("DELETE FROM {} WHERE user_id = ?", table);
+        match rb.exec(&sql, vec![rbs::to_value!(user_id)]).await {
             Ok(result) => {
                 let deleted = result.rows_affected as i32;
                 if deleted > 0 {
@@ -4539,14 +4600,28 @@ async fn reset_user_selective_data(
                 return reset_user_all_data(rb, user_id).await;
             }
             ResetType::Tasks => {
-                let operations = vec![
-                    ("recurring_task_template", format!("parent_task_id IN (SELECT id FROM task WHERE user_id = '{}')", user_id)),
-                    ("task", format!("user_id = '{}' AND parent_task_id IS NOT NULL", user_id)),
-                    ("task", format!("user_id = '{}' AND parent_task_id IS NULL", user_id)),
-                ];
-                let deleted = execute_delete_operations(rb, operations).await?;
-                details.insert("tasks".to_string(), deleted);
-                total_deleted += deleted;
+                let mut task_deleted = 0i32;
+
+                // 1. 刪除重複任務模板
+                let sql = "DELETE FROM recurring_task_template WHERE parent_task_id IN (SELECT id FROM task WHERE user_id = ?)";
+                if let Ok(result) = rb.exec(sql, vec![rbs::to_value!(user_id)]).await {
+                    task_deleted += result.rows_affected as i32;
+                }
+
+                // 2. 刪除子任務
+                let sql = "DELETE FROM task WHERE user_id = ? AND parent_task_id IS NOT NULL";
+                if let Ok(result) = rb.exec(sql, vec![rbs::to_value!(user_id)]).await {
+                    task_deleted += result.rows_affected as i32;
+                }
+
+                // 3. 刪除父任務
+                let sql = "DELETE FROM task WHERE user_id = ? AND parent_task_id IS NULL";
+                if let Ok(result) = rb.exec(sql, vec![rbs::to_value!(user_id)]).await {
+                    task_deleted += result.rows_affected as i32;
+                }
+
+                details.insert("tasks".to_string(), task_deleted);
+                total_deleted += task_deleted;
             }
             ResetType::Skills => {
                 let deleted = delete_user_data(rb, "skill", user_id).await?;
@@ -4559,13 +4634,18 @@ async fn reset_user_selective_data(
                 total_deleted += deleted;
             }
             ResetType::Progress => {
-                let operations = vec![
-                    ("daily_progress", format!("user_id = '{}'", user_id)),
-                    ("weekly_attribute_snapshot", format!("user_id = '{}'", user_id)),
-                ];
-                let deleted = execute_delete_operations(rb, operations).await?;
-                details.insert("progress".to_string(), deleted);
-                total_deleted += deleted;
+                let mut progress_deleted = 0i32;
+
+                // 刪除進度相關表
+                for table in &["daily_progress", "weekly_attribute_snapshot"] {
+                    let sql = format!("DELETE FROM {} WHERE user_id = ?", table);
+                    if let Ok(result) = rb.exec(&sql, vec![rbs::to_value!(user_id)]).await {
+                        progress_deleted += result.rows_affected as i32;
+                    }
+                }
+
+                details.insert("progress".to_string(), progress_deleted);
+                total_deleted += progress_deleted;
             }
             ResetType::Achievements => {
                 let deleted = delete_user_data(rb, "user_achievement", user_id).await?;
@@ -4573,16 +4653,26 @@ async fn reset_user_selective_data(
                 total_deleted += deleted;
             }
             ResetType::Profile => {
-                let operations = vec![
-                    ("user_attributes", format!("user_id = '{}'", user_id)),
-                    ("user_profile", format!("user_id = '{}'", user_id)),
-                    ("user_coach_preference", format!("user_id = '{}'", user_id)),
-                    ("career_mainlines", format!("user_id = '{}'", user_id)),
-                    ("quiz_results", format!("user_id = '{}'", user_id)),
+                let mut profile_deleted = 0i32;
+
+                // 刪除用戶資料相關表
+                let profile_tables = [
+                    "user_attributes",
+                    "user_profile",
+                    "user_coach_preference",
+                    "career_mainlines",
+                    "quiz_results",
                 ];
-                let deleted = execute_delete_operations(rb, operations).await?;
-                details.insert("profile".to_string(), deleted);
-                total_deleted += deleted;
+
+                for table in &profile_tables {
+                    let sql = format!("DELETE FROM {} WHERE user_id = ?", table);
+                    if let Ok(result) = rb.exec(&sql, vec![rbs::to_value!(user_id)]).await {
+                        profile_deleted += result.rows_affected as i32;
+                    }
+                }
+
+                details.insert("profile".to_string(), profile_deleted);
+                total_deleted += profile_deleted;
             }
         }
     }
@@ -4595,9 +4685,21 @@ async fn reset_user_selective_data(
 
 /// 執行單個表的刪除操作
 async fn delete_user_data(rb: &RBatis, table: &str, user_id: &str) -> Result<i32, Box<dyn std::error::Error>> {
-    let sql = format!("DELETE FROM {} WHERE user_id = '{}'", table, user_id);
+    // 白名單驗證表名，防止 SQL 注入
+    let allowed_tables = [
+        "task", "skill", "chat_message", "user_achievement", "user_attributes",
+        "user_profile", "user_coach_preference", "career_mainlines", "quiz_results",
+        "task_skill", "task_completion_history"
+    ];
 
-    match rb.exec(&sql, vec![]).await {
+    if !allowed_tables.contains(&table) {
+        return Err(format!("不允許的表名: {}", table).into());
+    }
+
+    // 使用參數化查詢防止 SQL 注入
+    let sql = format!("DELETE FROM {} WHERE user_id = ?", table);
+
+    match rb.exec(&sql, vec![rbs::to_value!(user_id)]).await {
         Ok(result) => {
             let deleted = result.rows_affected as i32;
             if deleted > 0 {
@@ -4610,34 +4712,6 @@ async fn delete_user_data(rb: &RBatis, table: &str, user_id: &str) -> Result<i32
             Err(e.into())
         }
     }
-}
-
-/// 執行多個刪除操作
-async fn execute_delete_operations(
-    rb: &RBatis,
-    operations: Vec<(&str, String)>
-) -> Result<i32, Box<dyn std::error::Error>> {
-    let mut total_deleted = 0i32;
-
-    for (table, condition) in operations {
-        let sql = format!("DELETE FROM {} WHERE {}", table, condition);
-
-        match rb.exec(&sql, vec![]).await {
-            Ok(result) => {
-                let deleted = result.rows_affected as i32;
-                if deleted > 0 {
-                    log::info!("從 {} 表刪除了 {} 筆記錄", table, deleted);
-                    total_deleted += deleted;
-                }
-            }
-            Err(e) => {
-                log::warn!("刪除 {} 表時出現錯誤: {}", table, e);
-                // 繼續執行其他刪除操作，不中斷整個流程
-            }
-        }
-    }
-
-    Ok(total_deleted)
 }
 
 // 成就統計相關輔助函數
