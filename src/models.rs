@@ -373,6 +373,7 @@ pub struct LoginRequest {
 #[derive(Serialize)]
 pub struct LoginResponse {
     pub user: User,
+    pub token: String,    // JWT token
     pub message: String,
 }
 

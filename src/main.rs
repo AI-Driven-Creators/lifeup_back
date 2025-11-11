@@ -1,6 +1,7 @@
 mod config;
 mod models;
 mod routes;
+mod auth;
 mod database_reset;
 mod seed_data;
 mod ai_service;

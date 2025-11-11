@@ -259,14 +259,33 @@ pub async fn login(
                                 }
                             }
 
-                            // 登入成功，返回用戶信息（不包含密碼哈希）
+                            // 生成 JWT token
+                            let token = match crate::auth::generate_jwt(
+                                user.id.as_ref().unwrap_or(&"".to_string()),
+                                &normalized_email
+                            ) {
+                                Ok(t) => t,
+                                Err(e) => {
+                                    log::error!("JWT 生成失敗: {}", e);
+                                    return Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                                        success: false,
+                                        data: None,
+                                        message: format!("JWT 生成失敗: {}", e),
+                                    }));
+                                }
+                            };
+
+                            // 登入成功，返回用戶信息（不包含密碼哈希）和 JWT token
                             let mut user_response = user.clone();
                             user_response.password_hash = None; // 不返回密碼哈希
+
+                            log::info!("用戶 {} 登入成功，JWT token 已生成", user_response.id.as_ref().unwrap_or(&"unknown".to_string()));
 
                             Ok(HttpResponse::Ok().json(ApiResponse {
                                 success: true,
                                 data: Some(LoginResponse {
                                     user: user_response,
+                                    token,
                                     message: "登入成功".to_string(),
                                 }),
                                 message: "登入成功".to_string(),
