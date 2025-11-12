@@ -1,30 +1,12 @@
 use serde::{Deserialize, Serialize};
 use validator::{Validate, ValidationError};
 
-/// 自定義密碼強度驗證函數
-/// 要求：至少8個字符，包含大小寫字母和數字
+/// 自定義密碼驗證函數
+/// 要求：至少4個字符
 fn validate_password_strength(password: &str) -> Result<(), ValidationError> {
-    let has_lowercase = password.chars().any(|c| c.is_lowercase());
-    let has_uppercase = password.chars().any(|c| c.is_uppercase());
-    let has_digit = password.chars().any(|c| c.is_numeric());
-    let is_long_enough = password.len() >= 8;
-
-    if !is_long_enough {
+    if password.len() < 4 {
         return Err(ValidationError::new("password_too_short"));
     }
-
-    if !has_lowercase {
-        return Err(ValidationError::new("password_no_lowercase"));
-    }
-
-    if !has_uppercase {
-        return Err(ValidationError::new("password_no_uppercase"));
-    }
-
-    if !has_digit {
-        return Err(ValidationError::new("password_no_digit"));
-    }
-
     Ok(())
 }
 
@@ -188,19 +170,13 @@ mod tests {
     #[test]
     fn test_password_validation() {
         // 有效密碼
+        assert!(validate_password_strength("1234").is_ok());
+        assert!(validate_password_strength("password").is_ok());
         assert!(validate_password_strength("Password123").is_ok());
 
-        // 太短
-        assert!(validate_password_strength("Pass1").is_err());
-
-        // 缺少大寫字母
-        assert!(validate_password_strength("password123").is_err());
-
-        // 缺少小寫字母
-        assert!(validate_password_strength("PASSWORD123").is_err());
-
-        // 缺少數字
-        assert!(validate_password_strength("PasswordABC").is_err());
+        // 太短（少於4個字符）
+        assert!(validate_password_strength("123").is_err());
+        assert!(validate_password_strength("ab").is_err());
     }
 
     #[test]
@@ -208,14 +184,14 @@ mod tests {
         let valid_request = RegisterRequest {
             name: "John Doe".to_string(),
             email: "john@example.com".to_string(),
-            password: "Password123".to_string(),
+            password: "1234".to_string(),
         };
         assert!(valid_request.validate().is_ok());
 
         let invalid_email = RegisterRequest {
             name: "John Doe".to_string(),
             email: "invalid-email".to_string(),
-            password: "Password123".to_string(),
+            password: "1234".to_string(),
         };
         assert!(invalid_email.validate().is_err());
     }

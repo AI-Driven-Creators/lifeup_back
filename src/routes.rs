@@ -330,37 +330,48 @@ pub async fn login(
                                 message: "登入成功".to_string(),
                             }))
                         }
-                        Ok(false) => Ok(HttpResponse::Unauthorized().json(ApiResponse::<()> {
-                            success: false,
-                            data: None,
-                            message: "密碼錯誤".to_string(),
-                        })),
-                        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
-                            success: false,
-                            data: None,
-                            message: format!("密碼驗證失敗: {}", e),
-                        })),
+                        Ok(false) => {
+                            log::warn!("用戶 {} 登入失敗：密碼錯誤", req.email);
+                            Ok(HttpResponse::Unauthorized().json(ApiResponse::<()> {
+                                success: false,
+                                data: None,
+                                message: "Email 或密碼錯誤".to_string(),
+                            }))
+                        }
+                        Err(e) => {
+                            log::error!("密碼驗證失敗: {}", e);
+                            Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                                success: false,
+                                data: None,
+                                message: "系統錯誤，請稍後再試".to_string(),
+                            }))
+                        }
                     }
                 } else {
+                    log::warn!("用戶 {} 登入失敗：密碼未設定", req.email);
                     Ok(HttpResponse::Unauthorized().json(ApiResponse::<()> {
                         success: false,
                         data: None,
-                        message: "用戶密碼未設定".to_string(),
+                        message: "Email 或密碼錯誤".to_string(),
                     }))
                 }
             } else {
+                log::warn!("用戶登入失敗：用戶不存在 (email: {})", req.email);
                 Ok(HttpResponse::Unauthorized().json(ApiResponse::<()> {
                     success: false,
                     data: None,
-                    message: "用戶不存在".to_string(),
+                    message: "Email 或密碼錯誤".to_string(),
                 }))
             }
         }
-        Err(e) => Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
-            success: false,
-            data: None,
-            message: format!("用戶查找失敗: {}", e),
-        })),
+        Err(e) => {
+            log::error!("用戶查找失敗: {}", e);
+            Ok(HttpResponse::InternalServerError().json(ApiResponse::<()> {
+                success: false,
+                data: None,
+                message: "系統錯誤，請稍後再試".to_string(),
+            }))
+        }
     }
 }
 
