@@ -10,6 +10,7 @@ use serde_json::json;
 use rand;
 use log::{info, error};
 use serde::Deserialize;
+use validator::Validate;
 
 // Bcrypt 密碼雜湊成本 (14 比預設的 12 更安全)
 const BCRYPT_COST: u32 = 14;
@@ -120,6 +121,25 @@ pub async fn create_user(
     rb: web::Data<RBatis>,
     req: web::Json<CreateUserRequest>,
 ) -> Result<HttpResponse> {
+    // 驗證輸入
+    if let Err(errors) = req.validate() {
+        let error_messages: Vec<String> = errors
+            .field_errors()
+            .iter()
+            .flat_map(|(field, errs)| {
+                errs.iter().map(move |e| {
+                    format!("{}: {}", field, e.code)
+                })
+            })
+            .collect();
+        log::warn!("註冊驗證失敗: {:?}", error_messages);
+        return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: format!("輸入驗證失敗: {}", error_messages.join(", ")),
+        }));
+    }
+
     // 正規化 email（去除空格並轉小寫）
     let normalized_email = req.email.trim().to_lowercase();
     log::info!("註冊請求: name={}, email={}", req.name, normalized_email);
@@ -200,6 +220,25 @@ pub async fn login(
     rb: web::Data<RBatis>,
     req: web::Json<LoginRequest>,
 ) -> Result<HttpResponse> {
+    // 驗證輸入
+    if let Err(errors) = req.validate() {
+        let error_messages: Vec<String> = errors
+            .field_errors()
+            .iter()
+            .flat_map(|(field, errs)| {
+                errs.iter().map(move |e| {
+                    format!("{}: {}", field, e.code)
+                })
+            })
+            .collect();
+        log::warn!("登入驗證失敗: {:?}", error_messages);
+        return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: format!("輸入驗證失敗: {}", error_messages.join(", ")),
+        }));
+    }
+
     // 根據email查找用戶
     let normalized_email = req.email.trim().to_lowercase();
     log::info!("登入請求: email={}", normalized_email);
@@ -372,6 +411,25 @@ pub async fn create_task(
     rb: web::Data<RBatis>,
     req: web::Json<crate::models::CreateTaskRequest>,
 ) -> Result<HttpResponse> {
+    // 驗證輸入
+    if let Err(errors) = req.validate() {
+        let error_messages: Vec<String> = errors
+            .field_errors()
+            .iter()
+            .flat_map(|(field, errs)| {
+                errs.iter().map(move |e| {
+                    format!("{}: {}", field, e.code)
+                })
+            })
+            .collect();
+        log::warn!("任務創建驗證失敗: {:?}", error_messages);
+        return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: format!("輸入驗證失敗: {}", error_messages.join(", ")),
+        }));
+    }
+
     // 驗證 user_id 是否存在
     let user_id = match &req.user_id {
         Some(id) => id.clone(),
@@ -1047,8 +1105,27 @@ pub async fn update_task(
     path: web::Path<String>,
     req: web::Json<UpdateTaskRequest>,
 ) -> Result<HttpResponse> {
+    // 驗證輸入
+    if let Err(errors) = req.validate() {
+        let error_messages: Vec<String> = errors
+            .field_errors()
+            .iter()
+            .flat_map(|(field, errs)| {
+                errs.iter().map(move |e| {
+                    format!("{}: {}", field, e.code)
+                })
+            })
+            .collect();
+        log::warn!("任務更新驗證失敗: {:?}", error_messages);
+        return Ok(HttpResponse::BadRequest().json(ApiResponse::<()> {
+            success: false,
+            data: None,
+            message: format!("輸入驗證失敗: {}", error_messages.join(", ")),
+        }));
+    }
+
     let task_id = path.into_inner();
-    
+
     // 先查詢任務是否存在
     match crate::models::Task::select_by_map(rb.get_ref(), value!{"id": task_id.clone()}).await {
         Ok(tasks) => {

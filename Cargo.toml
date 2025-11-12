@@ -59,6 +59,13 @@ bcrypt = "0.15"
 # JWT 認證
 jsonwebtoken = "9.2"
 
+# 輸入驗證
+validator = { version = "0.16", features = ["derive"] }
+
+# Rate Limiting
+# TODO: actix-governor 版本與當前 actix-web 版本不兼容，需要升級或使用替代方案
+# actix-governor = "0.5"
+
 # 會話管理
 actix-session = { version = "0.8", features = ["redis-rs-session"] }
 actix-identity = "0.6"

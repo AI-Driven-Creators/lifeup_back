@@ -3,6 +3,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize, Deserializer};
 use serde_json;
 use rbatis::{RBatis, Error as RbatisError};
+use validator::{Validate, ValidationError};
 
 // 成就達成條件類型列舉
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -347,11 +348,32 @@ pub struct User {
 }
 crud!(User{});
 
+// 自定義密碼強度驗證函數
+fn validate_password_strength(password: &str) -> Result<(), ValidationError> {
+    let has_lowercase = password.chars().any(|c| c.is_lowercase());
+    let has_uppercase = password.chars().any(|c| c.is_uppercase());
+    let has_digit = password.chars().any(|c| c.is_numeric());
+    let is_long_enough = password.len() >= 8;
+
+    if !is_long_enough {
+        return Err(ValidationError::new("password_too_short"));
+    }
+    if !has_lowercase || !has_uppercase || !has_digit {
+        return Err(ValidationError::new("password_weak"));
+    }
+    Ok(())
+}
+
 // 建立使用者的請求
-#[derive(Deserialize)]
+#[derive(Deserialize, Validate)]
 pub struct CreateUserRequest {
+    #[validate(length(min = 2, max = 50))]
     pub name: String,
+
+    #[validate(email)]
     pub email: String,
+
+    #[validate(custom(function = "validate_password_strength"))]
     pub password: String,
 }
 
@@ -363,9 +385,12 @@ pub struct UpdateUserRequest {
 }
 
 // 登入請求
-#[derive(Deserialize)]
+#[derive(Deserialize, Validate)]
 pub struct LoginRequest {
+    #[validate(email)]
     pub email: String,
+
+    #[validate(length(min = 1))]
     pub password: String,
 }
 
@@ -693,23 +718,51 @@ pub struct ChatRequest {
     pub user_id: String,
 }
 
+// 自定義任務標題驗證函數
+fn validate_task_title(title: &str) -> Result<(), ValidationError> {
+    let trimmed = title.trim();
+    if trimmed.is_empty() {
+        return Err(ValidationError::new("title_empty"));
+    }
+    if trimmed.len() < 2 {
+        return Err(ValidationError::new("title_too_short"));
+    }
+    Ok(())
+}
+
 // Requests for tasks and skills
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Validate)]
 pub struct CreateTaskRequest {
     pub user_id: Option<String>,
+
+    #[validate(custom(function = "validate_task_title"))]
     pub title: String,
+
+    #[validate(length(max = 5000))]
     pub description: Option<String>,
+
+    #[validate(range(min = 1, max = 5))]
     pub priority: Option<i32>,
+
+    #[validate(length(max = 50))]
     pub task_type: Option<String>,
+
+    #[validate(range(min = 1, max = 10))]
     pub difficulty: Option<i32>,
+
+    #[validate(range(min = 0, max = 10000))]
     pub experience: Option<i32>,
+
     pub parent_task_id: Option<String>,
     pub task_order: Option<i32>,
     #[serde(deserialize_with = "deserialize_optional_datetime", default)]
     pub due_date: Option<DateTime<Utc>>,
     pub task_date: Option<String>,
     pub is_recurring: Option<i32>,
+
+    #[validate(length(max = 50))]
     pub recurrence_pattern: Option<String>,
+
     #[serde(deserialize_with = "deserialize_optional_datetime", default)]
     pub start_date: Option<DateTime<Utc>>,
     #[serde(deserialize_with = "deserialize_optional_datetime", default)]
@@ -719,30 +772,60 @@ pub struct CreateTaskRequest {
     pub attributes: Option<serde_json::Value>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Validate)]
 pub struct UpdateTaskRequest {
+    #[validate(custom(function = "validate_task_title"))]
     pub title: Option<String>,
+
+    #[validate(length(max = 5000))]
     pub description: Option<String>,
+
+    #[validate(range(min = 0, max = 7))]
     pub status: Option<i32>,
+
+    #[validate(range(min = 1, max = 5))]
     pub priority: Option<i32>,
+
+    #[validate(length(max = 50))]
     pub task_type: Option<String>,
+
+    #[validate(range(min = 1, max = 10))]
     pub difficulty: Option<i32>,
+
+    #[validate(range(min = 0, max = 10000))]
     pub experience: Option<i32>,
+
     #[serde(deserialize_with = "deserialize_optional_datetime", default)]
     pub due_date: Option<DateTime<Utc>>,
     pub task_order: Option<i32>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, Validate)]
 pub struct CreateSkillRequest {
     pub user_id: Option<String>,
+
+    #[validate(length(min = 2, max = 100))]
     pub name: String,
+
+    #[validate(length(max = 500))]
     pub description: Option<String>,
+
+    #[validate(length(max = 50))]
     pub category: Option<String>,
+
+    #[validate(length(max = 50))]
     pub attribute: Option<String>,
+
+    #[validate(range(min = 1, max = 100))]
     pub level: Option<i32>,
+
+    #[validate(range(min = 0, max = 1000000))]
     pub experience: Option<i32>,
+
+    #[validate(range(min = 1, max = 1000000))]
     pub max_experience: Option<i32>,
+
+    #[validate(length(max = 100))]
     pub icon: Option<String>,
 }
 

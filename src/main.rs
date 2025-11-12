@@ -2,6 +2,8 @@ mod config;
 mod models;
 mod routes;
 mod auth;
+mod validation;
+// mod rate_limit; // TODO: 暫時禁用，等待 actix-governor 版本兼容性問題解決
 mod database_reset;
 mod seed_data;
 mod ai_service;
@@ -238,6 +240,9 @@ async fn main() -> std::io::Result<()> {
                 // HTTP 請求日誌
                 .wrap(Logger::default())
                 .wrap(cors)
+                // Rate Limiting：每秒最多 20 個請求，允許突發 40 個
+                // TODO: 需要升級 actix-governor 到兼容版本或使用替代方案
+                // .wrap(rate_limit::create_general_rate_limiter())
                 .app_data(rb_data.clone())
             // 健康檢查
             .route("/health", web::get().to(health_check))
@@ -376,6 +381,9 @@ async fn main() -> std::io::Result<()> {
                 // HTTP 請求日誌
                 .wrap(Logger::default())
                 .wrap(cors)
+                // Rate Limiting：每秒最多 20 個請求，允許突發 40 個
+                // TODO: 需要升級 actix-governor 到兼容版本或使用替代方案
+                // .wrap(rate_limit::create_general_rate_limiter())
                 .app_data(rb_data.clone())
             // 健康檢查
             .route("/health", web::get().to(health_check))
