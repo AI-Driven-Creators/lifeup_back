@@ -1,6 +1,7 @@
 use actix_web::{dev::ServiceRequest, Error, HttpMessage, HttpResponse};
 use actix_web::error::ErrorUnauthorized;
 use actix_web::dev::{forward_ready, Service, ServiceResponse, Transform};
+use actix_web::body::EitherBody;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation, Algorithm};
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -117,7 +118,7 @@ where
     S::Future: 'static,
     B: 'static,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse<EitherBody<B>>;
     type Error = Error;
     type InitError = ();
     type Transform = JwtAuthMiddleware<S>;
@@ -138,7 +139,7 @@ where
     S::Future: 'static,
     B: 'static,
 {
-    type Response = ServiceResponse<B>;
+    type Response = ServiceResponse<EitherBody<B>>;
     type Error = Error;
     type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
 
@@ -159,20 +160,75 @@ where
                         let fut = self.service.call(req);
                         Box::pin(async move {
                             let res = fut.await?;
-                            Ok(res)
+                            Ok(res.map_into_left_body())
                         })
                     }
                     Err(e) => {
                         log::warn!("JWT 驗證失敗: {}", e);
+
+                        // 獲取請求的 Origin 頭部
+                        let origin = req.headers()
+                            .get("origin")
+                            .and_then(|v| v.to_str().ok())
+                            .map(|s| s.to_string());
+
                         Box::pin(async move {
-                            Err(ErrorUnauthorized(format!("無效的 JWT: {}", e)))
+                            let mut response = HttpResponse::Unauthorized()
+                                .content_type("application/json")
+                                .json(serde_json::json!({
+                                    "success": false,
+                                    "data": serde_json::Value::Null,
+                                    "message": format!("無效的 JWT: {}", e)
+                                }));
+
+                            // 添加 CORS 頭部
+                            if let Some(origin_value) = origin {
+                                response.headers_mut().insert(
+                                    actix_web::http::header::ACCESS_CONTROL_ALLOW_ORIGIN,
+                                    actix_web::http::header::HeaderValue::from_str(&origin_value).unwrap()
+                                );
+                                response.headers_mut().insert(
+                                    actix_web::http::header::ACCESS_CONTROL_ALLOW_CREDENTIALS,
+                                    actix_web::http::header::HeaderValue::from_static("true")
+                                );
+                            }
+
+                            Ok(req.into_response(response).map_into_boxed_body().map_into_right_body())
                         })
                     }
                 }
             }
             Err(e) => {
+                // 獲取請求的 Origin 頭部
+                let origin = req.headers()
+                    .get("origin")
+                    .and_then(|v| v.to_str().ok())
+                    .map(|s| s.to_string());
+
+                let error_msg = e.to_string();
+
                 Box::pin(async move {
-                    Err(e)
+                    let mut response = HttpResponse::Unauthorized()
+                        .content_type("application/json")
+                        .json(serde_json::json!({
+                            "success": false,
+                            "data": serde_json::Value::Null,
+                            "message": error_msg
+                        }));
+
+                    // 添加 CORS 頭部
+                    if let Some(origin_value) = origin {
+                        response.headers_mut().insert(
+                            actix_web::http::header::ACCESS_CONTROL_ALLOW_ORIGIN,
+                            actix_web::http::header::HeaderValue::from_str(&origin_value).unwrap()
+                        );
+                        response.headers_mut().insert(
+                            actix_web::http::header::ACCESS_CONTROL_ALLOW_CREDENTIALS,
+                            actix_web::http::header::HeaderValue::from_static("true")
+                        );
+                    }
+
+                    Ok(req.into_response(response).map_into_boxed_body().map_into_right_body())
                 })
             }
         }

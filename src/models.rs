@@ -348,18 +348,10 @@ pub struct User {
 }
 crud!(User{});
 
-// 自定義密碼強度驗證函數
+// 自定義密碼驗證函數
 fn validate_password_strength(password: &str) -> Result<(), ValidationError> {
-    let has_lowercase = password.chars().any(|c| c.is_lowercase());
-    let has_uppercase = password.chars().any(|c| c.is_uppercase());
-    let has_digit = password.chars().any(|c| c.is_numeric());
-    let is_long_enough = password.len() >= 8;
-
-    if !is_long_enough {
+    if password.len() < 4 {
         return Err(ValidationError::new("password_too_short"));
-    }
-    if !has_lowercase || !has_uppercase || !has_digit {
-        return Err(ValidationError::new("password_weak"));
     }
     Ok(())
 }
