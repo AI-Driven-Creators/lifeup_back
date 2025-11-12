@@ -1,5 +1,6 @@
 use rbatis::RBatis;
 use serde_json::json;
+use chrono::Datelike;
 
 /// 通知內容生成器
 pub struct NotificationGenerator;
@@ -128,6 +129,10 @@ impl NotificationGenerator {
             .await
             .unwrap_or(0);
 
+        // 判斷今天是否為週末
+        let today = chrono::Local::now().weekday();
+        let is_weekend = today == chrono::Weekday::Sat || today == chrono::Weekday::Sun;
+
         // 生成通知內容
         let (title, body) = if completed_today == 0 {
             // 沒有完成任何任務
@@ -136,10 +141,15 @@ impl NotificationGenerator {
                     "今天辛苦了！".to_string(),
                     format!("今天還沒有完成任務，有{}個任務進行中，明天繼續加油！💪", in_progress_count),
                 )
+            } else if is_weekend {
+                (
+                    "今天辛苦了！".to_string(),
+                    "今天是週末休息日，好好放鬆一下 😊".to_string(),
+                )
             } else {
                 (
                     "今天辛苦了！".to_string(),
-                    "今天是休息日，好好放鬆一下 😊".to_string(),
+                    "今天還沒有待辦或完成的任務，享受輕鬆的一天 😊".to_string(),
                 )
             }
         } else if completed_today == 1 {
