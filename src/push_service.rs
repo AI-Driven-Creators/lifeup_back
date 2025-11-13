@@ -1,3 +1,5 @@
+#![cfg(feature = "push-notifications")]
+
 use rbatis::RBatis;
 use crate::models::{PushSubscription, SubscribeRequest, UnsubscribeRequest, PushNotificationPayload};
 use chrono::Utc;

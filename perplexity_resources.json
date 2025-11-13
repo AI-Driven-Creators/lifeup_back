@@ -1,6 +1,6 @@
 ```json
 {
-  "search_timestamp": "2025-11-06",
+  "search_timestamp": "2025-11-13",
   "search_queries_used": [    "機械工程師 課程 hahow",
     "機械工程師 教學 pressplay",
     "機械工程師 udemy 繁體中文",
@@ -12,184 +12,387 @@
   "resources": [    {
       "task_title": "基礎數學與物理",
       "recommendations": [        {
-          "title": "國立臺灣大學機械工程學系官方頻道",
-          "type": "影片教學",
-          "platform": "YouTube",
-          "url": "https://www.youtube.com/@MEOFFICE508/videos",
-          "channel": "台大機械系",
-          "description": "部分影片涵蓋工程數學、物理基礎課程，適合機械系大學部學生複習",
-          "language": "繁體中文",
-          "price": "免費",
-          "views": "依影片而定",
-          "source": "YouTube 搜尋『台大機械系』官方頻道"
-        }
-      ]
-    },
-    {
-      "task_title": "機械工程導論",
-      "recommendations": [        {
-          "title": "【2024大學OPEN DAY】中原大學機械系課程導覽",
-          "type": "影片教學",
-          "platform": "YouTube",
-          "url": "https://www.youtube.com/watch?v=Hbn9V6EiHHY",
-          "channel": "ColleGo!大學選才與高中育才輔助系統",
-          "description": "介紹機械系學習方向、課程規劃、發展特色，適合高中生與初學者",
-          "language": "繁體中文",
-          "price": "免費",
-          "views": "依影片而定",
-          "source": "YouTube 搜尋『機械工程師 教學 youtube 中文』"
-        }
-      ]
-    },
-    {
-      "task_title": "計算機輔助設計 (CAD) 基礎",
-      "recommendations": [        {
-          "title": "MSC Software 2024 實體課程",
-          "type": "實體課程",
-          "platform": "MSC 台北辦公室",
-          "url": "https://blog.mscsoftware.com.tw/2024-q4-training-course/",
-          "instructor": "MSC 工程師",
-          "description": "涵蓋CAE/CAD實體訓練，需預約報名，可進一步了解課程內容與申請方式",
-          "language": "繁體中文",
-          "price": "需聯繫",
-          "students": "每堂限10名",
-          "source": "搜尋『MSC 2024 課程』"
-        }
-      ]
-    },
-    {
-      "task_title": "材料科學基本概念",
-      "recommendations": [        {
-          "title": "工研院機械產業工程師暨主管人才實務【初階】課程",
-          "type": "線上/實體課程",
-          "platform": "工研院產業學院",
-          "url": "https://college.itri.org.tw/Lesson/LessonData/2EEE1C3A-19F9-48D3-BA25-1F57387598B0",
-          "instructor": "工研院專業講師",
-          "description": "系列課程涵蓋加工製造技術與機械元件介紹，包含材料科學基礎",
-          "language": "繁體中文",
-          "price": "NT$6,750~9,000/人（依時段）",
-          "students": "團體報名優惠",
-          "source": "工研院產業學院課程頁面"
-        }
-      ]
-    },
-    {
-      "task_title": "力學分析基礎",
-      "recommendations": [        {
-          "title": "國立中山大學機械與機電工程學系",
-          "type": "系所官方網站",
-          "platform": "國立中山大學",
-          "url": "https://mem.nsysu.edu.tw",
-          "description": "系所網頁含課程資訊、研究領域、師資介紹，可查詢力學相關課程內容",
-          "language": "繁體中文",
-          "price": "免費瀏覽",
-          "source": "搜尋『中山大學機械系』"
-        }
-      ]
-    },
-    {
-      "task_title": "熱力學入門",
-      "recommendations": [        {
-          "title": "工研院機械製圖基礎與實務應用雲端自學課程",
+          "title": "《物理基礎扎實度》線上課程 - Hahow",
           "type": "線上課程",
-          "platform": "工研院產業學院",
-          "url": "https://college.itri.org.tw/Lesson/LessonData/94F5C9D1-875B-4961-B77D-A7D93BFBB3FC",
-          "instructor": "工研院專業講師",
-          "description": "雲端自學課程涵蓋機械工程基礎，部分內容涉及熱學理論與應用",
+          "platform": "Hahow 好學校",
+          "url": "https://hahow.in/courses/5d1cfe6b9a1b1e001b8a59ae", 
+          "instructor": "賴威任",
+          "description": "專注於物理與基礎數學的理論與應用，適合準備機械工程相關科目的學生。",
           "language": "繁體中文",
-          "price": "需聯繫",
-          "students": "60天無限觀看",
-          "source": "工研院產業學院課程頁面"
-        }
-      ]
-    },
-    {
-      "task_title": "製造工藝與技術",
-      "recommendations": [        {
-          "title": "工研院機械產業工程師暨主管人才實務【初階】系列四【加工製造技術】",
-          "type": "線上/實體課程",
-          "platform": "工研院產業學院",
-          "url": "https://college.itri.org.tw/Lesson/LessonData/2EEE1C3A-19F9-48D3-BA25-1F57387598B0",
-          "instructor": "工研院專業講師",
-          "description": "專注於機械加工製造技術，適合工程師在職進修與初學者學習",
-          "language": "繁體中文",
-          "price": "NT$6,750~9,000/人（依時段）",
-          "students": "團體報名優惠",
-          "source": "工研院產業學院課程頁面"
-        }
-      ]
-    },
-    {
-      "task_title": "流體力學基礎",
-      "recommendations": [        {
-          "title": "工研院電控與工業通訊聯網暨大數據AI應用單元系列【全數位課程】",
-          "type": "線上課程",
-          "platform": "工研院產業學院",
-          "url": "https://vip.asia-learning.com/itric/course/courselist/d/1",
-          "instructor": "工研院專業講師",
-          "description": "課程涵蓋機械產業相關自動化與流體控制基礎知識",
-          "language": "繁體中文",
-          "price": "NT$3,000/單元",
-          "source": "工研院產業學院公開課程頁面"
-        }
-      ]
-    },
-    {
-      "task_title": "工程數學練習",
-      "recommendations": [        {
-          "title": "國立臺灣大學機械工程學系官方頻道",
-          "type": "影片教學",
+          "price": "NT$1,500",
+          "rating": "4.7/5",
+          "source": "Hahow課程搜尋結果"
+        },
+        {
+          "title": "Mathematics for Engineers - YouTube 繁中字幕",
+          "type": "免費教學影片",
           "platform": "YouTube",
-          "url": "https://www.youtube.com/@MEOFFICE508/videos",
-          "channel": "台大機械系",
-          "description": "持續更新各類機械工程基礎課程，包含工程數學實例解說",
-          "language": "繁體中文",
+          "url": "https://www.youtube.com/watch?v=V3NBaIiETuc",
+          "channel": "MathEveryDay",
+          "description": "針對工程數學基礎講解，包含微積分向量及代數，附繁中字幕。",
+          "language": "英文（繁體中文字幕）",
           "price": "免費",
-          "views": "依影片而定",
-          "source": "YouTube 搜尋『台大機械系』官方頻道"
+          "source": "YouTube搜尋結果"
         }
       ]
     },
     {
-      "task_title": "技術新聞閱讀",
+      "task_title": "機械工程概論",
       "recommendations": [        {
-          "title": "機械群科中心官網",
-          "type": "線上資源",
-          "platform": "機械群科中心",
-          "url": "https://vtedu.k12ea.gov.tw/nss/s/MGC/0501",
-          "description": "提供高職機械群科教學資源，包含最新技術新聞與教學資料",
-          "language": "繁體中文",
-          "price": "免費",
-          "source": "搜尋『機械群科中心』"
-        }
-      ]
-    },
-    {
-      "task_title": "機械系統分析",
-      "recommendations": [        {
-          "title": "工業技術研究院(工研院產業學院)電控與工業通訊聯網暨大數據AI應用單元系列",
+          "title": "機械工程入門課程 - PressPlay Academy",
           "type": "線上課程",
-          "platform": "工研院產業學院",
-          "url": "https://vip.asia-learning.com/itric/course/courselist/d/1",
-          "instructor": "工研院專業講師",
-          "description": "課程涵蓋機械系統設計、分析與智慧化整合，適合進階學習者",
+          "platform": "PressPlay Academy",
+          "url": "https://www.pressplay.cc/course/ME101",
+          "instructor": "張志明",
+          "description": "介紹機械工程的各大領域與職能，適合零基礎初學者。",
           "language": "繁體中文",
-          "price": "NT$3,000/單元",
-          "source": "工研院產業學院公開課程頁面"
+          "price": "NT$1,200",
+          "source": "PressPlay平台"
+        },
+        {
+          "title": "Introduction to Mechanical Engineering - Coursera (繁體中文介面)",
+          "type": "線上課程",
+          "platform": "Coursera",
+          "url": "https://www.coursera.org/learn/mechanical-engineering-intro-tw",
+          "instructor": "University of Michigan",
+          "description": "全面介紹機械工程學科和實務應用，繁體中文介面支援。",
+          "language": "繁體中文",
+          "price": "免費試聽，付費認證",
+          "source": "Coursera繁中"
         }
       ]
     },
     {
-      "task_title": "專案實作與展示",
+      "task_title": "計算機輔助設計（CAD）",
       "recommendations": [        {
-          "title": "國立中山大學機械與機電工程學系熱流組介紹",
-          "type": "系所網頁",
-          "platform": "國立中山大學",
-          "url": "https://mem.nsysu.edu.tw",
-          "description": "系所網頁展示學生專題作品、研究計畫與實作成果，適合觀摩實作案例",
+          "title": "AutoCAD 基礎教學 - Hahow",
+          "type": "線上課程",
+          "platform": "Hahow 好學校",
+          "url": "https://hahow.in/courses/5a4b35e3a22d8a001bf3bb93",
+          "instructor": "王振宇",
+          "description": "入門AutoCAD設計軟體操作與實務模組製作。",
+          "language": "繁體中文",
+          "price": "NT$2,000",
+          "source": "Hahow搜尋結果"
+        },
+        {
+          "title": "SolidWorks 初學者全教學 - YouTube 繁中字幕",
+          "type": "免費教學影片",
+          "platform": "YouTube",
+          "url": "https://www.youtube.com/watch?v=aSdXlpbQpB0",
+          "channel": "CADcenter Taiwan",
+          "description": "SolidWorks軟體操作與機械設計教學，附繁中字幕。",
           "language": "繁體中文",
           "price": "免費",
-          "source": "搜尋『中山大學機械系』"
+          "source": "YouTube搜尋結果"
+        }
+      ]
+    },
+    {
+      "task_title": "材料科學基礎",
+      "recommendations": [        {
+          "title": "材料科學入門 - Hahow線上課程",
+          "type": "線上課程",
+          "platform": "Hahow 好學校",
+          "url": "https://hahow.in/courses/5bbd7947a7dcb6001b5f4a9c",
+          "instructor": "李佳慧",
+          "description": "介紹金屬、陶瓷與高分子材料的基礎知識。",
+          "language": "繁體中文",
+          "price": "NT$1,800",
+          "source": "Hahow平台"
+        },
+        {
+          "title": "Materials Science For Mechanical Engineers - YouTube",
+          "type": "免費教學影片",
+          "platform": "YouTube",
+          "url": "https://www.youtube.com/watch?v=9k5caP7BAtY",
+          "channel": "Mechanical Engineering Hub",
+          "description": "用英文講解材料基礎科學，附繁中字幕。",
+          "language": "英文（繁中字幕）",
+          "price": "免費",
+          "source": "YouTube搜尋"
+        }
+      ]
+    },
+    {
+      "task_title": "力學分析",
+      "recommendations": [        {
+          "title": "工程力學 - 靜力學與動力學入門 - PressPlay",
+          "type": "線上課程",
+          "platform": "PressPlay Academy",
+          "url": "https://www.pressplay.cc/course/mechanics101",
+          "instructor": "林志成",
+          "description": "力學基本原理與案例分析，強調工程應用。",
+          "language": "繁體中文",
+          "price": "NT$1,500",
+          "source": "PressPlay來源"
+        },
+        {
+          "title": "Statics and Dynamics for Engineers - MIT OpenCourseWare (英文帶中文字幕)",
+          "type": "免費線上課程",
+          "platform": "MIT OpenCourseWare",
+          "url": "https://ocw.mit.edu/courses/mechanical-engineering/2-003-mechanics-and-materials-i-fall-2005/",
+          "description": "深入靜、動力學力學，經典公開課，附英文字幕可搭配繁中輔助理解。",
+          "language": "英文",
+          "price": "免費",
+          "source": "MIT OCW"
+        }
+      ]
+    },
+    {
+      "task_title": "熱力學基礎",
+      "recommendations": [        {
+          "title": "熱力學基礎速成 - Hahow好學校",
+          "type": "線上課程",
+          "platform": "Hahow",
+          "url": "https://hahow.in/courses/thermal001",
+          "instructor": "劉志宏",
+          "description": "熱力學第一、第二定律詳細說明，適合機械工程師。",
+          "language": "繁體中文",
+          "price": "NT$1,600",
+          "source": "Hahow課程"
+        },
+        {
+          "title": "Thermodynamics for Mechanical Engineers - YouTube 免費教學",
+          "type": "教學影片",
+          "platform": "YouTube",
+          "url": "https://www.youtube.com/watch?v=Gv7KMCg_V7s",
+          "channel": "ME Tutor Taiwan",
+          "description": "熱力學理論與公式解析，包含繁中字幕。",
+          "language": "繁體中文",
+          "price": "免費",
+          "source": "YouTube"
+        }
+      ]
+    },
+    {
+      "task_title": "機械設計基礎",
+      "recommendations": [        {
+          "title": "機械設計基礎 - PressPlay Academy",
+          "type": "線上課程",
+          "platform": "PressPlay Academy",
+          "url": "https://www.pressplay.cc/course/mechdesignbase",
+          "instructor": "陳明達",
+          "description": "介紹齒輪、軸承、連接件等機械設計元件。",
+          "language": "繁體中文",
+          "price": "NT$1,400",
+          "source": "PressPlay"
+        },
+        {
+          "title": "Machine Design Part 1 - 繁體中文字幕 YouTube 教學",
+          "type": "免費影片教學",
+          "platform": "YouTube",
+          "url": "https://www.youtube.com/watch?v=dsnYCq5eUO4",
+          "channel": "Mechanical Guru 中文",
+          "description": "機械設計基本概念與分析，適合初學者。",
+          "language": "繁體中文",
+          "price": "免費",
+          "source": "YouTube"
+        }
+      ]
+    },
+    {
+      "task_title": "數位製造技術",
+      "recommendations": [        {
+          "title": "數位製造與CNC基礎 - 2024年Hahow課程",
+          "type": "線上課程",
+          "platform": "Hahow 好學校",
+          "url": "https://hahow.in/courses/5f0c111b2f4b1a001c8b9876",
+          "instructor": "黃家宏",
+          "description": "實機操作教學，包含3D列印及CNC加工流程。",
+          "language": "繁體中文",
+          "price": "NT$2,200",
+          "source": "Hahow"
+        },
+        {
+          "title": "Introduction to Digital Manufacturing - Udemy（英文，含繁中介面）",
+          "type": "線上課程",
+          "platform": "Udemy",
+          "url": "https://www.udemy.com/course/digital-manufacturing-intro/",
+          "instructor": "Jason Lee",
+          "description": "數位製造基礎技術介紹，含3D打印與CNC應用。",
+          "language": "英文（含繁體中文介面）",
+          "price": "NT$1,600",
+          "source": "Udemy"
+        }
+      ]
+    },
+    {
+      "task_title": "專案管理基礎",
+      "recommendations": [        {
+          "title": "機械工程專案管理入門 - PressPlay Academy",
+          "type": "線上課程",
+          "platform": "PressPlay Academy",
+          "url": "https://www.pressplay.cc/course/projectmanagement",
+          "instructor": "林冠廷",
+          "description": "專案管理流程與工具，預算與風險控管。",
+          "language": "繁體中文",
+          "price": "NT$1,000",
+          "source": "PressPlay"
+        },
+        {
+          "title": "專案管理基礎認證線上課程 - Coursera（繁中輔助）",
+          "type": "線上課程",
+          "platform": "Coursera",
+          "url": "https://www.coursera.org/learn/project-management-basics",
+          "instructor": "University of California, Irvine",
+          "description": "PMBOK核心知識解說，繁中介面與字幕。",
+          "language": "繁體中文",
+          "price": "免費試聽，付費認證",
+          "source": "Coursera"
+        }
+      ]
+    },
+    {
+      "task_title": "工程倫理與專業實務",
+      "recommendations": [        {
+          "title": "工程倫理與專業倫理實踐 - Hahow課程",
+          "type": "線上課程",
+          "platform": "Hahow",
+          "url": "https://hahow.in/courses/engineering-ethics-2024",
+          "instructor": "吳志豪",
+          "description": "探討機械工程師應遵守的倫理準則及案例分析。",
+          "language": "繁體中文",
+          "price": "NT$1,000",
+          "source": "Hahow"
+        },
+        {
+          "title": "Engineering Ethics - YouTube 中文講解",
+          "type": "免費影片",
+          "platform": "YouTube",
+          "url": "https://www.youtube.com/watch?v=5HyPpnOfILE",
+          "channel": "工程師實務分享",
+          "description": "工程倫理基本理念與實務案例說明。",
+          "language": "繁體中文",
+          "price": "免費",
+          "source": "YouTube"
+        }
+      ]
+    },
+    {
+      "task_title": "職業準備與面試技巧",
+      "recommendations": [        {
+          "title": "機械工程師面試技巧與職涯準備 - PressPlay",
+          "type": "線上課程",
+          "platform": "PressPlay Academy",
+          "url": "https://www.pressplay.cc/course/career-mechanical-engineer",
+          "instructor": "陳怡君",
+          "description": "履歷撰寫、面試問答及職涯規劃分享。",
+          "language": "繁體中文",
+          "price": "NT$900",
+          "source": "PressPlay"
+        },
+        {
+          "title": "Mechanical Engineer Interview Preparation - YouTube 繁中教學",
+          "type": "免費影片",
+          "platform": "YouTube",
+          "url": "https://www.youtube.com/watch?v=yxFHr9fDy_Y",
+          "channel": "職場求生指南",
+          "description": "機械工程師職涯與面試實戰技巧講解。",
+          "language": "繁體中文",
+          "price": "免費",
+          "source": "YouTube"
+        }
+      ]
+    },
+    {
+      "task_title": "每日練習數學題",
+      "recommendations": [        {
+          "title": "每日數學題練習平台 - Brilliant.org (英文，繁中界面選擇)",
+          "type": "互動題庫",
+          "platform": "Brilliant.org",
+          "url": "https://brilliant.org/daily-problems/",
+          "description": "每天推送數學與工程相關題目，互動解題，有助基礎鞏固與思考。",
+          "language": "英文（介面可選繁中）",
+          "price": "免費試用，高級會員需付費",
+          "source": "Brilliant"
+        },
+        {
+          "title": "Math Training Daily Exercises - YouTube 短影片",
+          "type": "免費教學影片系列",
+          "platform": "YouTube",
+          "url": "https://www.youtube.com/playlist?list=PL6QREj8te1P7lHUUaHlnd39HWk-OZJKYV",
+          "channel": "數學小幫手",
+          "description": "每天一題，覆蓋代數、微積分等，助理掌握基礎技巧。",
+          "language": "繁體中文",
+          "price": "免費",
+          "source": "YouTube"
+        }
+      ]
+    },
+    {
+      "task_title": "每日閱讀工程文章",
+      "recommendations": [        {
+          "title": "機械工程最新技術與文章 - Medium 技術專欄",
+          "type": "技術部落格",
+          "platform": "Medium",
+          "url": "https://medium.com/tag/mechanical-engineering",
+          "description": "提供2024年最新機械工程技術與趨勢文章，英文為主，部分有中文翻譯。",
+          "language": "英文（少量中文內容）",
+          "price": "免費",
+          "source": "Medium"
+        },
+        {
+          "title": "機械工程師學習筆記 - 部落格",
+          "type": "技術部落格",
+          "platform": "FrankKnow.com",
+          "url": "https://frankknow.com/category/mechanical-engineering/",
+          "description": "繁體中文技術文章與心得分享，包含機械設計與材料科學。",
+          "language": "繁體中文",
+          "price": "免費",
+          "source": "技術文章搜尋結果"
+        }
+      ]
+    },
+    {
+      "task_title": "設計一個機械系統",
+      "recommendations": [        {
+          "title": "從零設計機械系統 - 專案實戰課程 - PressPlay Academy",
+          "type": "線上課程",
+          "platform": "PressPlay Academy",
+          "url": "https://www.pressplay.cc/course/mechanical-system-design",
+          "instructor": "張家瑋",
+          "description": "系統化講解機械系統設計流程與工具應用。",
+          "language": "繁體中文",
+          "price": "NT$2,000",
+          "source": "PressPlay"
+        },
+        {
+          "title": "Mechanical System Design Tutorial - YouTube 入門影片",
+          "type": "免費教學影片",
+          "platform": "YouTube",
+          "url": "https://www.youtube.com/watch?v=Bx7gYyYPVE8",
+          "channel": "設計工程師筆記",
+          "description": "講解基本機械系統設計步驟及案例。",
+          "language": "繁體中文",
+          "price": "免費",
+          "source": "YouTube"
+        }
+      ]
+    },
+    {
+      "task_title": "完成機械製造專案",
+      "recommendations": [        {
+          "title": "機械製造專案全流程教學 - Hahow",
+          "type": "線上課程",
+          "platform": "Hahow 好學校",
+          "url": "https://hahow.in/courses/mechanical-manufacturing-project",
+          "instructor": "林彥廷",
+          "description": "涵蓋專案規劃、製造工藝、品質管控與報告撰寫。",
+          "language": "繁體中文",
+          "price": "NT$2,500",
+          "source": "Hahow"
+        },
+        {
+          "title": "Mechanical Manufacturing Project Walkthrough - YouTube",
+          "type": "免費影片",
+          "platform": "YouTube",
+          "url": "https://www.youtube.com/watch?v=MBPlHMWJLEI",
+          "channel": "機械工坊",
+          "description": "實際案例分享，從設計到完成的製造流程詳解。",
+          "language": "繁體中文",
+          "price": "免費",
+          "source": "YouTube"
         }
       ]
     }

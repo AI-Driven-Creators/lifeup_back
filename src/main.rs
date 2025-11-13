@@ -13,7 +13,9 @@ mod achievement_service;
 mod career_routes;
 mod behavior_analytics;
 mod progressive_career_gen;
+#[cfg(feature = "push-notifications")]
 mod push_service;
+#[cfg(feature = "push-notifications")]
 mod push_scheduler;
 mod calendar_service;
 mod notification_generator;
@@ -172,13 +174,18 @@ async fn main() -> std::io::Result<()> {
         }
     };
 
-    // 啟動推送通知調度器
-    if let Err(e) = push_scheduler::start_push_scheduler(rb.clone(), calendar_service).await {
-        log::warn!("推送通知調度器啟動失敗（可能是 VAPID 金鑰未配置）: {}", e);
-        log::info!("推送通知功能將不可用，但不影響其他服務運行");
-    } else {
-        log::info!("推送通知調度器已成功啟動");
+    // 啟動推送通知調度器（僅在啟用推送通知功能時）
+    #[cfg(feature = "push-notifications")]
+    {
+        if let Err(e) = push_scheduler::start_push_scheduler(rb.clone(), calendar_service.clone()).await {
+            log::warn!("推送通知調度器啟動失敗（可能是 VAPID 金鑰未配置）: {}", e);
+            log::info!("推送通知功能將不可用，但不影響其他服務運行");
+        } else {
+            log::info!("推送通知調度器已成功啟動");
+        }
     }
+    #[cfg(not(feature = "push-notifications"))]
+    log::info!("推送通知功能已停用（未啟用 push-notifications feature）");
 
     let server_addr = config.server_addr();
 
@@ -340,6 +347,21 @@ async fn main() -> std::io::Result<()> {
                     .route("/notifications/preview-evening/{user_id}", web::post().to(preview_evening_notification))
                     .app_data(web::Data::new(config.clone()))
             )
+            // 職業主線任務系統路由
+            .route("/api/quiz/save-results", web::post().to(crate::career_routes::save_quiz_results))
+            .route("/api/career/generate-tasks", web::post().to(crate::career_routes::generate_career_tasks))
+            .route("/api/career/accept-tasks", web::post().to(crate::career_routes::accept_career_tasks))
+            .route("/api/career/import", web::post().to(crate::career_routes::import_career_tasks))
+            // 多步驟漸進式任務生成（SSE）
+            .route("/api/career/generate-tasks-progressive", web::post().to(crate::progressive_career_gen::generate_career_tasks_progressive_sse))
+            .app_data(web::Data::new(config.clone()))
+            // 使用者資料重置路由
+            .route("/api/users/{user_id}/reset", web::delete().to(reset_user_data))
+            .route("/api/users/{user_id}/reset", web::post().to(reset_user_data_selective))
+            // 任務歷史路由
+            .route("/api/users/{user_id}/task-history", web::get().to(get_task_history))
+            // 推送通知相關路由（條件編譯）
+            .configure(configure_push_routes)
         })
         .workers(2)
         .bind_rustls_021(&server_addr, rustls_config)?
@@ -475,6 +497,21 @@ async fn main() -> std::io::Result<()> {
                     .route("/notifications/preview-evening/{user_id}", web::post().to(preview_evening_notification))
                     .app_data(web::Data::new(config.clone()))
             )
+            // 職業主線任務系統路由
+            .route("/api/quiz/save-results", web::post().to(crate::career_routes::save_quiz_results))
+            .route("/api/career/generate-tasks", web::post().to(crate::career_routes::generate_career_tasks))
+            .route("/api/career/accept-tasks", web::post().to(crate::career_routes::accept_career_tasks))
+            .route("/api/career/import", web::post().to(crate::career_routes::import_career_tasks))
+            // 多步驟漸進式任務生成（SSE）
+            .route("/api/career/generate-tasks-progressive", web::post().to(crate::progressive_career_gen::generate_career_tasks_progressive_sse))
+            .app_data(web::Data::new(config.clone()))
+            // 使用者資料重置路由
+            .route("/api/users/{user_id}/reset", web::delete().to(reset_user_data))
+            .route("/api/users/{user_id}/reset", web::post().to(reset_user_data_selective))
+            // 任務歷史路由
+            .route("/api/users/{user_id}/task-history", web::get().to(get_task_history))
+            // 推送通知相關路由（條件編譯）
+            .configure(configure_push_routes)
         })
         .workers(2)
         .bind(&server_addr)?
@@ -736,6 +773,31 @@ async fn create_tables(rb: &RBatis) {
     }
     
     log::info!("所有資料庫表建立完成");
+}
+
+/// 配置推送通知相關路由（僅在啟用 push-notifications feature 時）
+#[cfg(feature = "push-notifications")]
+fn configure_push_routes(cfg: &mut actix_web::web::ServiceConfig) {
+    cfg
+        // 推送通知路由
+        .route("/api/push/subscribe", web::post().to(subscribe_push))
+        .route("/api/push/unsubscribe", web::post().to(unsubscribe_push))
+        .route("/api/push/test/{user_id}", web::post().to(send_test_push))
+        .route("/api/push/vapid-public-key", web::get().to(get_vapid_public_key))
+        .route("/api/push/subscriptions", web::get().to(get_all_subscriptions))
+        .route("/api/push/clear-all", web::post().to(clear_all_subscriptions))
+        .route("/api/notifications/test-push/{user_id}", web::post().to(send_delayed_test_push))
+        // 通知設定路由
+        .route("/api/notification-settings/{user_id}", web::get().to(get_notification_settings))
+        .route("/api/notification-settings/{user_id}", web::put().to(update_notification_settings))
+        .route("/api/notifications/preview-morning/{user_id}", web::post().to(preview_morning_notification))
+        .route("/api/notifications/preview-evening/{user_id}", web::post().to(preview_evening_notification));
+}
+
+/// 配置推送通知相關路由的空實現（當未啟用 push-notifications feature 時）
+#[cfg(not(feature = "push-notifications"))]
+fn configure_push_routes(_cfg: &mut actix_web::web::ServiceConfig) {
+    // 推送通知功能未啟用，不配置任何路由
 }
 
 async fn migrate_database(rb: &RBatis) {

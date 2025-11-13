@@ -1,3 +1,5 @@
+#![cfg(feature = "push-notifications")]
+
 use rbatis::RBatis;
 use tokio_cron_scheduler::{Job, JobScheduler};
 use log::{info, error};

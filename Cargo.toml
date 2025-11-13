@@ -8,6 +8,11 @@ default-run = "lifeup_back"
 [lints.rust]
 warnings = "allow"
 
+# 功能開關（Feature Flags）
+[features]
+default = []  # 預設不啟用任何功能
+push-notifications = ["web-push", "openssl"]  # 推送通知功能（需要 OpenSSL）
+
 [dependencies]
 # Web 框架
 actix-web = { version = "4.4", features = ["rustls-0_21"] }
@@ -90,13 +95,13 @@ futures = "0.3"
 rustls = "0.21"
 rustls-pemfile = "1.0"
 
-# Web Push 推送通知
-web-push = "0.9"
+# Web Push 推送通知（可選功能，需要啟用 push-notifications feature）
+web-push = { version = "0.9", optional = true }
 base64 = "0.21"
 url = "2.5"
 
-# OpenSSL (Windows 相容性)
-openssl = { version = "0.10", features = ["vendored"] }
+# OpenSSL (Windows 相容性) - 只在啟用推送通知時需要
+openssl = { version = "0.10", features = ["vendored"], optional = true }
 
 # 定時任務調度
 tokio-cron-scheduler = "0.9"

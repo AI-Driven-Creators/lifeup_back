@@ -5212,11 +5212,15 @@ pub async fn generate_skill_tags(
 
 // ================= Push Notification Routes =================
 
+#[cfg(feature = "push-notifications")]
 use crate::push_service::PushService;
+#[cfg(feature = "push-notifications")]
 use std::sync::Arc;
+#[cfg(feature = "push-notifications")]
 use tokio::sync::Mutex;
 
 /// 訂閱推送通知
+#[cfg(feature = "push-notifications")]
 pub async fn subscribe_push(
     rb: web::Data<RBatis>,
     req: web::Json<SubscribeRequest>,
@@ -5245,6 +5249,7 @@ pub async fn subscribe_push(
 }
 
 /// 取消訂閱推送通知
+#[cfg(feature = "push-notifications")]
 pub async fn unsubscribe_push(
     rb: web::Data<RBatis>,
     req: web::Json<UnsubscribeRequest>,
@@ -5273,6 +5278,7 @@ pub async fn unsubscribe_push(
 }
 
 /// 發送測試推送通知
+#[cfg(feature = "push-notifications")]
 pub async fn send_test_push(
     rb: web::Data<RBatis>,
     user_id: web::Path<String>,
@@ -5322,6 +5328,7 @@ pub struct DelayedTestPushRequest {
     delay_seconds: Option<u64>,
 }
 
+#[cfg(feature = "push-notifications")]
 pub async fn send_delayed_test_push(
     rb: web::Data<RBatis>,
     user_id: web::Path<String>,
@@ -5382,6 +5389,7 @@ pub async fn send_delayed_test_push(
 }
 
 /// 獲取所有推送訂閱
+#[cfg(feature = "push-notifications")]
 pub async fn get_all_subscriptions(rb: web::Data<RBatis>) -> Result<HttpResponse> {
     match PushService::new() {
         Ok(service) => {
@@ -5415,6 +5423,7 @@ pub struct ClearSubscriptionsRequest {
     user_id: Option<String>,
 }
 
+#[cfg(feature = "push-notifications")]
 pub async fn clear_all_subscriptions(
     rb: web::Data<RBatis>,
     req: web::Json<ClearSubscriptionsRequest>,
@@ -5445,6 +5454,7 @@ pub async fn clear_all_subscriptions(
 }
 
 /// 獲取VAPID公鑰
+#[cfg(feature = "push-notifications")]
 pub async fn get_vapid_public_key() -> Result<HttpResponse> {
     match PushService::new() {
         Ok(service) => {
@@ -5470,6 +5480,7 @@ pub async fn get_vapid_public_key() -> Result<HttpResponse> {
 use crate::notification_generator::NotificationGenerator;
 
 /// 獲取用戶通知設定
+#[cfg(feature = "push-notifications")]
 pub async fn get_notification_settings(
     rb: web::Data<RBatis>,
     user_id: web::Path<String>,
@@ -5534,6 +5545,7 @@ pub async fn get_notification_settings(
 }
 
 /// 更新用戶通知設定
+#[cfg(feature = "push-notifications")]
 pub async fn update_notification_settings(
     rb: web::Data<RBatis>,
     user_id: web::Path<String>,
@@ -5646,6 +5658,7 @@ pub async fn update_notification_settings(
 }
 
 /// 預覽早上通知內容
+#[cfg(feature = "push-notifications")]
 pub async fn preview_morning_notification(
     rb: web::Data<RBatis>,
     user_id: web::Path<String>,
@@ -5667,6 +5680,7 @@ pub async fn preview_morning_notification(
 }
 
 /// 預覽晚上通知內容
+#[cfg(feature = "push-notifications")]
 pub async fn preview_evening_notification(
     rb: web::Data<RBatis>,
     user_id: web::Path<String>,
