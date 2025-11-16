@@ -332,19 +332,6 @@ async fn main() -> std::io::Result<()> {
                     .route("/career/accept-tasks", web::post().to(crate::career_routes::accept_career_tasks))
                     .route("/career/import", web::post().to(crate::career_routes::import_career_tasks))
                     .route("/career/generate-tasks-progressive", web::post().to(crate::progressive_career_gen::generate_career_tasks_progressive_sse))
-                    // 推送通知路由
-                    .route("/push/subscribe", web::post().to(subscribe_push))
-                    .route("/push/unsubscribe", web::post().to(unsubscribe_push))
-                    .route("/push/test/{user_id}", web::post().to(send_test_push))
-                    .route("/push/vapid-public-key", web::get().to(get_vapid_public_key))
-                    .route("/push/subscriptions", web::get().to(get_all_subscriptions))
-                    .route("/push/clear-all", web::post().to(clear_all_subscriptions))
-                    .route("/notifications/test-push/{user_id}", web::post().to(send_delayed_test_push))
-                    // 通知設定路由
-                    .route("/notification-settings/{user_id}", web::get().to(get_notification_settings))
-                    .route("/notification-settings/{user_id}", web::put().to(update_notification_settings))
-                    .route("/notifications/preview-morning/{user_id}", web::post().to(preview_morning_notification))
-                    .route("/notifications/preview-evening/{user_id}", web::post().to(preview_evening_notification))
                     .app_data(web::Data::new(config.clone()))
             )
             // 職業主線任務系統路由
@@ -482,19 +469,6 @@ async fn main() -> std::io::Result<()> {
                     .route("/career/accept-tasks", web::post().to(crate::career_routes::accept_career_tasks))
                     .route("/career/import", web::post().to(crate::career_routes::import_career_tasks))
                     .route("/career/generate-tasks-progressive", web::post().to(crate::progressive_career_gen::generate_career_tasks_progressive_sse))
-                    // 推送通知路由
-                    .route("/push/subscribe", web::post().to(subscribe_push))
-                    .route("/push/unsubscribe", web::post().to(unsubscribe_push))
-                    .route("/push/test/{user_id}", web::post().to(send_test_push))
-                    .route("/push/vapid-public-key", web::get().to(get_vapid_public_key))
-                    .route("/push/subscriptions", web::get().to(get_all_subscriptions))
-                    .route("/push/clear-all", web::post().to(clear_all_subscriptions))
-                    .route("/notifications/test-push/{user_id}", web::post().to(send_delayed_test_push))
-                    // 通知設定路由
-                    .route("/notification-settings/{user_id}", web::get().to(get_notification_settings))
-                    .route("/notification-settings/{user_id}", web::put().to(update_notification_settings))
-                    .route("/notifications/preview-morning/{user_id}", web::post().to(preview_morning_notification))
-                    .route("/notifications/preview-evening/{user_id}", web::post().to(preview_evening_notification))
                     .app_data(web::Data::new(config.clone()))
             )
             // 職業主線任務系統路由
