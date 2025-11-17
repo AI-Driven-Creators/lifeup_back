@@ -2085,10 +2085,18 @@ pub async fn get_homepage_tasks(
             p.title as parent_task_title
         FROM task t
         LEFT JOIN task p ON t.parent_task_id = p.id
-        WHERE t.parent_task_id IS NOT NULL
-            AND t.user_id = ?
-            AND (t.task_date >= date('now', '-2 days') OR t.task_date IS NULL)
-            AND t.status IN (0, 1, 2, 4, 5, 6, 7)  -- 顯示待處理、進行中、已完成、暫停、每日進行中、每日已完成、每日未完成等狀態
+        WHERE t.user_id = ?
+            AND (
+                -- 條件1: 有父任務的子任務
+                (t.parent_task_id IS NOT NULL
+                 AND (t.task_date >= date('now', '-2 days') OR t.task_date IS NULL)
+                 AND t.status IN (0, 1, 2, 4, 5, 6, 7))
+                OR
+                -- 條件2: 沒有父任務但處於進行中的每日任務
+                (t.parent_task_id IS NULL
+                 AND t.task_type = 'daily'
+                 AND t.status = 5)  -- daily_in_progress
+            )
         ORDER BY t.task_date DESC, t.task_order, t.created_at
     "#;
     
